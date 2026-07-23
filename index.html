@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+  <title>Skill Progression Coach</title>
+  <meta name="description" content="Skill Progression Coach — progression map, today's workout, and skill tracking. A separate installable app that reads Pull-Up Coach data read-only.">
+  <!-- Standalone installable PWA on its own GitHub Pages project site
+       (/skill-progression-coach/). Its own manifest, icon and service worker.
+       Writes only spc_* keys, reads puc_* read-only, and never controls the
+       Pull-Up Coach app that lives on the same host. -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Skill Coach">
+  <meta name="theme-color" content="#0b1220">
+  <style>
+    :root{
+      --bg:#0b1220; --panel:#0e2038; --panel2:#12294a; --frame:#e8edf4;
+      --card:#16324f; --card2:#1d3e60; --border:#274863; --edge:#2b4f74;
+      --text:#eef3fb; --muted:#93a7c4; --dim:#6c82a3;
+      --accent:#38bdf8; --accent2:#22d3a6; --focus:#f4b740; --focusglow:#ffd97a;
+      --good:#3ddc97; --warn:#f5a524; --bad:#f0616d;
+      --radius:16px; --nav-h:60px;
+      --world-accent:#38bdf8; --world-glow:#7dd3fc;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+    html,body{background:var(--bg);color:var(--text);
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'Noto Sans Hebrew',sans-serif;
+      font-size:16px;line-height:1.5}
+    body{max-width:520px;margin:0 auto;min-height:100vh;padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom))}
+    button{font-family:inherit}
+    .app{min-height:100vh}
+    .scr{padding:16px 16px 24px;animation:fade .18s ease}
+    @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+    @media (prefers-reduced-motion: reduce){*{animation:none !important;transition:none !important}}
+
+    h1{font-size:23px;margin-bottom:4px;font-weight:800}
+    h2{font-size:19px;margin-bottom:8px;font-weight:800}
+    h3{font-size:15px;font-weight:700;margin-bottom:6px}
+    .muted{color:var(--muted)} .dim{color:var(--dim)} .small{font-size:13px} .tiny{font-size:11px}
+    .en{font-size:.85em;color:var(--muted)}
+    .row{display:flex;gap:10px;align-items:center}
+    .between{display:flex;justify-content:space-between;align-items:center;gap:10px}
+    .wrap{flex-wrap:wrap}
+    .sp{margin-top:14px}
+
+    .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin:12px 0}
+    .card.tight{padding:12px}
+    .section{font-size:12px;font-weight:800;letter-spacing:.6px;color:var(--muted);text-transform:uppercase;margin:18px 2px 8px}
+    .btn{display:block;width:100%;padding:14px;border-radius:14px;border:1px solid var(--border);
+      background:var(--card2);color:var(--text);font-size:16px;font-weight:800;cursor:pointer;margin-top:10px}
+    .btn:active{transform:scale(.99)}
+    .btn.primary{background:linear-gradient(135deg,var(--accent),#2aa8e0);border-color:transparent;color:#04121f}
+    .btn.ghost{background:transparent}
+    .btn.sm{padding:9px 12px;font-size:14px;width:auto;margin:0}
+    .btn:disabled{opacity:.45;cursor:not-allowed}
+    .link{background:none;border:none;color:var(--accent);font-weight:700;cursor:pointer;font-size:14px;padding:4px}
+    .pill{display:inline-flex;align-items:center;gap:6px;background:var(--card2);border:1px solid var(--border);
+      border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer;color:var(--text)}
+    .pill.on{background:var(--accent);border-color:transparent;color:#04121f}
+    .pill.warnbtn.on{background:var(--warn);color:#1a1200}
+    .badge{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.4px;padding:2px 8px;border-radius:999px}
+    .opts{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+
+    /* ---- bottom nav ---- */
+    .nav{position:fixed;bottom:0;left:0;right:0;max-width:520px;margin:0 auto;height:calc(var(--nav-h) + env(safe-area-inset-bottom));
+      padding-bottom:env(safe-area-inset-bottom);
+      background:rgba(11,18,32,.94);backdrop-filter:blur(10px);border-top:1px solid var(--border);
+      display:flex;z-index:50}
+    .nav button{flex:1;background:none;border:none;color:var(--dim);font-size:11px;font-weight:700;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer}
+    .nav button.on{color:var(--accent)}
+    .nav .ic{width:22px;height:22px}
+
+    /* ---- Today ---- */
+    .hero{padding:6px 2px 2px}
+    .hero .goal{font-size:13px;color:var(--muted);font-weight:700}
+    .rec{background:linear-gradient(150deg,rgba(56,189,248,.16),rgba(56,189,248,.03));
+      border:1px solid rgba(56,189,248,.4);border-radius:var(--radius);padding:16px;margin:10px 0}
+    .rec .kick{font-size:11px;font-weight:800;letter-spacing:.6px;color:var(--accent);text-transform:uppercase}
+    .rec .name{font-size:21px;font-weight:900;margin-top:3px}
+    .rec .meta{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:13px;color:var(--muted)}
+    .rec .why{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);line-height:1.5}
+    .rec .foci{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .foci .tag{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;border:1px solid var(--border);border-radius:999px;padding:4px 10px;background:var(--card)}
+    .foci .tag svg{width:13px;height:13px;flex:none}
+    .foci .tag.gold{border-color:var(--focus);color:var(--focusglow)}
+    .caution{background:rgba(245,97,109,.12);border:1px solid rgba(245,97,109,.4);border-radius:12px;
+      padding:10px 12px;margin-top:10px;font-size:13px;line-height:1.5}
+    .rdy-grid{display:grid;grid-template-columns:1fr;gap:10px}
+    .rdy-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+    .rdy-row .lbl{font-size:14px;font-weight:700}
+    .seg{display:flex;gap:6px}
+    .seg button{border:1px solid var(--border);background:var(--card2);color:var(--muted);border-radius:10px;
+      padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer}
+    .seg button.on{background:var(--accent);border-color:transparent;color:#04121f}
+    .seg.warn button.on{background:var(--warn);color:#1a1200}
+
+    /* ---- Map ---- */
+    .map-head{display:flex;align-items:baseline;justify-content:space-between;padding:2px 2px 6px}
+    .map-title{font-size:20px;font-weight:900}
+    .map-sub{font-size:12px;color:var(--muted);margin-top:2px}
+    /* frame is LTR so the world rail sits on the LEFT of the blue canvas
+       (matching the references), while node text stays RTL. */
+    .map-frame{position:relative;direction:ltr;background:var(--frame);border-radius:20px;padding:10px 0 10px 10px;
+      box-shadow:0 10px 30px rgba(0,0,0,.35);display:flex;overflow:hidden;height:500px}
+    /* external world rail — OUTSIDE the blue canvas, overlapping the frame edge */
+    .rail{position:relative;z-index:5;display:flex;flex-direction:column;gap:16px;padding:14px 6px;
+      align-items:center;justify-content:flex-start}
+    .world-ic{position:relative;width:52px;height:52px;border-radius:15px;border:2px solid #c4d0e0;
+      background:linear-gradient(160deg,#f4f7fb,#d7e0ec);display:flex;align-items:center;justify-content:center;
+      cursor:pointer;color:#5a6b85;box-shadow:0 3px 8px rgba(30,50,80,.25);transition:transform .15s}
+    .world-ic svg{width:30px;height:30px}
+    .world-ic .wlbl{position:absolute;bottom:-16px;font-size:9px;font-weight:800;color:#5a6b85;white-space:nowrap}
+    .world-ic.active{transform:scale(1.14) translateX(6px);border-color:var(--world-accent);
+      background:linear-gradient(160deg,#ffffff,#e9f6ff);color:var(--world-accent);
+      box-shadow:0 0 0 3px rgba(56,189,248,.35), 0 6px 16px rgba(56,189,248,.5)}
+    .world-ic.active::after{content:"";position:absolute;right:-10px;top:50%;transform:translateY(-50%);
+      width:14px;height:3px;border-radius:2px;background:var(--world-accent)}
+    /* the blue pannable canvas */
+    .canvas-wrap{position:relative;flex:1;border-radius:14px;overflow:hidden;
+      background:radial-gradient(120% 100% at 20% 0%, #143a63 0%, #0e2038 55%, #0a1a30 100%);
+      border:1px solid #23456b}
+    .canvas-scroll{position:absolute;inset:0;overflow:auto;-webkit-overflow-scrolling:touch;cursor:grab;direction:ltr}
+    .canvas-scroll.drag{cursor:grabbing}
+    .canvas{position:relative;direction:ltr}
+    .canvas svg.edges{position:absolute;inset:0;pointer-events:none}
+    .node{position:absolute;transform:translate(-50%,-50%);width:118px;
+      background:var(--card);border:1.5px solid var(--edge);border-radius:12px;padding:8px 9px;
+      cursor:pointer;transition:transform .12s, box-shadow .2s, opacity .2s;text-align:left}
+    .node .nm{font-size:12.5px;font-weight:800;line-height:1.2}
+    .node .sub{font-size:9.5px;color:var(--muted);margin-top:1px}
+    .node .pr{font-size:10.5px;font-weight:800;margin-top:5px;color:var(--muted)}
+    .node .dot{position:absolute;top:-6px;right:-6px;width:15px;height:15px;border-radius:50%;
+      border:2px solid var(--panel);display:flex;align-items:center;justify-content:center}
+    .node .dot svg{width:9px;height:9px}
+    .node:active{transform:translate(-50%,-50%) scale(.97)}
+    /* states */
+    .node.locked{opacity:.42;background:#12253c;border-color:#20364f;filter:grayscale(.5)}
+    .node.locked .nm{color:#9fb2cc}
+    .node.available{border-color:#2f5b82}
+    .node.supporting{border-color:var(--accent2);box-shadow:0 0 0 1px rgba(34,211,166,.3)}
+    .node.completed{background:#123a52;border-color:#2aa8e0}
+    .node.completed .pr{color:var(--accent)}
+    .node.maintenance{background:#123a52;border-color:#2aa8e0;opacity:.9}
+    .node.current{border-color:var(--focus);background:linear-gradient(160deg,#2a3a3f,#1d3e60);
+      box-shadow:0 0 0 2px var(--focus), 0 0 22px 2px rgba(244,183,64,.55);z-index:3}
+    .node.current .pr{color:var(--focusglow)}
+    .node .foc-lbl{position:absolute;top:-10px;left:8px;background:var(--focus);color:#231600;
+      font-size:9px;font-weight:900;padding:1px 6px;border-radius:6px}
+    .node.spt-mark::before{content:"";position:absolute;top:6px;left:6px;width:6px;height:6px;border-radius:50%;background:var(--accent2)}
+    .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:11px;color:var(--muted)}
+    .legend .lg{display:flex;align-items:center;gap:5px}
+    .legend .sw{width:12px;height:12px;border-radius:4px;border:1.5px solid}
+
+    /* ---- bottom sheet ---- */
+    .sheet-back{position:fixed;inset:0;background:rgba(3,8,16,.6);z-index:80;display:flex;align-items:flex-end;
+      justify-content:center;animation:fade .15s ease}
+    .sheet{width:100%;max-width:520px;background:var(--panel);border-top-left-radius:22px;border-top-right-radius:22px;
+      border-top:1px solid var(--border);max-height:88vh;overflow:auto;padding:14px 16px 24px;animation:up .22s ease}
+    @keyframes up{from{transform:translateY(30px);opacity:.6}to{transform:none;opacity:1}}
+    .sheet .grip{width:38px;height:4px;border-radius:2px;background:var(--edge);margin:2px auto 12px}
+    .kv{width:100%;border-collapse:collapse}
+    .kv td{padding:7px 2px;border-bottom:1px solid var(--border);font-size:14px;vertical-align:top}
+    .kv td:last-child{text-align:right;color:var(--muted)}
+    .crit{display:flex;align-items:center;gap:8px;padding:6px 0}
+    .crit .ck{width:18px;height:18px;border-radius:50%;border:2px solid var(--edge);flex:none;display:flex;align-items:center;justify-content:center}
+    .crit.done .ck{background:var(--good);border-color:var(--good)}
+    .crit .ck svg{width:11px;height:11px}
+    .needs{background:rgba(245,165,36,.1);border:1px solid rgba(245,165,36,.35);border-radius:10px;padding:8px 10px;margin-top:8px;font-size:13px}
+
+    /* ---- workout ---- */
+    .wk-top{position:sticky;top:0;background:var(--bg);z-index:10;padding:8px 0 10px;border-bottom:1px solid var(--border);margin-bottom:8px}
+    .prog{height:6px;background:var(--card2);border-radius:4px;overflow:hidden;margin-top:8px}
+    .prog i{display:block;height:100%;background:var(--accent)}
+    .set{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-top:8px}
+    .set.done{border-color:var(--good);background:#123a3a}
+    .set .n{width:26px;height:26px;border-radius:8px;background:var(--card2);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex:none}
+    .set .val{flex:1}
+    .stepper{display:flex;align-items:center;gap:8px}
+    .stepper button{width:34px;height:34px;border-radius:9px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:20px;font-weight:800;cursor:pointer}
+    .stepper .num{min-width:34px;text-align:center;font-weight:800;font-size:17px}
+    .timer{text-align:center;padding:14px;background:var(--card);border:1px solid var(--border);border-radius:14px;margin-top:10px}
+    .timer .t{font-size:38px;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums}
+    .flag{display:flex;gap:8px;align-items:center;margin-top:10px}
+
+    /* climbing */
+    .prob{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-top:8px}
+    .prob .ph{display:flex;justify-content:space-between;align-items:center}
+    .grade-pick{display:flex;gap:6px;flex-wrap:wrap}
+    .input{width:100%;background:var(--card2);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:10px;font-size:15px;font-family:inherit}
+    textarea.input{min-height:52px;resize:vertical}
+
+    .unlock{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;background:rgba(3,8,16,.72);animation:fade .2s}
+    .unlock .box{background:linear-gradient(160deg,#1d3e60,#123a52);border:1px solid var(--focus);border-radius:20px;padding:26px 24px;text-align:center;max-width:340px;box-shadow:0 0 40px rgba(244,183,64,.4);animation:up .28s ease}
+    .unlock .ring{width:64px;height:64px;margin:0 auto 12px;border-radius:50%;background:rgba(244,183,64,.15);display:flex;align-items:center;justify-content:center}
+    .unlock .ring svg{width:34px;height:34px;color:var(--focus)}
+    .chart{display:flex;align-items:flex-end;gap:6px;height:90px;padding:8px 0}
+    .chart .bar{flex:1;background:linear-gradient(180deg,var(--accent),#1c6fa0);border-radius:4px 4px 0 0;min-height:3px;position:relative}
+    .chart .bar span{position:absolute;top:-16px;left:0;right:0;text-align:center;font-size:10px;color:var(--muted)}
+    .chart .bar em{position:absolute;bottom:-16px;left:0;right:0;text-align:center;font-size:10px;color:var(--dim);font-style:normal}
+
+    /* ---- workout preview ---- */
+    .preview{margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+    .prev-line{display:flex;justify-content:space-between;align-items:center;padding:4px 0;gap:8px}
+    .prev-ex{font-weight:700;font-size:14px}
+
+    /* ---- dynamic adaptation ---- */
+    .adapt-card{background:linear-gradient(150deg,rgba(244,183,64,.10),rgba(244,183,64,.03));
+      border:1px solid rgba(244,183,64,.4);border-radius:var(--radius);padding:12px;margin:8px 0}
+    .adapt-opts{gap:8px}
+    .adapt-note{padding:2px 0 6px;font-style:italic}
+    .adapt-card.override{background:var(--card);border-color:var(--border)}
+    .current-set{border-color:var(--focus)!important;box-shadow:0 0 0 1px var(--focus)}
+
+    /* ---- current-action-first runner ---- */
+    .cur-card{background:linear-gradient(160deg,rgba(56,189,248,.10),rgba(56,189,248,.02));
+      border:1px solid var(--accent);border-radius:16px;padding:14px;margin:6px 0 4px}
+    .cur-meta{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);font-weight:800}
+    .cur-target{font-size:22px;font-weight:800;margin:4px 0 2px}
+    .cur-card .set{background:transparent;border:none;padding:6px 0 0;margin:0;justify-content:space-between;flex-wrap:wrap}
+    .stepper.big button{width:44px;height:44px;font-size:24px}
+    .stepper.big .num{min-width:48px;font-size:26px}
+    .cur-done{flex:0 0 auto;width:auto;min-width:120px;margin:0;padding:13px 22px;font-size:16px}
+    .cur-next{margin-top:10px}
+    .round-overview{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px}
+    .round-chip{display:flex;flex-direction:column;gap:1px;padding:6px 10px;border-radius:10px;
+      background:var(--card);border:1px solid var(--border);min-width:66px}
+    .round-chip .rc-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.03em;color:var(--dim)}
+    .round-chip .rc-steps{font-weight:800;font-size:14px;font-variant-numeric:tabular-nums}
+    .round-chip.done{border-color:var(--good);background:#123a3a}
+    .round-chip.done .rc-steps{color:var(--good)}
+    .round-chip.current{border-color:var(--focus);box-shadow:0 0 0 1px var(--focus)}
+    .round-chip.current .rc-steps{color:var(--focus)}
+    .round-chip.upcoming{opacity:.72}
+
+    /* ---- path summary ---- */
+    .path-summary{font-size:13px;color:var(--muted);margin:4px 0 6px}
+
+    /* ---- rest timer pulse ---- */
+    .ready-pulse{animation:pulse 1s ease infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+    /* ---- timer controls ---- */
+    .timer-btns{display:flex;gap:16px;justify-content:center;margin-top:8px}
+
+    /* ---- danger button ---- */
+    .btn.danger{background:rgba(240,97,109,.15);border-color:rgba(240,97,109,.4);color:var(--bad)}
+
+    /* ---- Today workout exercise list ---- */
+    .wk-list{margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+    .wk-ex{padding:8px 0;border-bottom:1px solid rgba(39,72,99,.5);cursor:pointer}
+    .wk-ex:last-child{border-bottom:none}
+    .wk-ex-h{display:flex;align-items:center;gap:8px}
+    .wk-ex-n{width:22px;height:22px;flex:none;border-radius:7px;background:var(--card2);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px}
+    .wk-ex-nm{font-weight:700;flex:1}
+    .wk-ex-info{font-size:12px;color:var(--accent);font-weight:700}
+    .wk-ex-struct{margin:2px 0 0 30px;font-size:14px}
+    .wk-ex-rest{margin-left:30px}
+    .modified-flag{margin-top:8px;font-size:12px;color:var(--focus);font-weight:700}
+    .inline-edit{margin-top:10px}
+
+    /* ---- settings hub ---- */
+    .settings-list{margin-top:10px}
+    .settings-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:var(--card);
+      border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-top:8px;cursor:pointer;color:var(--text)}
+    .settings-row.static{cursor:default}
+    .settings-row .sr-main{flex:1;min-width:0}
+    .sr-title{font-weight:700;font-size:15px}
+    .sr-arrow{color:var(--dim);font-size:22px;font-weight:700;flex:none}
+    .chip-mod{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.3px;color:var(--focus);
+      border:1px solid var(--focus);border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle}
+
+    /* ---- toggle switch ---- */
+    .toggle{flex:none;width:46px;height:28px;border-radius:999px;border:1px solid var(--border);background:var(--card2);
+      position:relative;cursor:pointer;transition:background .15s}
+    .toggle .knob{position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;background:#8fa5c2;transition:left .15s,background .15s}
+    .toggle.on{background:var(--accent);border-color:transparent}
+    .toggle.on .knob{left:20px;background:#04121f}
+
+    /* ---- key/value rows (exercise detail) ---- */
+    .kv-row{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px solid rgba(39,72,99,.5);font-size:14px}
+    .kv-row:last-child{border-bottom:none}
+    .kv-k{color:var(--muted);flex:none}
+    .kv-v{text-align:right;font-weight:600}
+
+    /* ---- workout editor ---- */
+    .ed-dur{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin:8px 0;font-size:14px}
+    .ed-block{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;margin-top:10px}
+    .ed-block-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+    .ed-block-nm{font-weight:800}
+    .ed-block-ctl{display:flex;gap:10px;align-items:center}
+    .ed-block-ctl .link.danger{color:var(--bad)}
+    .ed-fields{display:flex;flex-direction:column;gap:8px}
+    .ed-field{display:flex;justify-content:space-between;align-items:center;gap:10px}
+    .ed-field.wide{flex-direction:column;align-items:stretch;gap:4px}
+    .ed-lbl{font-size:14px;color:var(--muted)}
+    .ed-in{width:96px;background:var(--card2);border:1px solid var(--border);border-radius:10px;color:var(--text);
+      padding:9px 10px;font-size:15px;font-family:inherit;text-align:center}
+    .ed-field.wide .ed-in{width:100%;text-align:left}
+    .toggle-field{margin-top:2px}
+    .ed-actions{margin-top:16px}
+  </style>
+</head>
+<body>
+  <div id="app" class="app"><div class="scr"><p class="muted">Loading…</p></div></div>
+  <script>
+    // Register this app's OWN service worker, scoped to this project site
+    // (/skill-progression-coach/). It never controls the Pull-Up Coach app.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js', { scope: './' }).catch(function () {});
+      });
+    }
+    // Capture the install prompt so Settings can offer a manual install action.
+    window.__spcInstallPrompt = null;
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault();
+      window.__spcInstallPrompt = e;
+      window.dispatchEvent(new Event('spc-installable'));
+    });
+    window.addEventListener('appinstalled', function () {
+      window.__spcInstallPrompt = null;
+      window.dispatchEvent(new Event('spc-installed'));
+    });
+  </script>
+  <script src="data.js?v=20260723b"></script>
+  <script src="engine.js?v=20260723b"></script>
+  <script src="progress.js?v=20260723b"></script>
+  <script src="store.js?v=20260723b"></script>
+  <script src="duration.js?v=20260723b"></script>
+  <script src="adapt.js?v=20260723b"></script>
+  <script src="settings.js?v=20260723b"></script>
+  <script src="app.js?v=20260723b"></script>
+</body>
+</html>
