@@ -303,6 +303,63 @@
     .ed-field.wide .ed-in{width:100%;text-align:left}
     .toggle-field{margin-top:2px}
     .ed-actions{margin-top:16px}
+
+    /* ==========================================================================
+       LANDSCAPE-FIRST PHONE LAYOUT
+       Targets real phones held sideways (wide, short viewport) — not desktop
+       windows, which are excluded by the max-height guard. Everything above
+       this block is the untouched portrait layout; nothing here overrides it
+       outside this media query, so portrait behavior/tests are unaffected.
+       ========================================================================== */
+    @media (orientation: landscape) and (max-height: 620px) {
+      body{max-width:none}
+      .scr{max-width:1180px;margin:0 auto;padding:14px 22px 22px}
+      /* Reserve room for the side nav rail only on screens that actually show
+         one (workout/editor screens render without .nav and stay full-width). */
+      .scr:has(+ .nav){padding-left:calc(76px + env(safe-area-inset-left))}
+
+      /* ---- side nav rail instead of a bottom bar: reclaims the short axis */
+      .nav{position:fixed;left:0;top:0;right:auto;bottom:0;width:64px;height:100vh;max-width:none;margin:0;
+        flex-direction:column;border-top:none;border-right:1px solid var(--border);
+        padding:calc(env(safe-area-inset-top) + 10px) 0 10px;justify-content:flex-start;gap:6px}
+      .nav button{flex:none;padding:10px 0}
+
+      /* ---- Today: dominant recommendation on the left, secondary on the right */
+      .today-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start}
+      .today-right{display:flex;flex-direction:column;min-width:0}
+
+      /* ---- Map: use the freed-up width; keep header/legend outside the frame
+         (already true structurally) so the tree gets the vertical room too. */
+      .map-frame{height:min(620px, calc(100vh - 132px))}
+
+      /* ---- Node / exercise detail: side panel instead of a bottom sheet */
+      .sheet-back{align-items:stretch;justify-content:flex-end}
+      .sheet{max-width:400px;width:44vw;min-width:300px;height:100%;max-height:100vh;
+        border-radius:0;border-top:none;border-left:1px solid var(--border);animation:slideIn .18s ease}
+      @keyframes slideIn{from{transform:translateX(24px);opacity:.6}to{transform:none;opacity:1}}
+
+      /* ---- Active workout: blocks side by side instead of one long column */
+      .wk-body{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;align-items:start;margin-top:8px}
+      .wk-block-wrap{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;min-width:0}
+      .wk-block-wrap .section{margin-top:0}
+      .wk-block-wrap.wk-block-current{border-color:var(--accent)}
+
+      /* ---- Climbing session: logging on the left, log + summary on the right */
+      .climb-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+      .climb-left,.climb-right{min-width:0}
+
+      /* ---- Workout editor: one block per column instead of a long list */
+      .ed-body{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+
+      /* ---- Progress: stats/chart beside recent activity */
+      .progress-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+
+      /* ---- Settings hub / Exercise Library / Workout Defaults: reflow the
+         simple row-list into two columns instead of one tall scroll. */
+      .settings-list{column-count:2;column-gap:14px}
+      .settings-list .settings-row{break-inside:avoid-column;margin-top:0;margin-bottom:8px}
+      .settings-list .section{break-after:avoid-column;break-inside:avoid-column}
+    }
   </style>
 </head>
 <body>
@@ -327,13 +384,13 @@
       window.dispatchEvent(new Event('spc-installed'));
     });
   </script>
-  <script src="data.js?v=20260723b"></script>
-  <script src="engine.js?v=20260723b"></script>
-  <script src="progress.js?v=20260723b"></script>
-  <script src="store.js?v=20260723b"></script>
-  <script src="duration.js?v=20260723b"></script>
-  <script src="adapt.js?v=20260723b"></script>
-  <script src="settings.js?v=20260723b"></script>
-  <script src="app.js?v=20260723b"></script>
+  <script src="data.js?v=20260724a"></script>
+  <script src="engine.js?v=20260724a"></script>
+  <script src="progress.js?v=20260724a"></script>
+  <script src="store.js?v=20260724a"></script>
+  <script src="duration.js?v=20260724a"></script>
+  <script src="adapt.js?v=20260724a"></script>
+  <script src="settings.js?v=20260724a"></script>
+  <script src="app.js?v=20260724a"></script>
 </body>
 </html>

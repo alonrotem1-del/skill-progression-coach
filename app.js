@@ -164,6 +164,8 @@
 
   function setScreen(name){
     UI.screen=name;
+    window.scrollTo(0,0); // a full screen swap always starts at the top — the
+                           // browser does not reset scroll on innerHTML replacement
     if(name==='today') renderToday();
     else if(name==='map') renderMap();
     else if(name==='progress') renderProgress();
@@ -305,14 +307,21 @@
         '</div>';
     }
 
-    var html=''+
+    // Two landscape columns: left = active goal, current milestone, recommended
+    // workout, full exercise preview, Start (the dominant element); right =
+    // lighter alternative, readiness adjustment, upcoming/progress summary. In
+    // portrait the two wrapper divs simply stack in this same order, so the
+    // reading order and behavior are unchanged there.
+    var left=''+
       '<div class="hero"><div class="between"><div><div class="goal">'+esc(world.name)+'</div>'+
       '<h1>'+greet+'</h1></div></div>'+
       pathSummary+'</div>'+
-      recCard(t,world,rec,primary,supporting,false)+
+      recCard(t,world,rec,primary,supporting,false);
+    var right=''+
       (alt&&alt.id!==t.id?'<div class="section">Alternative</div>'+recCard(alt,world,{why:'Lighter option if today is heavy',reasons:[]},primary,supporting,true):'')+
       readinessCard(r,world)+
       upcomingCard();
+    var html='<div class="today-grid"><div class="today-left">'+left+'</div><div class="today-right">'+right+'</div></div>';
     var wrap=shell(html,'today');
     on('[data-rk]','click',function(e){var k=e.currentTarget.dataset.rk,v=e.currentTarget.dataset.rv;if(k==='pain'){r.pain=!r.pain;}else if(k==='time'){r.time=v;}else{r[k]=+v;}renderToday();},wrap);
     on('[data-start]','click',function(e){ startSession(e.currentTarget.dataset.start); },wrap);
@@ -601,6 +610,7 @@
     UI.workout=buildWorkout(prescriptionFor(t));   // resolve defaults + today edit into a snapshot
     delete todayEdits[t.id];                         // the edit is now baked into the snapshot
     saveWorkoutState();
+    window.scrollTo(0,0); // the Start button may have been below the fold — open at the top
     renderStrength();
   }
 
@@ -638,14 +648,19 @@
     // next action card is hidden so the athlete answers before moving on.
     var ratingPending=(w.lastRound&&!w.lastRound.rated)||(w.lastSet&&!w.lastSet.rated);
 
+    // Each block renders into its own wrapper so a landscape layout can place
+    // blocks side by side (current-action block next to accessory work)
+    // instead of one long portrait-only column. In portrait the wrappers are
+    // plain block-level divs and simply stack exactly as before.
     var body='';
     w.blocks.forEach(function(bl,bi){
       var ex=Data.exercises[bl.exId]||{};
       var isCur=cur&&cur.bi===bi;
-      body+='<div class="section">'+esc(bl.label)+(bl.note?' <span class="muted tiny">&middot; '+esc(bl.note)+'</span>':'')+'</div>';
-      if(isCur&&!ratingPending&&ex.cues) body+='<p class="muted small" style="margin:-4px 2px 8px">'+esc(ex.cues)+'</p>';
-      if(isCur&&!ratingPending) body+=renderCurrentAction(w,cur,bl);
-      body+=(bl.kind==='ladder')?ladderOverview(bl,isCur?cur.ri:-1):straightOverview(bl,isCur?cur.si:-1);
+      var chunk='<div class="section">'+esc(bl.label)+(bl.note?' <span class="muted tiny">&middot; '+esc(bl.note)+'</span>':'')+'</div>';
+      if(isCur&&!ratingPending&&ex.cues) chunk+='<p class="muted small" style="margin:-4px 2px 8px">'+esc(ex.cues)+'</p>';
+      if(isCur&&!ratingPending) chunk+=renderCurrentAction(w,cur,bl);
+      chunk+=(bl.kind==='ladder')?ladderOverview(bl,isCur?cur.ri:-1):straightOverview(bl,isCur?cur.si:-1);
+      body+='<div class="wk-block-wrap'+(isCur?' wk-block-current':'')+'">'+chunk+'</div>';
     });
 
     var html=''+
@@ -653,7 +668,7 @@
       '<div class="prog"><i style="width:'+pct+'%"></i></div></div>'+
       '<div id="rest"></div>'+
       renderAdaptPrompt(w)+
-      body+
+      '<div class="wk-body">'+body+'</div>'+
       '<div class="flag"><label class="pill '+(w.pain?'on warnbtn':'')+'" data-painflag><input type="checkbox" style="display:none" '+(w.pain?'checked':'')+'>Pain / Discomfort</label></div>'+
       (allDone?'<button class="btn primary sp" data-finish>Finish &amp; Save Workout</button>':'');
     app.innerHTML=''; app.appendChild(h('<div class="scr wk-runner">'+html+'</div>'));
@@ -905,6 +920,7 @@
     var techFocus=[ws.focus.primary,ws.focus.supporting].filter(Boolean).filter(function(id){var n=cm[id];return n&&(n.type==='skill'||n.type==='foundation'||n.type==='strength');});
     UI.climb={templateId:t.id,worldId:UI.worldId,warm:false,problems:[],rpe:3,finger:2,skin:2,techFocus:techFocus,cur:{grade:'V2',style:null,result:null}};
     saveWorkoutState();
+    window.scrollTo(0,0); // the Start button may have been below the fold — open at the top
     renderClimbing();
   }
   function renderClimbing(){
@@ -912,8 +928,10 @@
     var grades=['V0','V1','V2','V3','V4','V5','V6'];
     var probList=c.problems.map(function(p,i){return '<div class="prob"><div class="ph"><b>'+esc(p.grade)+' &middot; '+esc(styleLabel(p.style))+'</b><span class="badge" style="background:rgba(56,189,248,.15);color:var(--accent)">'+esc(resultLabel(p.result))+'</span></div>'+(p.note?'<div class="muted small">'+esc(p.note)+'</div>':'')+'<div><button class="link" data-del="'+i+'">Delete</button></div></div>';}).join('');
     var focusNames=c.techFocus.map(function(id){return cm[id]?cm[id].name:id;});
-    var html=''+
-      '<div class="wk-top"><div class="between"><button class="link" data-cancel>&lsaquo; Cancel</button><b>'+esc(t.name)+'</b><span class="muted small">'+c.problems.length+' problems</span></div></div>'+
+    // Left = session goal + warmup + rest timer + logging form (the active
+    // task); right = the log so far + session summary + finish. In portrait
+    // the two wrapper divs stack in this same order, unchanged from before.
+    var left=''+
       '<div class="rec"><div class="kick">Session Goal</div><div class="name" style="font-size:17px">'+esc(t.focus||'')+'</div>'+
       '<div class="meta"><span>Target: '+esc(t.targetGrade||'—')+'</span><span>'+durationText(t)+'</span></div>'+
       (focusNames.length?'<div class="foci"><span class="tag gold">'+ICON.star+' '+esc(focusNames.join(' &middot; '))+'</span></div>':'')+'</div>'+
@@ -923,13 +941,17 @@
       '<div class="muted small">Grade</div><div class="grade-pick" data-grades>'+grades.map(function(g){return '<button class="pill '+(c.cur.grade===g?'on':'')+'" data-g="'+g+'">'+g+'</button>';}).join('')+'</div>'+
       '<div class="muted small sp">Style</div><div class="opts" data-styles>'+Data.climbStyles.map(function(s){return '<button class="pill '+(c.cur.style===s.v?'on':'')+'" data-s="'+s.v+'">'+esc(s.label)+'</button>';}).join('')+'</div>'+
       '<div class="muted small sp">Result</div><div class="opts" data-results>'+Data.climbResults.map(function(r){return '<button class="pill '+(c.cur.result===r.v?'on':'')+'" data-r="'+r.v+'">'+esc(r.label)+'</button>';}).join('')+'</div>'+
-      '<button class="btn primary sp" data-add '+(c.cur.result?'':'disabled')+'>Add Problem to Log</button></div>'+
+      '<button class="btn primary sp" data-add '+(c.cur.result?'':'disabled')+'>Add Problem to Log</button></div>';
+    var right=''+
       (probList?'<div class="section">Logged Problems</div>'+probList:'')+
       '<div class="section">Session Summary</div><div class="card tight">'+
       seg2('rpe','Overall Effort (RPE)',c.rpe,['1','2','3','4','5'])+
       seg2('finger','Fingers',c.finger,['Sensitive','OK','Good'])+
       seg2('skin','Skin',c.skin,['Sensitive','OK','Good'])+'</div>'+
       '<button class="btn primary" data-finish '+(c.problems.length?'':'disabled')+'>Finish &amp; Save Session</button>';
+    var html=''+
+      '<div class="wk-top"><div class="between"><button class="link" data-cancel>&lsaquo; Cancel</button><b>'+esc(t.name)+'</b><span class="muted small">'+c.problems.length+' problems</span></div></div>'+
+      '<div class="climb-grid"><div class="climb-left">'+left+'</div><div class="climb-right">'+right+'</div></div>';
     app.innerHTML=''; app.appendChild(h('<div class="scr">'+html+'</div>'));
     on('[data-cancel]','click',function(){ if(confirm('Cancel session? Progress won\'t be saved.')){UI.climb=null;saveWorkoutState();setScreen('today');} });
     on('[data-warm]','click',function(){c.warm=!c.warm;saveWorkoutState();renderClimbing();});
@@ -972,6 +994,7 @@
         (unlocked.length?'<div class="card ok" style="border-color:var(--focus)"><div class="section" style="margin-top:0">New Skills Unlocked</div>'+unlocked.map(function(n){return '<div class="crit done"><span class="ck">'+ICON.check+'</span><span>'+esc(n.name)+'</span></div>';}).join('')+'</div>':'')+
         (nt?'<div class="section">Recommended Next</div><div class="rec"><div class="name" style="font-size:18px">'+esc(nt.name)+'</div><div class="why">'+esc(rec.why||'')+'</div></div>':'')+
         '<button class="btn primary" data-map>View Map</button><button class="btn ghost" data-today>Back to Today</button>';
+      window.scrollTo(0,0);
       app.innerHTML=''; app.appendChild(h('<div class="scr">'+html+'</div>'));
       on('[data-map]','click',function(){setScreen('map');});
       on('[data-today]','click',function(){setScreen('today');});
@@ -998,16 +1021,19 @@
       var gs=Object.keys(byGrade).sort(); if(gs.length){var gm=Math.max.apply(null,gs.map(function(g){return byGrade[g];}));chart='<div class="section">Sends by Grade</div><div class="chart">'+gs.map(function(g){return '<div class="bar" style="height:'+Math.round(byGrade[g]/gm*80)+'px"><span>'+byGrade[g]+'</span><em>'+g+'</em></div>';}).join('')+'</div>';}
     }
     var bench=Store.getBench();
-    var html=''+
-      '<h1>Progress</h1><p class="muted small">'+esc(world.name)+(primary?' &middot; Focus: '+esc(primary.name):'')+'</p>'+
+    var left=''+
       '<div class="card tight" style="margin-top:12px"><div class="between"><div><div style="font-size:26px;font-weight:900;color:var(--accent)">'+completed.length+'</div><div class="muted small">Skills Completed</div></div>'+
       '<div><div style="font-size:26px;font-weight:900">'+sessions.length+'</div><div class="muted small">Sessions in World</div></div>'+
       '<div><div style="font-size:26px;font-weight:900">'+thisWeek+'</div><div class="muted small">This Week</div></div></div></div>'+
-      chart+
+      chart;
+    var right=''+
       '<div class="section">Recently Completed</div>'+
       (completed.length?completed.slice(-6).reverse().map(function(n){return '<div class="crit done"><span class="ck">'+ICON.check+'</span><span>'+esc(n.name)+'</span></div>';}).join(''):'<p class="muted small">None yet — finish a workout to progress.</p>')+
       (world.id==='muscleup'&&bench.pullup_max?'<div class="section">Personal Records</div><table class="kv"><tr><td>Pull-Up Max</td><td>'+bench.pullup_max+'</td></tr>'+(bench.dips_max?'<tr><td>Dip Max</td><td>'+bench.dips_max+'</td></tr>':'')+'</table>':'')+
       '<p class="footnote muted tiny sp">Data is based on completed workouts and Pull-Up Coach history (read-only).</p>';
+    var html=''+
+      '<h1>Progress</h1><p class="muted small">'+esc(world.name)+(primary?' &middot; Focus: '+esc(primary.name):'')+'</p>'+
+      '<div class="progress-grid"><div class="progress-left">'+left+'</div><div class="progress-right">'+right+'</div></div>';
     shell(html,'progress');
   }
 
@@ -1124,7 +1150,8 @@
     var cats={};
     Object.keys(Data.exercises).forEach(function(id){var e=Data.exercises[id];(cats[e.category]=cats[e.category]||[]).push(e);});
     var html=settingsBackHeader('Exercise Library')+
-      '<p class="muted small" style="margin:0 2px 4px">Only exercises that support the active goals — not a generic gym database.</p>';
+      '<p class="muted small" style="margin:0 2px 4px">Only exercises that support the active goals — not a generic gym database.</p>'+
+      '<div class="settings-list">';
     Object.keys(cats).forEach(function(cat){
       html+='<div class="section">'+esc(cat)+'</div>';
       cats[cat].forEach(function(e){
@@ -1132,6 +1159,7 @@
         html+='<button class="settings-row" data-exdetail="'+esc(e.id)+'"><div class="sr-main"><div class="sr-title">'+esc(e.name)+(enabled?'':' <span class="muted small">· off</span>')+'</div><div class="muted small">'+esc(e.purpose||'')+'</div></div><span class="sr-arrow">&rsaquo;</span></button>';
       });
     });
+    html+='</div>';
     var wrap=shell(html,'profile'); wireSettingsBack(wrap);
     on('[data-exdetail]','click',function(e){ openExerciseSheet(e.currentTarget.dataset.exdetail); },wrap);
   }
@@ -1199,6 +1227,7 @@
     var t=Data.templates[templateId]; if(!t||!t.blocks||!t.blocks.length) return;
     var src=(scope==='today')?prescriptionFor(t).blocks:Settings.effective(t,settings(),null).blocks;
     UI.editor={templateId:templateId,scope:scope,blocks:clone(src)};
+    window.scrollTo(0,0); // the trigger button may have been below the fold — open at the top
     renderWorkoutEditor();
   }
   function editorTemplate(){
@@ -1217,7 +1246,7 @@
     var title=(ed.scope==='today')?'Edit Today’s Workout':'Edit Default';
     var html='<div class="wk-top"><div class="between"><button class="link" data-edcancel>&lsaquo; Cancel</button><b>'+esc(title)+'</b><span class="muted small">'+esc(t.name)+'</span></div></div>'+
       '<div class="ed-dur">Estimated duration: <b>'+esc(durTxt)+'</b></div>'+
-      body+
+      '<div class="ed-body">'+body+'</div>'+
       '<div class="ed-actions">'+
       (ed.scope==='today'?'<button class="btn primary" data-edsavetoday>Use for this workout only</button>':'')+
       '<button class="btn '+(ed.scope==='today'?'ghost':'primary')+'" data-edsavedefault>Save as new default</button>'+
