@@ -648,36 +648,52 @@
     // next action card is hidden so the athlete answers before moving on.
     var ratingPending=(w.lastRound&&!w.lastRound.rated)||(w.lastSet&&!w.lastSet.rated);
 
-    // Each block renders into its own wrapper so a landscape layout can place
-    // blocks side by side (current-action block next to accessory work)
-    // instead of one long portrait-only column. In portrait the wrappers are
-    // plain block-level divs and simply stack exactly as before.
-    var body='';
+    // Each block renders into its own wrapper. In landscape, the CURRENT
+    // block's "what to do now" (label, cues, target/stepper/done) goes into
+    // an explicit left column, while its "supporting info" (next action,
+    // round/set overview) and every other block's compact overview go into
+    // an explicit right column alongside the rest timer and adaptation
+    // prompt — two independently-stacking wrapper divs (like Today's
+    // .today-left/.today-right), not a CSS-grid row-sharing trick, so a
+    // tall rest timer on the right can never push the left column down.
+    // In portrait these two wrappers simply stack, and within .wk-body every
+    // block (current or not) still renders in its original document order.
+    var body='', side='';
     w.blocks.forEach(function(bl,bi){
       var ex=Data.exercises[bl.exId]||{};
       var isCur=cur&&cur.bi===bi;
-      var chunk='<div class="section">'+esc(bl.label)+(bl.note?' <span class="muted tiny">&middot; '+esc(bl.note)+'</span>':'')+'</div>';
-      if(isCur&&!ratingPending&&ex.cues) chunk+='<p class="muted small" style="margin:-4px 2px 8px">'+esc(ex.cues)+'</p>';
-      if(isCur&&!ratingPending) chunk+=renderCurrentAction(w,cur,bl);
-      chunk+=(bl.kind==='ladder')?ladderOverview(bl,isCur?cur.ri:-1):straightOverview(bl,isCur?cur.si:-1);
-      body+='<div class="wk-block-wrap'+(isCur?' wk-block-current':'')+'">'+chunk+'</div>';
+      var label='<div class="section">'+esc(bl.label)+(bl.note?' <span class="muted tiny">&middot; '+esc(bl.note)+'</span>':'')+'</div>';
+      var overview=(bl.kind==='ladder')?ladderOverview(bl,isCur?cur.ri:-1):straightOverview(bl,isCur?cur.si:-1);
+      if(isCur){
+        var chunk=label;
+        if(!ratingPending&&ex.cues) chunk+='<p class="wk-cues muted small" style="margin:-4px 2px 8px">'+esc(ex.cues)+'</p>';
+        if(!ratingPending) chunk+=renderCurCard(w,cur,bl);
+        body+='<div class="wk-block-wrap wk-block-current">'+chunk+'</div>';
+        side+='<div class="wk-block-wrap wk-block-current">'+(ratingPending?'':curNextHtml(bl,cur))+overview+'</div>';
+      } else {
+        side+='<div class="wk-block-wrap">'+label+overview+'</div>';
+      }
     });
 
     var html=''+
       '<div class="wk-top"><div class="between"><button class="link" data-cancel>&lsaquo; Cancel</button><b>'+esc(t.name)+'</b><span class="muted small">'+counts.done+'/'+counts.total+'</span></div>'+
       '<div class="prog"><i style="width:'+pct+'%"></i></div></div>'+
-      '<div id="rest"></div>'+
-      renderAdaptPrompt(w)+
+      '<div class="wk-runner-body">'+
       '<div class="wk-body">'+body+'</div>'+
+      '<div class="wk-side"><div id="rest"></div>'+renderAdaptPrompt(w)+side+'</div>'+
       '<div class="flag"><label class="pill '+(w.pain?'on warnbtn':'')+'" data-painflag><input type="checkbox" style="display:none" '+(w.pain?'checked':'')+'>Pain / Discomfort</label></div>'+
-      (allDone?'<button class="btn primary sp" data-finish>Finish &amp; Save Workout</button>':'');
+      (allDone?'<button class="btn primary sp" data-finish>Finish &amp; Save Workout</button>':'')+
+      '</div>';
     app.innerHTML=''; app.appendChild(h('<div class="scr wk-runner">'+html+'</div>'));
     wireStrength(w);
   }
 
-  function renderCurrentAction(w,cur,bl){
+  // The target/stepper/Done card ONLY — the "next action" line is a separate
+  // sibling (curNextHtml) so landscape can place it in the right column while
+  // the card itself stays in the left column.
+  function renderCurCard(w,cur,bl){
     if(cur.kind==='ladder'){
-      var rd=bl.rounds[cur.ri], st=rd.steps[cur.si], nxt=nextStepText(bl,cur);
+      var rd=bl.rounds[cur.ri], st=rd.steps[cur.si];
       return '<div class="cur-card" data-cur-round="'+(cur.ri+1)+'" data-cur-step="'+(cur.si+1)+'">'+
         '<div class="cur-meta">Round '+(cur.ri+1)+' of '+bl.rounds.length+' &middot; Step '+(cur.si+1)+' of '+rd.steps.length+'</div>'+
         '<div class="cur-target">Target <b>'+st.target+'</b> reps</div>'+
@@ -685,7 +701,6 @@
           '<div class="stepper big"><button data-step="-1">&minus;</button><span class="num">'+st.actual+'</span><button data-step="1">+</button></div>'+
           '<button class="btn primary cur-done" data-done>Done</button>'+
         '</div>'+
-        (nxt?'<div class="cur-next muted small">Next: '+esc(nxt)+'</div>':'<div class="cur-next muted small">Last step of the ladder</div>')+
       '</div>';
     }
     var s=bl.sets[cur.si], unit=s.unit==='sec'?'sec':'reps';
@@ -699,12 +714,26 @@
       (s.adapted?'<div class="adapt-note muted small">'+esc(s.adapted)+'</div>':'')+
     '</div>';
   }
+  // The "next action" line, kept as its own sibling element (see above).
+  function curNextHtml(bl,cur){
+    var nxt=nextStepText(bl,cur);
+    if(nxt) return '<div class="cur-next muted small">Next: '+esc(nxt)+'</div>';
+    if(cur.kind==='ladder') return '<div class="cur-next muted small">Last step of the ladder</div>';
+    return '';
+  }
   function nextStepText(bl,cur){
-    var rd=bl.rounds[cur.ri];
-    if(cur.si+1<rd.steps.length) return rd.steps[cur.si+1].target+' reps';
-    if(cur.ri+1<bl.rounds.length){
-      var nr=bl.rounds[cur.ri+1];
-      return 'Round '+(cur.ri+2)+' — '+nr.steps.map(function(s){return s.target;}).join('–');
+    if(cur.kind==='ladder'){
+      var rd=bl.rounds[cur.ri];
+      if(cur.si+1<rd.steps.length) return rd.steps[cur.si+1].target+' reps';
+      if(cur.ri+1<bl.rounds.length){
+        var nr=bl.rounds[cur.ri+1];
+        return 'Round '+(cur.ri+2)+' — '+nr.steps.map(function(s){return s.target;}).join('–');
+      }
+      return '';
+    }
+    if(cur.si+1<bl.sets.length){
+      var ns=bl.sets[cur.si+1], unit=ns.unit==='sec'?'sec':'reps';
+      return ns.amrap?'Max reps':(ns.target==null?'':ns.target+' '+unit);
     }
     return '';
   }
@@ -928,22 +957,23 @@
     var grades=['V0','V1','V2','V3','V4','V5','V6'];
     var probList=c.problems.map(function(p,i){return '<div class="prob"><div class="ph"><b>'+esc(p.grade)+' &middot; '+esc(styleLabel(p.style))+'</b><span class="badge" style="background:rgba(56,189,248,.15);color:var(--accent)">'+esc(resultLabel(p.result))+'</span></div>'+(p.note?'<div class="muted small">'+esc(p.note)+'</div>':'')+'<div><button class="link" data-del="'+i+'">Delete</button></div></div>';}).join('');
     var focusNames=c.techFocus.map(function(id){return cm[id]?cm[id].name:id;});
-    // Left = session goal + warmup + rest timer + logging form (the active
-    // task); right = the log so far + session summary + finish. In portrait
-    // the two wrapper divs stack in this same order, unchanged from before.
+    // Left = session objective + current problem (the active task): goal,
+    // warmup, grade/style/result pickers. Right = logged problems/attempts,
+    // rest timer, finger/skin checks + finish. In portrait the two wrapper
+    // divs stack in this same order, unchanged from before.
     var left=''+
       '<div class="rec"><div class="kick">Session Goal</div><div class="name" style="font-size:17px">'+esc(t.focus||'')+'</div>'+
       '<div class="meta"><span>Target: '+esc(t.targetGrade||'—')+'</span><span>'+durationText(t)+'</span></div>'+
       (focusNames.length?'<div class="foci"><span class="tag gold">'+ICON.star+' '+esc(focusNames.join(' &middot; '))+'</span></div>':'')+'</div>'+
       '<label class="pill '+(c.warm?'on':'')+'" data-warm style="margin:6px 0">'+(c.warm?'&#10003; ':'')+'Gradual warmup completed</label>'+
-      '<div id="rest"></div>'+
-      '<div class="section">Add Problem</div><div class="card tight">'+
+      '<div class="section">Current Problem</div><div class="card tight">'+
       '<div class="muted small">Grade</div><div class="grade-pick" data-grades>'+grades.map(function(g){return '<button class="pill '+(c.cur.grade===g?'on':'')+'" data-g="'+g+'">'+g+'</button>';}).join('')+'</div>'+
       '<div class="muted small sp">Style</div><div class="opts" data-styles>'+Data.climbStyles.map(function(s){return '<button class="pill '+(c.cur.style===s.v?'on':'')+'" data-s="'+s.v+'">'+esc(s.label)+'</button>';}).join('')+'</div>'+
       '<div class="muted small sp">Result</div><div class="opts" data-results>'+Data.climbResults.map(function(r){return '<button class="pill '+(c.cur.result===r.v?'on':'')+'" data-r="'+r.v+'">'+esc(r.label)+'</button>';}).join('')+'</div>'+
       '<button class="btn primary sp" data-add '+(c.cur.result?'':'disabled')+'>Add Problem to Log</button></div>';
     var right=''+
       (probList?'<div class="section">Logged Problems</div>'+probList:'')+
+      '<div id="rest"></div>'+
       '<div class="section">Session Summary</div><div class="card tight">'+
       seg2('rpe','Overall Effort (RPE)',c.rpe,['1','2','3','4','5'])+
       seg2('finger','Fingers',c.finger,['Sensitive','OK','Good'])+

@@ -313,15 +313,21 @@
        ========================================================================== */
     @media (orientation: landscape) and (max-height: 620px) {
       body{max-width:none}
+      /* the nav is a left rail here, not a bottom bar — reclaim the bottom
+         padding that was reserved for it so short viewports get every
+         pixel of vertical room */
+      body{padding-bottom:env(safe-area-inset-bottom)}
       .scr{max-width:1180px;margin:0 auto;padding:14px 22px 22px}
       /* Reserve room for the side nav rail only on screens that actually show
          one (workout/editor screens render without .nav and stay full-width). */
       .scr:has(+ .nav){padding-left:calc(76px + env(safe-area-inset-left))}
 
-      /* ---- side nav rail instead of a bottom bar: reclaims the short axis */
-      .nav{position:fixed;left:0;top:0;right:auto;bottom:0;width:64px;height:100vh;max-width:none;margin:0;
+      /* ---- side nav rail instead of a bottom bar: reclaims the short axis.
+         Anchored to the physical left edge with the notch/curved-edge inset
+         folded in as padding (border-box) so icons never sit under it. */
+      .nav{position:fixed;left:0;top:0;right:auto;bottom:0;width:calc(64px + env(safe-area-inset-left));height:100vh;max-width:none;margin:0;
         flex-direction:column;border-top:none;border-right:1px solid var(--border);
-        padding:calc(env(safe-area-inset-top) + 10px) 0 10px;justify-content:flex-start;gap:6px}
+        padding:calc(env(safe-area-inset-top) + 10px) 0 10px env(safe-area-inset-left);justify-content:flex-start;gap:6px}
       .nav button{flex:none;padding:10px 0}
 
       /* ---- Today: dominant recommendation on the left, secondary on the right */
@@ -335,14 +341,34 @@
       /* ---- Node / exercise detail: side panel instead of a bottom sheet */
       .sheet-back{align-items:stretch;justify-content:flex-end}
       .sheet{max-width:400px;width:44vw;min-width:300px;height:100%;max-height:100vh;
-        border-radius:0;border-top:none;border-left:1px solid var(--border);animation:slideIn .18s ease}
+        border-radius:0;border-top:none;border-left:1px solid var(--border);animation:slideIn .18s ease;
+        padding-right:calc(16px + env(safe-area-inset-right));overflow-y:auto}
       @keyframes slideIn{from{transform:translateX(24px);opacity:.6}to{transform:none;opacity:1}}
 
-      /* ---- Active workout: blocks side by side instead of one long column */
-      .wk-body{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;align-items:start;margin-top:8px}
+      /* ---- Active workout: current exercise/target/Done on the left
+         (.wk-body); rest timer, next action, compact round overview and
+         adaptation controls on the right (.wk-side). These are two
+         independently-stacking columns — like .today-left/.today-right —
+         not a shared CSS-grid row, so a tall rest timer on the right can
+         never push the left column's current target down the page. .flag
+         and the finish button span both columns underneath. */
+      .wk-runner-body{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+      .wk-body,.wk-side{display:flex;flex-direction:column;gap:10px;min-width:0}
+      .wk-runner-body>.flag,.wk-runner-body>[data-finish]{grid-column:1/-1}
       .wk-block-wrap{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;min-width:0}
       .wk-block-wrap .section{margin-top:0}
       .wk-block-wrap.wk-block-current{border-color:var(--accent)}
+      /* current target + timer both land at the top of their own column and
+         must stay reachable without scrolling on short landscape viewports */
+      #rest:empty{display:none}
+      /* At half the (already narrow) landscape width, the stepper + Done
+         button were wide enough to wrap onto a second line, which was
+         enough extra height to push the timer below the fold on the
+         shortest supported viewports (e.g. 740x360) — trim them down. */
+      .cur-card{padding:10px 12px}
+      .cur-done{min-width:96px;padding:11px 16px;font-size:15px}
+      .stepper.big button{width:38px;height:38px;font-size:20px}
+      .stepper.big .num{min-width:38px;font-size:22px}
 
       /* ---- Climbing session: logging on the left, log + summary on the right */
       .climb-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
@@ -360,9 +386,28 @@
       .settings-list .settings-row{break-inside:avoid-column;margin-top:0;margin-bottom:8px}
       .settings-list .section{break-after:avoid-column;break-inside:avoid-column}
     }
+
+    /* ---- Portrait fallback: a concise, non-blocking rotate suggestion.
+       This app is landscape-first, but portrait must keep working — the
+       banner sits in normal flow above the app (pushing it down, never
+       covering it) and is scoped to phone-sized portrait viewports only,
+       so a tall desktop window never shows it. */
+    .rotate-hint{display:none}
+    @media (orientation: portrait) and (max-width: 600px) {
+      .rotate-hint{display:flex;align-items:center;justify-content:space-between;gap:10px;
+        background:var(--accent);color:#04202f;font-size:13px;font-weight:700;
+        padding:calc(env(safe-area-inset-top) + 8px) 14px 8px}
+      .rotate-hint.dismissed{display:none}
+      .rotate-hint button{flex:none;background:none;border:none;color:inherit;font-size:18px;
+        line-height:1;padding:2px 6px;cursor:pointer}
+    }
   </style>
 </head>
 <body>
+  <div id="rotateHint" class="rotate-hint" role="status">
+    <span>&#8635; Rotate your phone sideways for the best experience</span>
+    <button type="button" id="rotateHintClose" aria-label="Dismiss">&times;</button>
+  </div>
   <div id="app" class="app"><div class="scr"><p class="muted">Loading…</p></div></div>
   <script>
     // Register this app's OWN service worker, scoped to this project site
@@ -383,6 +428,14 @@
       window.__spcInstallPrompt = null;
       window.dispatchEvent(new Event('spc-installed'));
     });
+    // Portrait rotate-suggestion is shown/hidden purely by the CSS media
+    // query above; this only wires the optional manual dismiss.
+    var rotateHintClose = document.getElementById('rotateHintClose');
+    if (rotateHintClose) {
+      rotateHintClose.addEventListener('click', function () {
+        document.getElementById('rotateHint').classList.add('dismissed');
+      });
+    }
   </script>
   <script src="data.js?v=20260724a"></script>
   <script src="engine.js?v=20260724a"></script>
@@ -391,6 +444,6 @@
   <script src="duration.js?v=20260724a"></script>
   <script src="adapt.js?v=20260724a"></script>
   <script src="settings.js?v=20260724a"></script>
-  <script src="app.js?v=20260724a"></script>
+  <script src="app.js?v=20260724b"></script>
 </body>
 </html>
