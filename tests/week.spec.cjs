@@ -123,19 +123,23 @@ test.describe('weekly plan — Friday ladder load model', () => {
     expect(hi.items.find(i => i.exId === 'wristroller').included).toBe(false);
   });
 
-  test('25 — Dead Hang and Toes-to-Bar alternate by load, never both', () => {
-    // Fresh grip → Dead Hang chosen, Toes-to-Bar off.
-    const fresh = Week.resolveDay(freshPlan(), 5, {});
-    const dhF = fresh.items.find(i => i.exId === 'deadhang');
+  test('25 — Toes-to-Bar is the default; Dead Hang appears only as an explained replacement, never both', () => {
+    // Default readiness → Toes-to-Bar is required and included; Dead Hang is not
+    // scheduled at all.
+    const def = Week.resolveDay(freshPlan(), 5, { readiness: { fingerSkin: 2 } });
+    const t2bD = def.items.find(i => i.exId === 't2b');
+    expect(t2bD.included).toBe(true);
+    expect(def.items.find(i => i.exId === 'deadhang')).toBeUndefined();
+    // Fresh fingers/skin → Dead Hang REPLACES Toes-to-Bar, with an explanation;
+    // exactly one of the two is included.
+    const fresh = Week.resolveDay(freshPlan(), 5, { readiness: { fingerSkin: 3 } });
     const t2bF = fresh.items.find(i => i.exId === 't2b');
-    expect(dhF.included !== t2bF.included).toBe(true);
+    const dhF = fresh.items.find(i => i.exId === 'deadhang');
+    expect(dhF).toBeTruthy();
+    expect(t2bF.included).toBe(false);
+    expect(t2bF.replaced).toBe(true);
     expect(dhF.included).toBe(true);
-    // High grip → Toes-to-Bar kept, Dead Hang off.
-    const loaded = Week.resolveDay(withClimb('hard', 'high', 'high'), 5, {});
-    const dhL = loaded.items.find(i => i.exId === 'deadhang');
-    const t2bL = loaded.items.find(i => i.exId === 't2b');
-    expect(dhL.included).toBe(false);
-    expect(t2bL.included).toBe(true);
+    expect(fresh.adaptations.some(a => /Dead Hang replaces Toes-to-Bar/.test(a.cause))).toBe(true);
   });
 });
 

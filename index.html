@@ -100,9 +100,28 @@
     .seg.warn button.on{background:var(--warn);color:#1a1200}
 
     /* ---- Map ---- */
-    .map-head{display:flex;align-items:baseline;justify-content:space-between;padding:2px 2px 6px}
+    .map-head{display:flex;align-items:baseline;justify-content:space-between;padding:2px 2px 6px;gap:8px}
+    .mh-titles{display:flex;align-items:baseline;gap:8px;min-width:0}
+    .mh-focus{display:none}
     .map-title{font-size:20px;font-weight:900}
     .map-sub{font-size:12px;color:var(--muted);margin-top:2px}
+    .canvas-inner{position:relative;transform-origin:0 0}
+    /* floating map controls + legend popover. Controls float in both
+       orientations; the legend '?' button is landscape-only (portrait keeps the
+       permanent legend strip below the map). */
+    .map-controls{display:flex;position:absolute;right:10px;bottom:10px;z-index:7;flex-direction:column;gap:6px}
+    .map-controls [data-legend]{display:none}
+    .mc-btn{width:38px;height:38px;border-radius:11px;border:1px solid var(--border);
+      background:rgba(9,18,32,.72);color:var(--text);font-size:19px;font-weight:800;line-height:1;
+      display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(3px);box-shadow:0 3px 10px rgba(0,0,0,.4)}
+    .mc-btn svg{width:18px;height:18px}
+    .mc-btn:active{transform:scale(.94)}
+    .legend-pop{position:absolute;right:56px;bottom:10px;z-index:8;display:flex;flex-direction:column;gap:8px;
+      background:rgba(9,18,32,.95);border:1px solid var(--border);border-radius:12px;padding:12px 14px;
+      font-size:12px;color:var(--muted);box-shadow:0 8px 24px rgba(0,0,0,.5)}
+    .legend-pop[hidden]{display:none}
+    .legend-pop .lg{display:flex;align-items:center;gap:6px}
+    .legend-pop .sw{width:12px;height:12px;border-radius:4px;border:1.5px solid}
     /* frame is LTR so the world rail sits on the LEFT of the blue canvas
        (matching the references), while node text stays RTL. */
     .map-frame{position:relative;direction:ltr;background:var(--frame);border-radius:20px;padding:10px 0 10px 10px;
@@ -280,8 +299,43 @@
     .pl-ex{padding:8px 0;border-bottom:1px solid rgba(39,72,99,.5)}
     .pl-ex:last-child{border-bottom:none}
     .exec-preview{margin-top:4px}
-    .ex-off{opacity:.55}
+    .ex-off{opacity:.6}
     .ex-off .wk-ex-nm{text-decoration:line-through}
+    .wk-ex-n.off{background:transparent;color:var(--dim)}
+    /* status chips on Today's plan items */
+    .status-chip{flex:none;font-size:10px;font-weight:800;border-radius:6px;padding:1px 6px;text-transform:uppercase;letter-spacing:.02em}
+    .sc-required{background:rgba(56,189,248,.16);color:#7dd3fc}
+    .sc-optional{background:rgba(148,163,184,.16);color:#c7d2de}
+    .sc-conditional{background:rgba(244,183,64,.16);color:var(--focus)}
+    .sc-replaced{background:rgba(122,162,247,.18);color:#a9c0ff}
+    .sc-skipped,.sc-removed{background:rgba(245,97,109,.15);color:#f5919b}
+    /* Edit Plan editor */
+    .ep-tabs{display:flex;gap:8px;margin:10px 0}
+    .ep-tab{flex:1;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px;color:var(--muted);font-weight:700;cursor:pointer}
+    .ep-tab.on{background:var(--accent);color:#04202f;border-color:transparent}
+    .ep-row{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+    .ep-row-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .ep-name{background:none;border:none;color:var(--text);font-weight:800;font-size:15px;padding:0;cursor:pointer;text-align:left}
+    .ep-status{font-size:11px;color:var(--muted)}
+    .ep-fixed{font-size:10px;font-weight:800;background:var(--card2);color:var(--dim);border-radius:6px;padding:1px 6px}
+    .ep-sub{margin:3px 0 8px}
+    .ep-warn{color:var(--focus);font-weight:700;margin-left:4px}
+    .ep-controls{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+    .ep-days{display:flex;gap:4px}
+    .ep-chip{width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--muted);font-weight:800;font-size:12px;cursor:pointer}
+    .ep-chip.on{background:var(--accent);color:#04202f;border-color:transparent}
+    .ep-chip.dim{opacity:.35}
+    .ep-target{display:flex;align-items:center;gap:8px}
+    .ep-target button{width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:18px;font-weight:800;cursor:pointer}
+    .ep-note{color:var(--focus);margin-top:6px}
+    .ep-board{display:grid;grid-template-columns:1fr;gap:8px}
+    .ep-bcol{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px}
+    .ep-bday{font-weight:800;margin-bottom:6px}
+    .ep-bchip{display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px}
+    .ep-bx{margin-left:auto;background:none;border:none;color:var(--dim);font-size:16px;cursor:pointer;padding:0 4px}
+    .ep-warnings{margin-top:12px}
+    .ep-warnline{font-size:13px;color:var(--muted);padding:3px 0;border-bottom:1px solid rgba(39,72,99,.4)}
+    .ep-save{margin-top:14px}
     .alt-card .link{margin-top:8px;display:inline-block}
     /* week-at-a-glance strip on Today */
     .wk-strip{display:flex;gap:6px;margin-top:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}
@@ -398,9 +452,28 @@
       .today-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start}
       .today-right{display:flex;flex-direction:column;min-width:0}
 
-      /* ---- Map: use the freed-up width; keep header/legend outside the frame
-         (already true structurally) so the tree gets the vertical room too. */
-      .map-frame{height:min(620px, calc(100vh - 132px))}
+      /* ---- Immersive Map: the canvas becomes the primary surface (~85%+ of the
+         short landscape viewport). Permanent chrome is minimised — the big
+         heading collapses to a ~34px toolbar, the legend moves into a floating
+         popover, and all map controls float over the canvas. Uses 100dvh +
+         safe-area insets so it tracks the real Samsung landscape viewport. */
+      .scr:has(.map-frame){padding-top:4px;padding-bottom:4px}
+      .map-head{margin:0 0 4px;min-height:32px;align-items:center}
+      .map-head .map-title{font-size:15px}
+      .map-head .mh-portrait-sum{display:none}
+      .map-head .mh-focus{display:inline;font-size:12px;color:var(--muted);margin-left:8px}
+      .map-head .mh-center{display:none}
+      .map-frame{height:calc(100dvh - 46px - env(safe-area-inset-top));padding:4px 0 4px 4px}
+      .legend{display:none}                 /* no permanent legend below the map */
+      .map-controls{display:flex}            /* floating overlay controls */
+      .map-controls [data-legend]{display:flex}  /* legend button is landscape-only */
+      .rail{position:absolute;left:2px;top:6px;z-index:6;gap:10px;padding:6px 2px;
+        background:rgba(9,18,32,.55);border-radius:14px;backdrop-filter:blur(3px)}
+      .rail .world-ic{width:38px;height:38px;border-radius:11px}
+      .rail .world-ic svg{width:22px;height:22px}
+      .rail .world-ic.active{transform:scale(1.06)}
+      .rail .world-ic.active::after{display:none}
+      .canvas-wrap{margin-left:0}
 
       /* ---- Node / exercise detail: side panel instead of a bottom sheet */
       .sheet-back{align-items:stretch;justify-content:flex-end}
@@ -563,14 +636,14 @@
       });
     })();
   </script>
-  <script src="data.js?v=20260724c"></script>
-  <script src="week.js?v=20260724c"></script>
-  <script src="engine.js?v=20260724c"></script>
-  <script src="progress.js?v=20260724c"></script>
-  <script src="store.js?v=20260724c"></script>
-  <script src="duration.js?v=20260724c"></script>
-  <script src="adapt.js?v=20260724c"></script>
-  <script src="settings.js?v=20260724c"></script>
-  <script src="app.js?v=20260724c"></script>
+  <script src="data.js?v=20260724d"></script>
+  <script src="week.js?v=20260724d"></script>
+  <script src="engine.js?v=20260724d"></script>
+  <script src="progress.js?v=20260724d"></script>
+  <script src="store.js?v=20260724d"></script>
+  <script src="duration.js?v=20260724d"></script>
+  <script src="adapt.js?v=20260724d"></script>
+  <script src="settings.js?v=20260724d"></script>
+  <script src="app.js?v=20260724d"></script>
 </body>
 </html>

@@ -145,11 +145,11 @@
   // migrated additively — existing dayLog/overrides survive a version bump.
   function ensurePlan(){
     var p=Store.getPlan();
-    if(!p||p.version!==Week.PLAN_VERSION){
-      var seeded=Week.seedPlan();
-      if(p){ if(p.dayLog)seeded.dayLog=p.dayLog; if(p.overrides)seeded.overrides=p.overrides;
-        if(p.emphasis)seeded.emphasis=p.emphasis; if(p.lastAssessment)seeded.lastAssessment=p.lastAssessment; }
-      Store.setPlan(seeded); p=seeded;
+    if(!p){ p=Week.seedPlan(); Store.setPlan(p); return p; }
+    if(p.version!==Week.PLAN_VERSION){
+      // Additive migration: keep the user's runtime state (dayLog/overrides/
+      // emphasis/assessments) and add the Weekly Requirements structure.
+      p=Week.migratePlan(p); Store.setPlan(p);
     }
     return p;
   }
@@ -405,10 +405,118 @@
         (res.adapted?'<div class="wd-adapt">Adapted — tap for why</div>':'')+
         '</button>';
     }).join('');
-    var html='<div class="hero"><h1>Your Week</h1><div class="path-summary">Sunday–Saturday · tap any day for the full plan</div></div>'+
+    var html='<div class="hero"><div class="between"><h1>Your Week</h1><button class="btn sm primary" data-editplan>Edit Plan</button></div>'+
+      '<div class="path-summary">Sunday–Saturday · tap any day for the full plan</div></div>'+
       '<div class="week-grid">'+cards+'</div>';
     var wrap=shell(html,'week');
     on('[data-daydetail]','click',function(e){ openDayDetail(+e.currentTarget.dataset.daydetail); },wrap);
+    on('[data-editplan]','click',function(){ openEditPlan(); },wrap);
+  }
+
+  // ---- Edit Plan: Weekly Requirements + Week Assignment Board (Part 5) ------
+  var DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  function openEditPlan(){ UI.planEdit=clone(getPlan().requirements); UI.planEditView='requirements'; UI.screen='editplan'; window.scrollTo(0,0); renderEditPlan(); }
+  function planGroupOf(req){
+    if(req.flexible) return 'flex';
+    if(req.status==='optional') return 'optional';
+    if(req.status==='conditional') return 'conditional';
+    if(req.target>=2) return 'two';
+    return 'one';
+  }
+  var PLAN_GROUP_TITLES={two:'2× per week',one:'1× per week',optional:'Optional',conditional:'Conditional',flex:'Flexible group-workout targets'};
+  function renderEditPlan(){
+    var req=UI.planEdit;
+    var ids=Object.keys(req).sort(function(a,b){return Week.reqIndex(a)-Week.reqIndex(b);});
+    var view=UI.planEditView;
+    var tabs='<div class="ep-tabs"><button class="ep-tab '+(view==='requirements'?'on':'')+'" data-eptab="requirements">Exercise Requirements</button>'+
+      '<button class="ep-tab '+(view==='board'?'on':'')+'" data-eptab="board">Week Assignment Board</button></div>';
+    var body;
+    if(view==='board') body=editBoardHtml(req,ids);
+    else body=editRequirementsHtml(req,ids);
+    var html='<div class="wk-top"><div class="between"><button class="link" data-epcancel>&lsaquo; Cancel</button><b>Edit Plan</b>'+
+      '<button class="link" data-epreset>Reset to Approved</button></div></div>'+
+      tabs+body+
+      '<div class="ep-save"><button class="btn primary" data-epsave>Save Plan</button></div>';
+    var wrap=shell(html,'week');
+    on('[data-eptab]','click',function(e){ UI.planEditView=e.currentTarget.dataset.eptab; renderEditPlan(); },wrap);
+    on('[data-epday]','click',function(e){ togglePlanDay(e.currentTarget.dataset.ex,+e.currentTarget.dataset.epday); },wrap);
+    on('[data-eptarget]','click',function(e){ bumpPlanTarget(e.currentTarget.dataset.ex,+e.currentTarget.dataset.eptarget); },wrap);
+    on('[data-epoptional]','click',function(e){ togglePlanOptional(e.currentTarget.dataset.ex); },wrap);
+    on('[data-epmeta]','click',function(e){ openExMetaSheet(e.currentTarget.dataset.epmeta); },wrap);
+    on('[data-epsave]','click',savePlanEdit,wrap);
+    on('[data-epcancel]','click',function(){ UI.planEdit=null; setScreen('week'); },wrap);
+    on('[data-epreset]','click',resetPlanEdit,wrap);
+  }
+  function editRequirementsHtml(req,ids){
+    var groups={two:[],one:[],optional:[],conditional:[],flex:[]};
+    ids.forEach(function(id){ groups[planGroupOf(req[id])].push(id); });
+    return ['two','one','optional','conditional','flex'].map(function(g){
+      if(!groups[g].length) return '';
+      return '<div class="section">'+esc(PLAN_GROUP_TITLES[g])+'</div>'+groups[g].map(function(id){return reqRowHtml(id,req[id]);}).join('');
+    }).join('');
+  }
+  function reqRowHtml(exId,r){
+    var meta=Week.EX[exId]||{}, assigned=(r.days||[]).length, target=r.target;
+    var warn='';
+    if(assigned<target) warn='<span class="ep-warn">assigned '+assigned+' of '+target+'</span>';
+    else if(assigned===0&&target>0) warn='<span class="ep-warn">not assigned</span>';
+    var chips=DOW.map(function(lbl,d){
+      var elig=(r.eligible||[]).indexOf(d)>=0, on=(r.days||[]).indexOf(d)>=0;
+      return '<button class="ep-chip'+(on?' on':'')+(elig?'':' dim')+'" '+(elig?'':'disabled ')+'data-ex="'+esc(exId)+'" data-epday="'+d+'">'+lbl.charAt(0)+'</button>';
+    }).join('');
+    return '<div class="ep-row">'+
+      '<div class="ep-row-h"><button class="ep-name" data-epmeta="'+esc(exId)+'">'+esc(meta.name||exId)+'</button>'+
+        prioPill(meta.priority||'D')+'<span class="ep-status">'+esc(cap(r.status))+'</span>'+
+        (r.fixed?'<span class="ep-fixed" title="Recommended on a specific day">fixed</span>':'')+'</div>'+
+      '<div class="ep-sub muted small">'+esc(meta.role||'')+' &middot; '+assigned+' / '+target+' days '+warn+'</div>'+
+      '<div class="ep-controls"><div class="ep-days">'+chips+'</div>'+
+        '<div class="ep-target"><button data-ex="'+esc(exId)+'" data-eptarget="-1">&minus;</button><span>'+target+'×</span><button data-ex="'+esc(exId)+'" data-eptarget="1">+</button></div></div>'+
+      (r.fixed&&(r.days||[]).indexOf((r.eligible||[])[0])<0?'<div class="ep-note tiny">Moved off its recommended day — the original placement suits available equipment and recovery.</div>':'')+
+      '</div>';
+  }
+  function editBoardHtml(req,ids){
+    return '<div class="ep-board">'+DOW.map(function(lbl,d){
+      var day=Week.DAYS_BY_ID[d];
+      var assigned=ids.filter(function(id){return (req[id].days||[]).indexOf(d)>=0;});
+      var chips=assigned.map(function(id){var meta=Week.EX[id]||{};return '<div class="ep-bchip">'+prioPill(meta.priority||'D')+'<span>'+esc(meta.name||id)+'</span><button class="ep-bx" data-ex="'+esc(id)+'" data-epday="'+d+'" aria-label="Unassign">&times;</button></div>';}).join('')
+        ||'<div class="muted tiny">'+(day.type==='rest'?'Rest':'Nothing assigned')+'</div>';
+      return '<div class="ep-bcol"><div class="ep-bday">'+esc(lbl)+' <span class="muted tiny">'+esc(day.session)+'</span></div>'+chips+'</div>';
+    }).join('')+'</div>'+
+    '<div class="ep-warnings">'+boardWarnings(req,ids)+'</div>';
+  }
+  function boardWarnings(req,ids){
+    var out=[];
+    ids.forEach(function(id){
+      var r=req[id], meta=Week.EX[id]||{}, assigned=(r.days||[]).length;
+      if(r.status==='required'&&assigned<r.target) out.push((meta.name||id)+': assigned '+assigned+' of '+r.target);
+      else if(r.status==='optional') out.push((meta.name||id)+': optional, assigned '+(r.days||[]).map(function(d){return DOW[d];}).join(' & ')||'—');
+      else if(r.flexible&&assigned<r.target) out.push((meta.name||id)+': flexible target not yet met');
+    });
+    return out.length?out.map(function(w){return '<div class="ep-warnline">'+esc(w)+'</div>';}).join(''):'<div class="muted small">All required exercises are assigned.</div>';
+  }
+  function togglePlanDay(exId,dayId){
+    var r=UI.planEdit[exId]; if(!r) return;
+    if((r.eligible||[]).indexOf(dayId)<0) return; // only eligible days
+    r.days=r.days||[]; var i=r.days.indexOf(dayId);
+    if(i>=0) r.days.splice(i,1); else r.days.push(dayId);
+    r.days.sort(function(a,b){return a-b;}); renderEditPlan();
+  }
+  function bumpPlanTarget(exId,delta){
+    var r=UI.planEdit[exId]; if(!r) return;
+    r.target=Math.max(r.min||0,Math.min(r.max!=null?r.max:7,(r.target||0)+delta)); renderEditPlan();
+  }
+  function togglePlanOptional(exId){
+    var r=UI.planEdit[exId]; if(!r) return;
+    r.status=(r.status==='optional')?'required':'optional'; renderEditPlan();
+  }
+  function savePlanEdit(){
+    var p=getPlan(); p.requirements=UI.planEdit; savePlan(p); UI.planEdit=null;
+    toast('Plan saved — Today, Week and the Map now use your updated plan.');
+    setScreen('week');
+  }
+  function resetPlanEdit(){
+    var p=getPlan(); p.requirements=Week.defaultRequirements(); savePlan(p);
+    UI.planEdit=clone(p.requirements); toast('Reset to the approved plan.'); renderEditPlan();
   }
   function weekStatusBadge(res){
     var st=res.status, label, cls;
@@ -509,46 +617,65 @@
     if(UI.screen==='week') renderWeek(); else renderToday();
   }
 
+  // Build the runnable workout for a resolved day from its INCLUDED plan
+  // exercises, so the runner matches Today's visible list (Part 6). The Pull-Up
+  // Ladder block is taken from the (possibly user-edited) mu_strength ladder so
+  // saved/today edits to the ladder still flow through.
+  function dayPrescription(res){
+    var rt=clone(Week.executablePrescription(res));
+    var lad=prescriptionFor(Data.templates.mu_strength);
+    var ladBlock=(lad.blocks||[]).filter(function(b){return b.scheme==='ladder';})[0];
+    rt.blocks=(rt.blocks||[]).map(function(b){
+      if(b.scheme==='ladder'&&ladBlock){ var nb=clone(ladBlock); if(res.ladderRounds!=null) nb.rounds=res.ladderRounds; nb.label=b.label; return nb; }
+      return b;
+    });
+    return rt;
+  }
   // ---- start a day's session (applies plan adaptations to the runner) -------
   function startDaySession(dayId){
     var plan=getPlan(), ctx=weekCtx();
     var res=Week.resolveDay(plan,dayId,ctx);
-    if(!res.templateId){ openDayDetail(dayId); return; }
-    // launch in the right world so the session records against the right goal
     if(res.goal) UI.worldId=res.goal.world;
-    var t=Data.templates[res.templateId];
-    if(!t){ openDayDetail(dayId); return; }
-    if(t.kind==='climbing'){ startClimbing(t); return; }
-    // apply a Friday ladder-round reduction as a today-only override
-    if(res.ladderRounds!=null){
-      var rt=clone(prescriptionFor(t));
-      (rt.blocks||[]).forEach(function(b){ if(b.scheme==='ladder') b.rounds=res.ladderRounds; });
-      UI.workout=buildWorkout(rt); delete todayEdits[t.id];
+    // climbing day → climbing logger
+    if(res.day.type==='climbing'&&res.templateId&&Data.templates[res.templateId]){ startClimbing(Data.templates[res.templateId]); return; }
+    // strength day → a workout assembled from the day's included plan exercises
+    if(res.executable&&res.executable.length){
+      UI.workout=buildWorkout(dayPrescription(res));
       saveWorkoutState(); window.scrollTo(0,0); renderStrength(); return;
     }
-    startStrength(t);
+    if(res.templateId&&Data.templates[res.templateId]){ startSession(res.templateId); return; }
+    openDayDetail(dayId);
   }
 
   // ---- exercise-metadata sheet (one canonical record, Part 11) --------------
   function openExMetaSheet(exId){
     var m=Week.EX[exId]; if(!m){ if(Data.exercises[exId]) return openExerciseSheet(exId); return; }
+    var plan=getPlan(); var req=(plan.requirements&&plan.requirements[exId])||{};
     var goals=m.goals.map(function(g){return Week.GOALS[g]?Week.GOALS[g].name:g;});
     var skills=m.skills.map(function(s){return Week.SKILLS[s]?Week.SKILLS[s].name:s;});
-    var days=Week.DAYS.filter(function(d){return d.exercises.indexOf(exId)>=0;});
+    var assignedDays=(req.days||[]).map(function(id){return Week.DAYS_BY_ID[id];}).filter(Boolean);
     var body='<div class="grip"></div>'+
       '<div class="between"><h2>'+esc(m.name)+'</h2>'+prioPill(m.priority)+'</div>'+
-      '<div class="muted small" style="margin-bottom:8px">'+esc(m.role)+'</div>'+
+      '<div class="muted small" style="margin-bottom:8px">'+esc(m.role)+(req.status?' &middot; '+esc(cap(req.status)):'')+'</div>'+
+      (m.detail?'<p class="muted small" style="margin-bottom:8px">'+esc(m.detail)+'</p>':'')+
       (goals.length?'<div class="dd-kv"><span>Goals</span><b>'+esc(goals.join(', '))+'</b></div>':'')+
       (skills.length?'<div class="dd-kv"><span>Skills</span><b>'+esc(skills.join(', '))+'</b></div>':'')+
+      '<div class="dd-kv"><span>Weekly target</span><b>'+(req.target!=null?req.target:1)+'× / week'+(req.max&&req.max!==req.target?' (max '+req.max+')':'')+'</b></div>'+
+      (m.variations&&m.variations.length?'<div class="section">Variations</div><p class="muted small">'+m.variations.map(esc).join(' &middot; ')+'<br><span class="tiny">Choose the variation that matches your equipment.</span></p>':'')+
       '<div class="section">In your weekly plan</div>'+
-      days.map(function(d){var why=m.why&&m.why[d.key]?m.why[d.key]:'';return '<div class="dd-ex"><div class="dd-ex-h"><b>'+esc(d.label)+'</b><span class="muted small">'+esc(d.session)+'</span></div>'+(why?'<div class="muted small">'+esc(why)+'</div>':'')+'</div>';}).join('')+
+      (assignedDays.length?assignedDays.map(function(d){var why=m.why&&m.why[d.key]?m.why[d.key]:'';return '<div class="dd-ex"><div class="dd-ex-h"><b>'+esc(d.label)+'</b><span class="muted small">'+esc(d.session)+'</span></div>'+(why?'<div class="muted small">'+esc(why)+'</div>':'')+'</div>';}).join(''):'<p class="muted small">Not currently assigned to a day.</p>')+
       (m.overlaps&&m.overlaps.length?'<div class="section">Overlaps</div><p class="muted small">'+m.overlaps.map(esc).join(' ')+'</p>':'')+
       (m.sub&&m.sub.length?'<div class="section">Substitutions</div><p class="muted small">'+m.sub.map(function(s){return esc(Week.EX[s]?Week.EX[s].name:s);}).join(', ')+'</p>':'')+
       (m.conditional?'<div class="section">Conditional rule</div><p class="muted small">'+esc(m.conditional)+'</p>':'')+
       (m.nodes&&m.nodes.length?'<div class="section">Skill map nodes</div><p class="muted small">'+m.nodes.map(function(id){return esc(Data.nodeIndex[id]?Data.nodeIndex[id].node.name:id);}).join(', ')+'</p>':'')+
+      (m.exDetailId&&Data.exercises[m.exDetailId]?'<button class="btn ghost" data-exdetail="'+esc(m.exDetailId)+'">Full exercise details</button>':'')+
       '<button class="btn ghost" data-close>Close</button>';
-    showSheet(body,function(sheet){ on('[data-close]','click',closeSheet,sheet); });
+    showSheet(body,function(sheet){
+      on('[data-exdetail]','click',function(e){ closeSheet(); openExerciseSheet(e.currentTarget.dataset.exdetail); },sheet);
+      on('[data-close]','click',closeSheet,sheet);
+    });
   }
+  function cap(s){ return String(s||'').charAt(0).toUpperCase()+String(s||'').slice(1); }
 
   // The dominant scheduled-session card (Part 8 hierarchy).
   function scheduledCard(res,dominant){
@@ -600,37 +727,39 @@
   // let the user edit it for today only — the same editing surface as before,
   // now anchored under the plan card.
   function execPreviewHtml(res){
-    if(!res.templateId||res.day.type==='group'||res.day.type==='rest') return '';
-    var t=Data.templates[res.templateId];
-    if(!t||t.kind!=='strength') return '';
-    var rt=prescriptionFor(t);
-    if(res.ladderRounds!=null){ rt=clone(rt); (rt.blocks||[]).forEach(function(b){ if(b.scheme==='ladder') b.rounds=res.ladderRounds; }); }
-    var modified=Settings.isModifiedForToday(t,settings(),todayEdits[t.id]);
+    if(res.day.type==='group'||res.day.type==='rest'||!res.executable||!res.executable.length) return '';
+    var rt=dayPrescription(res);
+    var hasLadder=(rt.blocks||[]).some(function(b){return b.scheme==='ladder';});
+    var modified=hasLadder&&Settings.isModifiedForToday(Data.templates.mu_strength,settings(),todayEdits.mu_strength);
     return '<div class="exec-preview"><div class="section" style="margin-top:12px">Start Workout will run</div>'+
-      (modified?'<div class="modified-flag">&#9679; Modified for today &middot; <button class="link" data-resettoday="'+esc(t.id)+'">Reset to default</button></div>':'')+
+      (modified?'<div class="modified-flag">&#9679; Ladder modified for today &middot; <button class="link" data-resettoday="mu_strength">Reset to default</button></div>':'')+
       '<div class="wk-list">'+workoutExerciseList(rt)+'</div>'+
-      '<button class="btn ghost sm inline-edit" data-editwk="'+esc(t.id)+'">Edit Workout</button></div>';
+      (hasLadder?'<button class="btn ghost sm inline-edit" data-editwk="mu_strength">Edit Pull-Up Ladder</button>':'')+'</div>';
   }
 
-  // Plan exercise list with priority + role, honestly showing what was adjusted.
-  // Uses .pl-ex (distinct from the executable workout's .wk-ex list below it).
+  // Plan exercise list — EVERY planned exercise for the day stays visible with a
+  // clear status label (Required / Optional / Conditional / Replaced / Skipped /
+  // Removed). Optional and skipped items are never hidden (Part 6).
   function planItemsHtml(res){
     var n=0;
     return res.items.map(function(it){
       var meta=it.ex||{}; var name=meta.name||it.exId;
-      if(!it.included){
-        return '<div class="pl-ex ex-off" data-exmeta="'+esc(it.exId)+'"><div class="wk-ex-h">'+
-          '<span class="wk-ex-nm">'+esc(name)+'</span>'+prioPill(it.priority)+'</div>'+
-          '<div class="wk-ex-struct muted small">'+esc(it.note||'Not today')+'</div></div>';
-      }
-      n++;
-      return '<div class="pl-ex" data-exmeta="'+esc(it.exId)+'"><div class="wk-ex-h">'+
-        '<span class="wk-ex-n">'+n+'</span><span class="wk-ex-nm">'+esc(name)+'</span>'+
-        prioPill(it.priority)+'<span class="wk-ex-info">Details &rsaquo;</span></div>'+
-        '<div class="wk-ex-struct muted small">'+esc(meta.role||'')+(it.note?' &middot; '+esc(it.note):'')+'</div></div>';
+      var off=!it.included;
+      if(it.included) n++;
+      var sub=off?(it.reason||it.note||''):(esc(meta.role||'')+(it.note?' &middot; '+esc(it.note):''));
+      return '<div class="pl-ex'+(off?' ex-off':'')+'" data-exmeta="'+esc(it.exId)+'"><div class="wk-ex-h">'+
+        (it.included?'<span class="wk-ex-n">'+n+'</span>':'<span class="wk-ex-n off">&ndash;</span>')+
+        '<span class="wk-ex-nm">'+esc(name)+'</span>'+prioPill(it.priority)+statusChip(it.statusLabel)+
+        '<span class="wk-ex-info">Details &rsaquo;</span></div>'+
+        (sub?'<div class="wk-ex-struct muted small">'+esc(sub)+'</div>':'')+'</div>';
     }).join('');
   }
   function prioPill(p){ return '<span class="prio prio-'+esc(p)+'" title="Priority '+esc(p)+'">'+esc(p)+'</span>'; }
+  function statusChip(label){
+    if(!label) return '';
+    var cls=label.toLowerCase();
+    return '<span class="status-chip sc-'+cls+'">'+esc(label)+'</span>';
+  }
 
   // Compact "this week at a glance" strip (Part 8 secondary / Part 9 teaser).
   function weekStripCard(plan,ctx,todayId){
@@ -752,32 +881,65 @@
       return '<div class="world-ic '+(w.id===UI.worldId?'active':'')+'" data-world="'+w.id+'" style="--world-accent:'+w.theme.accent+'" role="button" aria-label="'+esc(w.name)+'" aria-pressed="'+(w.id===UI.worldId)+'">'+ICON[w.icon]+'</div>';
     }).join('');
 
-    var pathSummary='<div class="path-summary">'+completed+'/'+world.nodes.length+' skills'+
+    UI.mapW=W; UI.mapH=H; if(UI.mapZoom==null) UI.mapZoom=1;
+    var pathSummary='<div class="path-summary mh-portrait-sum">'+completed+'/'+world.nodes.length+' skills'+
       (primary?' &middot; Focus: <b>'+esc(primary.name)+'</b>':'')+
       (world.note?' &middot; '+esc(world.note):'')+'</div>';
+    var focusChip=primary?'<span class="mh-focus">Focus: '+esc(primary.name)+'</span>':'';
 
+    // Compact toolbar (landscape) / full head (portrait). Floating controls and
+    // an on-demand legend keep permanent chrome minimal so the canvas can own
+    // ~85%+ of the short landscape viewport.
+    var z=UI.mapZoom;
     var html=''+
-      '<div class="map-head"><div><div class="map-title">'+esc(world.name)+'</div>'+
-      pathSummary+'</div>'+
-      '<button class="btn sm" data-center title="Center on Focus">'+ICON.center+'</button></div>'+
+      '<div class="map-head">'+
+        '<div class="mh-titles"><span class="map-title">'+esc(world.name)+'</span>'+focusChip+'</div>'+
+        pathSummary+
+      '</div>'+
       '<div class="map-frame"><div class="rail" id="rail">'+rail+'</div>'+
-      '<div class="canvas-wrap"><div class="canvas-scroll" id="cscroll"><div class="canvas" style="width:'+W+'px;height:'+H+'px">'+
-      '<svg class="edges" width="'+W+'" height="'+H+'">'+edges+'</svg>'+nodes+'</div></div></div></div>'+
+        '<div class="canvas-wrap"><div class="canvas-scroll" id="cscroll">'+
+          '<div class="canvas" style="width:'+(W*z)+'px;height:'+(H*z)+'px">'+
+            '<div class="canvas-inner" style="width:'+W+'px;height:'+H+'px;transform:scale('+z+')">'+
+            '<svg class="edges" width="'+W+'" height="'+H+'">'+edges+'</svg>'+nodes+'</div></div></div>'+
+        '</div>'+
+        '<div class="map-controls">'+
+          '<button class="mc-btn" data-center title="Center on Current Focus" aria-label="Center on Current Focus">'+ICON.center+'</button>'+
+          '<button class="mc-btn" data-zoom="in" aria-label="Zoom in">+</button>'+
+          '<button class="mc-btn" data-zoom="out" aria-label="Zoom out">&minus;</button>'+
+          '<button class="mc-btn" data-zoom="reset" title="Reset view" aria-label="Reset view">&#8634;</button>'+
+          '<button class="mc-btn" data-legend aria-label="Legend">?</button>'+
+        '</div>'+
+        '<div class="legend-pop" id="legendPop" hidden>'+legendItems()+'</div>'+
+      '</div>'+
       legend();
     var wrap=shell(html,'map');
     on('#rail .world-ic','click',function(e){ switchWorld(e.currentTarget.dataset.world); },wrap);
     on('.node','click',function(e){ if(wrap.__dragged)return; openSheet(e.currentTarget.dataset.node); },wrap);
     on('[data-center]','click',function(){ centerOnFocus(wrap); },wrap);
+    on('[data-zoom]','click',function(e){ zoomMap(wrap,e.currentTarget.dataset.zoom); },wrap);
+    on('[data-legend]','click',function(){ var p=wrap.querySelector('#legendPop'); p.hidden=!p.hidden; },wrap);
     setupPan(wrap.querySelector('#cscroll'),wrap);
     centerOnFocus(wrap);
+  }
+  function zoomMap(wrap,dir){
+    var sc=wrap.querySelector('#cscroll'), old=UI.mapZoom||1;
+    // keep the current viewport centre stable while zooming
+    var cx=(sc.scrollLeft+sc.clientWidth/2)/old, cy=(sc.scrollTop+sc.clientHeight/2)/old;
+    var z = dir==='reset'?1 : dir==='in'?Math.min(1.8,old+0.2):Math.max(0.6,old-0.2);
+    UI.mapZoom=z;
+    var canvas=wrap.querySelector('.canvas'), inner=wrap.querySelector('.canvas-inner');
+    canvas.style.width=(UI.mapW*z)+'px'; canvas.style.height=(UI.mapH*z)+'px';
+    inner.style.transform='scale('+z+')';
+    if(dir==='reset'){ centerOnFocus(wrap); }
+    else { sc.scrollLeft=cx*z-sc.clientWidth/2; sc.scrollTop=cy*z-sc.clientHeight/2; }
   }
   function centerOnFocus(wrap){
     var world=activeWorld(), ws=WS(UI.worldId), cm=contentMap(world);
     var primary=ws.focus.primary?cm[ws.focus.primary]:null;
-    var sc=wrap.querySelector('#cscroll');
+    var sc=wrap.querySelector('#cscroll'), z=UI.mapZoom||1;
     if(primary&&sc){
-      sc.scrollLeft = Math.max(0, (PADX+primary.col*COLW) - sc.clientWidth*0.5);
-      sc.scrollTop = Math.max(0, (PADY+primary.row*ROWH) - sc.clientHeight*0.5);
+      sc.scrollLeft = Math.max(0, (PADX+primary.col*COLW)*z - sc.clientWidth*0.5);
+      sc.scrollTop = Math.max(0, (PADY+primary.row*ROWH)*z - sc.clientHeight*0.5);
     }
   }
   function nodeXY(n){return {x:PADX+n.col*COLW, y:PADY+n.row*ROWH};}
@@ -816,10 +978,11 @@
       (pr?'<div class="pr">'+esc(pr)+'</div>':'')+
       '</div>';
   }
-  function legend(){
-    var items=[['current','Focus','var(--focus)'],['completed','Done','var(--accent)'],['available','Available','#2f5b82'],['supporting','Supporting','var(--accent2)'],['locked','Locked','#3a5674']];
-    return '<div class="legend">'+items.map(function(i){return '<span class="lg"><span class="sw" style="border-color:'+i[2]+'"></span>'+i[1]+'</span>';}).join('')+'</div>';
+  function legendItems(){
+    var items=[['current','Current','var(--focus)'],['completed','Completed','var(--accent)'],['available','Available','#2f5b82'],['supporting','Supporting','var(--accent2)'],['locked','Locked','#3a5674']];
+    return items.map(function(i){return '<span class="lg"><span class="sw" style="border-color:'+i[2]+'"></span>'+i[1]+'</span>';}).join('');
   }
+  function legend(){ return '<div class="legend">'+legendItems()+'</div>'; }
   var STATUS_LABEL={completed:'Completed',current:'Current Focus',available:'Available',supporting:'Supporting Skill',locked:'Locked',maintenance:'Maintenance'};
   function statusLabel(s){return STATUS_LABEL[s]||s;}
 
@@ -941,7 +1104,7 @@
         adaptEnabled:b.adaptEnabled!==false,
         sets:sets.map(function(s){return {target:s.target,actual:s.actual,unit:s.unit,amrap:!!s.amrap,doneFlag:false,adapted:''};})};
     });
-    return {templateId:rt.id,worldId:UI.worldId,blocks:blocks,started:Date.now(),pain:false,
+    return {templateId:rt.id,worldId:UI.worldId,name:rt.name,blocks:blocks,started:Date.now(),pain:false,
       adaptations:[],lastRound:null,lastSet:null,pendingOverride:null};
   }
   function startStrength(t){
@@ -977,7 +1140,7 @@
   }
 
   function renderStrength(){
-    var w=UI.workout, t=Data.templates[w.templateId];
+    var w=UI.workout, t=Data.templates[w.templateId]||{id:w.templateId,name:w.name||'Workout',type:'strength'};
     var counts=workoutCounts(w);
     var pct=counts.total?Math.round(counts.done/counts.total*100):0;
     var cur=locateCurrent(w);
@@ -1267,7 +1430,10 @@
     return exRes;
   }
   function finishStrength(){
-    stopTimer(); var w=UI.workout, world=worldsById(w.worldId), t=Data.templates[w.templateId];
+    stopTimer(); var w=UI.workout, world=worldsById(w.worldId);
+    // Day-assembled workouts use a synthetic template id (day_*) — fall back to
+    // a plain strength descriptor so completion/summary still work.
+    var t=Data.templates[w.templateId]||{id:w.templateId,type:'strength',difficulty:'Medium',name:'Workout'};
     var exRes=collectExResults(w);
     var ws=WS(w.worldId);
     var session={id:'cs_'+Date.now(),kind:'strength',templateId:t.id,worldId:w.worldId,date:new Date().toISOString(),
@@ -1589,6 +1755,7 @@
       row('Skill nodes',m.nodes.join(', '))+
       row('Approved alternatives',alts.length?alts.join(', '):'None')+
       '<div class="section">Technique</div><p class="muted small">'+esc(e.cues||'')+'</p>'+
+      (e.variations&&e.variations.length?'<div class="section">Variations</div><p class="muted small">'+e.variations.map(esc).join(' &middot; ')+'<br><span class="tiny">Select the variation that matches your available equipment.</span></p>':'')+
       '<div class="settings-row static" style="margin-top:10px"><div class="sr-main"><div class="sr-title">Enabled for recommendations</div></div>'+
       '<button class="toggle '+(enabled?'on':'')+'" data-extoggle="'+esc(e.id)+'" role="switch" aria-checked="'+enabled+'"><span class="knob"></span></button></div>'+
       '<button class="btn ghost" data-close>Close</button>';

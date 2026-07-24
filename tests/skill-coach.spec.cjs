@@ -19,6 +19,16 @@ const mu = Data.worldsById.muscleup;
 const boulder = Data.worldsById.boulder;
 const cmap = w => { const c = {}; w.nodes.forEach(n => (c[n.id] = n)); return c; };
 
+// Start the pure Pull-Up Ladder workout (mu_strength: ladder + scapular, ladder
+// first) via the Skill Map node — a stable entry point for the ladder-runner
+// mechanics, independent of the multi-exercise Friday plan.
+async function startLadder(page) {
+  await page.locator('.nav [data-s="map"]').click();
+  await page.locator('.node.current').click({ force: true });
+  await page.locator('.sheet [data-start="mu_strength"]').click();
+  await expect(page.locator('.cur-card')).toBeVisible();
+}
+
 // ─────────────────────────── no Hebrew in coach files ─────────────────────────
 test('app *.js files contain no Hebrew characters', () => {
   const coachDir = path.join(__dirname, '..');
@@ -476,11 +486,13 @@ test.describe('app UI', () => {
     expect(preview).toContain('Pull-Up Ladder');  // Priority A main skill
     // Priority pills are present on the plan items.
     expect(await page.locator('.preview .prio-A').count()).toBeGreaterThan(0);
-    // The ladder's round structure is still reachable — start it and confirm.
+    expect(preview).toContain('Toes-to-Bar'); // required, not filtered out
+    // Start Workout builds a runner from the visible plan — Pistol Squat first,
+    // and the Pull-Up Ladder keeps its 1–2–3 × 5 structure.
     await page.locator('.rec.sched [data-start]').first().click();
-    await expect(page.locator('.round-overview').first()).toBeVisible();
-    const rounds = await page.locator('.round-overview').first().locator('.round-chip').count();
-    expect(rounds).toBe(5); // 1–2–3 × 5 complete rounds under normal load
+    await expect(page.locator('.wk-block-wrap').first()).toContainText('Pistol Squat');
+    const ladderChips = await page.locator('.round-overview', { has: page.locator('.round-chip') }).filter({ hasText: 'Round 5' }).locator('.round-chip').count();
+    expect(ladderChips).toBe(5); // 1–2–3 × 5 complete rounds under normal load
   });
 
   test('map: world rail sits OUTSIDE the blue canvas; both worlds switch the tree', async ({ page }) => {
@@ -563,8 +575,7 @@ test.describe('app UI', () => {
       localStorage.setItem('puc_log', JSON.stringify([{ id: 1, date: 'x', sessionType: 'strength', setType: 'work', reps: 8 }]));
     });
     await page.goto('index.html'); await seed(page);
-    await page.locator('[data-start]').first().click();
-    await expect(page.locator('.cur-card').first()).toBeVisible();
+    await startLadder(page);
     // Log a 10-rep pull-up on the first rung for a PR, then finish everything.
     await completeStrengthRunner(page, 10);
     // All work done — Finish button should appear
@@ -588,8 +599,7 @@ test.describe('app UI', () => {
 
   test('ladder: difficulty is asked only after the last step of a round', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('[data-start]').first().click();
-    await expect(page.locator('.cur-card')).toBeVisible();
+    await startLadder(page);
     await expect(page.locator('.cur-meta').first()).toHaveText(/Round 1 of 5 · Step 1 of 3/);
     // Step 1 done → short rest, NO difficulty prompt.
     await page.locator('.cur-card [data-done]').click();
@@ -612,7 +622,7 @@ test.describe('app UI', () => {
 
   test('ladder: a failed round reduces the next round, and the user can override', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('[data-start]').first().click();
+    await startLadder(page);
     // Round 1: do step 1 and 2, then fail the top step by logging fewer reps.
     await page.locator('.cur-card [data-done]').click(); await page.locator('[data-tskip]').click();
     await page.locator('.cur-card [data-done]').click(); await page.locator('[data-tskip]').click();
@@ -659,8 +669,7 @@ test.describe('app UI', () => {
 
   test('refresh preserves the current round, step, and logged reps', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('[data-start]').first().click();
-    await expect(page.locator('.cur-card')).toBeVisible();
+    await startLadder(page);
     // Advance into round 2 (complete all three steps of round 1).
     await page.locator('.cur-card [data-done]').click(); await page.locator('[data-tskip]').click();
     await page.locator('.cur-card [data-done]').click(); await page.locator('[data-tskip]').click();
@@ -944,41 +953,47 @@ test.describe('settings UI', () => {
       def.blocks[0].rounds = 4; s.workoutDefaults.mu_strength = def; S.setSettings(s);
     });
     await page.reload();
-    await expect(page.locator('.wk-ex').first()).toContainText('× 4 complete');
-    // Edit today only → 5 rounds.
+    // Friday's Start-Workout preview runs the Pull-Up Ladder from the (edited)
+    // mu_strength default: 4 rounds.
+    const ladderEx = page.locator('.wk-ex', { hasText: 'Pull-Up Ladder' });
+    await expect(ladderEx).toContainText('× 4 complete');
+    // Edit the Pull-Up Ladder for today only → 5 rounds.
     await page.locator('[data-editwk]').first().click();
     const rounds = page.locator('.ed-in[data-ed="rounds"][data-bi="0"]');
     await rounds.fill('5'); await rounds.dispatchEvent('change');
     await page.locator('[data-edsavetoday]').click();
     // Today preview updates + shows the Modified flag...
-    await expect(page.locator('.wk-ex').first()).toContainText('× 5 complete');
+    await expect(page.locator('.wk-ex', { hasText: 'Pull-Up Ladder' })).toContainText('× 5 complete');
     await expect(page.locator('.modified-flag')).toBeVisible();
     // ...but the saved default is still 4.
     const savedDefault = await page.evaluate(() => window.CoachStore.makeStore().getSettings().workoutDefaults.mu_strength.blocks[0].rounds);
     expect(savedDefault).toBe(4);
   });
 
-  test('exercise list is visible on Today and details open', async ({ page }) => {
-    await page.goto('index.html'); await seed(page);
-    await expect(page.locator('.wk-ex')).not.toHaveCount(0);
-    await expect(page.locator('.wk-ex').first()).toContainText('Strict Pull-Ups');
-    await page.locator('.wk-ex').first().click();
-    await expect(page.locator('.sheet h2')).toHaveText('Strict Pull-Up');
-    await expect(page.locator('.sheet')).toContainText('Current benchmark');
-    await expect(page.locator('.sheet')).toContainText('Technique');
+  test('the daily plan list is visible on Today and item details open', async ({ page }) => {
+    await page.goto('index.html'); await seed(page); // Friday
+    await expect(page.locator('.pl-ex')).not.toHaveCount(0);
+    await expect(page.locator('.pl-ex .wk-ex-nm').first()).toHaveText('Pistol Squat');
+    // Tapping a plan item opens its canonical metadata (goals/skills/plan days).
+    await page.locator('.pl-ex', { hasText: 'Pull-Up Ladder' }).click();
+    await expect(page.locator('.sheet h2')).toContainText('Pull-Up Ladder');
+    await expect(page.locator('.sheet')).toContainText('In your weekly plan');
+    await expect(page.locator('.sheet')).toContainText('Friday');
   });
 
-  test('an approved exercise replacement takes effect in the workout', async ({ page }) => {
+  test('an approved exercise replacement in Workout Defaults takes effect in the workout', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('[data-editwk]').first().click();
+    // Edit the mu_strength default via Profile → Workout Defaults.
+    await page.locator('.nav [data-s="profile"]').click();
+    await page.locator('[data-sview="workoutDefaults"]').click();
+    await page.locator('[data-editdef="mu_strength"]').click();
     // Scapular Pull-Ups (block 1) has an approved alternative (Ring Row).
     await page.locator('[data-edreplace="1"]').click();
     await expect(page.locator('[data-pick]').first()).toBeVisible();
     await page.locator('[data-pick]').first().click();
-    await page.locator('[data-edsavetoday]').click();
-    await expect(page.locator('.wk-ex').nth(1)).toContainText('Ring Row');
-    // And the replacement carries into the runner.
-    await page.locator('[data-start]').first().click();
+    await page.locator('[data-edsavedefault]').click();
+    // The replacement carries into the mu_strength runner (started from the map).
+    await startLadder(page);
     await expect(page.locator('.scr')).toContainText('Ring Row');
   });
 
@@ -992,7 +1007,7 @@ test.describe('settings UI', () => {
       def.blocks[0].rounds = 3; s.workoutDefaults.mu_strength = def; S.setSettings(s);
     });
     await page.reload();
-    await page.locator('[data-start]').first().click();
+    await startLadder(page);
     await expect(page.locator('.cur-meta').first()).toHaveText(/Round 1 of 3/);
     // Change the saved default underneath the running workout.
     await page.evaluate(() => {
@@ -1016,7 +1031,7 @@ test.describe('settings UI', () => {
       s.workoutDefaults.mu_strength = def; S.setSettings(s);
     });
     await page.reload();
-    await page.locator('[data-start]').first().click();
+    await startLadder(page);
     // Complete round 1 and rate it Hard (adds inter-round rest to the snapshot only).
     await page.locator('.cur-card [data-done]').click(); await page.locator('[data-tskip]').click();
     await page.locator('.cur-card [data-done]').click(); await page.locator('[data-tskip]').click();

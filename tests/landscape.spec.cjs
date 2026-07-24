@@ -137,10 +137,11 @@ function defineLandscapeTests(viewport) {
       const curBox = await page.locator('.cur-card').first().boundingBox();
       const overviewBox = await page.locator('.round-overview').first().boundingBox();
       expect(curBox.x).toBeLessThan(overviewBox.x); // current action left, overview right
-      // Log a set/step so the rest timer starts, then confirm the new
-      // current target and the running timer are both visible together
-      // (scrolled to the top, the natural resting position after a step).
+      // Log a set/step (and rate it if asked) so the rest timer starts, then
+      // confirm the new current target and the running timer are both visible
+      // together (scrolled to the top, the natural resting position).
       await page.locator('.cur-card [data-done]').first().click();
+      if (await page.locator('.adapt-card [data-diff]').count()) await page.locator('[data-diff="appropriate"]').click();
       await expect(page.locator('#rest .timer')).toBeVisible();
       await page.evaluate(() => window.scrollTo(0, 0));
       const vp = page.viewportSize();
