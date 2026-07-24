@@ -7,6 +7,7 @@
   'use strict';
   var Data = window.CoachData, Engine = window.CoachEngine, Progress = window.CoachProgress;
   var Duration = window.CoachDuration, Adapt = window.CoachAdapt, Settings = window.CoachSettings;
+  var Week = window.CoachWeek;
   var Store = window.CoachStore.makeStore();
 
   var app = document.getElementById('app');
@@ -40,7 +41,8 @@
     map:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="7" r="2.4"/><circle cx="12" cy="17" r="2.4"/><path d="M8 7l3 8M16 8l-3 7"/></svg>',
     chart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
     person:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/></svg>',
-    center:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>'
+    center:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>',
+    week:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M7.5 13h2M14.5 13h2M7.5 17h2M14.5 17h2"/></svg>'
   };
 
   // ---- audio ----------------------------------------------------------------
@@ -136,11 +138,47 @@
     return false;
   }
 
+  // ---- canonical weekly plan ------------------------------------------------
+  // The plan instance (spc_c_plan) is the single source of truth for what to
+  // train and when. Today, Week and the Map all read it through resolveDay/
+  // resolveWeek. It is SEEDED for this profile (not a universal default) and is
+  // migrated additively — existing dayLog/overrides survive a version bump.
+  function ensurePlan(){
+    var p=Store.getPlan();
+    if(!p||p.version!==Week.PLAN_VERSION){
+      var seeded=Week.seedPlan();
+      if(p){ if(p.dayLog)seeded.dayLog=p.dayLog; if(p.overrides)seeded.overrides=p.overrides;
+        if(p.emphasis)seeded.emphasis=p.emphasis; if(p.lastAssessment)seeded.lastAssessment=p.lastAssessment; }
+      Store.setPlan(seeded); p=seeded;
+    }
+    return p;
+  }
+  function getPlan(){ return ensurePlan(); }
+  function savePlan(p){ Store.setPlan(p); }
+  // Context the load model + resolver read. `__spcTodayId` is a test/override
+  // hook so a session can inspect any weekday deterministically.
+  function weekCtx(){
+    var r=readiness();
+    return {
+      todayId: (typeof window.__spcTodayId==='number')?window.__spcTodayId:new Date().getDay(),
+      readiness:r, pain:!!r.pain, cleanCompletions:cleanCompletions()
+    };
+  }
+  function todayDayId(){ return (typeof window.__spcTodayId==='number')?window.__spcTodayId:new Date().getDay(); }
+  function cleanCompletions(){
+    var out={}; (Store.getSessions()||[]).forEach(function(s){
+      if(s.kind==='strength'&&!s.pain){ out.pullup=(out.pullup||0)+1; }
+      if(s.kind==='climbing'){ out.climb=(out.climb||0)+1; }
+    });
+    return out;
+  }
+
   // ---- boot -----------------------------------------------------------------
   function boot(){
     var p=Store.getProfile();
     if(!p||!p.onboarded){ return renderOnboarding(); }
     UI.worldId=p.activeWorld||Data.worlds[0].id;
+    ensurePlan(); // seed/migrate the canonical weekly plan for this profile
     if(restoreWorkoutState()) return;
     setScreen('today');
   }
@@ -152,6 +190,7 @@
     wrap.appendChild(h('<div class="scr">'+inner+'</div>'));
     var nav=h('<div class="nav">'+
       navBtn('today','Today',ICON.today,active)+
+      navBtn('week','Week',ICON.week,active)+
       navBtn('map','Map',ICON.map,active)+
       navBtn('progress','Progress',ICON.chart,active)+
       navBtn('profile','Profile',ICON.person,active)+'</div>');
@@ -167,6 +206,7 @@
     window.scrollTo(0,0); // a full screen swap always starts at the top — the
                            // browser does not reset scroll on innerHTML replacement
     if(name==='today') renderToday();
+    else if(name==='week') renderWeek();
     else if(name==='map') renderMap();
     else if(name==='progress') renderProgress();
     else if(name==='profile') renderProfile();
@@ -277,6 +317,7 @@
     var ws={nodes:seeded,focus:null}; recomputeFocus(world,ws); saveWS(worldId,ws);
     Data.worlds.forEach(function(w){ if(w.id!==worldId){ var other={nodes:window.CoachStore.seedStates(w,bench),focus:null}; recomputeFocus(w,other); saveWS(w.id,other); }});
     Store.setProfile({onboarded:true, activeWorld:worldId, worlds:{}, ans:a, days:OB.days, climbDays:OB.climbDays, duration:OB.duration, painArea:(a.pain&&a.pain!=='none')?a.pain:null});
+    ensurePlan(); // seed this profile's canonical weekly plan
     OB=null; UI.worldId=worldId; setScreen('today');
   }
 
@@ -289,47 +330,326 @@
     return UI.readiness;
   }
 
-  // ---- Today ----------------------------------------------------------------
+  // ---- Today (driven by the canonical weekly plan) --------------------------
+  // Today shows exactly ONE dominant scheduled session — the plan's session for
+  // the current weekday — with its rationale, exercises + priorities, goal/skill
+  // links, and any load-driven adaptation clearly labelled. There is no second
+  // competing recommendation; the only secondary card is the smaller "lighter /
+  // adapted option", clearly subordinate.
   function renderToday(){
-    var v=worldView(UI.worldId), world=v.world, ws=v.ws;
+    var plan=getPlan(), ctx=weekCtx(), dayId=ctx.todayId;
+    var res=Week.resolveDay(plan,dayId,ctx);
     var r=readiness();
-    var rec=Engine.recommend({world:world,states:ws.nodes,focus:ws.focus,templates:Data.templates,readiness:r,recent:recentForRec()});
-    var t=Data.templates[rec.sessionTemplateId], alt=Data.templates[rec.alternativeTemplateId];
-    var primary=v.primary, supporting=v.supporting;
     var greet=greeting();
+    var climbDay=res.day.type==='climbing';
+    var rdWorld=climbDay?Data.worldsById.boulder:Data.worldsById.muscleup;
+    // Map-focus summary keeps Today and the Map reading from one canonical world
+    // state (same skills count + active focus) — see Part 10.
+    var pv=worldView(res.goal?res.goal.world:UI.worldId);
+    var focusSummary=pv.primary?
+      '<div class="path-summary"><span>'+pv.completed+'/'+pv.total+' skills</span> &middot; <b>Focus:</b> '+esc(pv.primary.name)+' ('+esc(Engine.progressText(pv.primary,pv.ws.nodes))+')</div>'
+      :'<div class="path-summary">Your weekly training plan</div>';
 
-    // Path summary
-    var pathSummary='';
-    if(primary){
-      pathSummary='<div class="path-summary">'+
-        '<span>'+v.completed+'/'+v.total+' skills</span>'+
-        ' &middot; <b>Focus:</b> '+esc(primary.name)+' ('+esc(Engine.progressText(primary,ws.nodes))+')'+
-        '</div>';
-    }
-
-    // Two landscape columns: left = active goal, current milestone, recommended
-    // workout, full exercise preview, Start (the dominant element); right =
-    // lighter alternative, readiness adjustment, upcoming/progress summary. In
-    // portrait the two wrapper divs simply stack in this same order, so the
-    // reading order and behavior are unchanged there.
     var left=''+
-      '<div class="hero"><div class="between"><div><div class="goal">'+esc(world.name)+'</div>'+
+      '<div class="hero"><div class="between"><div><div class="goal">'+esc(res.day.label)+' &middot; '+esc(res.day.session)+'</div>'+
       '<h1>'+greet+'</h1></div></div>'+
-      pathSummary+'</div>'+
-      recCard(t,world,rec,primary,supporting,false);
+      focusSummary+'</div>'+
+      scheduledCard(res,true);
+    var altHtml=res.alternative?
+      '<div class="section">'+esc(res.alternative.label)+'</div>'+
+      '<div class="card tight alt-card"><div class="muted small">'+esc(res.alternative.note)+'</div>'+
+      (res.day.type!=='rest'&&res.adapted?'<button class="link" data-useplanned="'+dayId+'">Use the planned session instead</button>':
+        (res.day.type!=='rest'&&res.templateId?'<button class="link" data-usealt="'+dayId+'">Use this lighter option</button>':''))+
+      '</div>':'';
     var right=''+
-      (alt&&alt.id!==t.id?'<div class="section">Alternative</div>'+recCard(alt,world,{why:'Lighter option if today is heavy',reasons:[]},primary,supporting,true):'')+
-      readinessCard(r,world)+
-      upcomingCard();
+      altHtml+
+      readinessCard(r,rdWorld)+
+      weekStripCard(plan,ctx,dayId)+
+      '<div class="card tight between"><div><div class="section" style="margin:0">Skill Map</div><div class="muted small">See how today connects to your goals</div></div><button class="btn sm primary" data-goto>View Map</button></div>';
     var html='<div class="today-grid"><div class="today-left">'+left+'</div><div class="today-right">'+right+'</div></div>';
     var wrap=shell(html,'today');
     on('[data-rk]','click',function(e){var k=e.currentTarget.dataset.rk,v=e.currentTarget.dataset.rv;if(k==='pain'){r.pain=!r.pain;}else if(k==='time'){r.time=v;}else{r[k]=+v;}renderToday();},wrap);
-    on('[data-start]','click',function(e){ startSession(e.currentTarget.dataset.start); },wrap);
+    on('[data-start]','click',function(e){ var d=e.currentTarget.dataset.day; if(d!=null&&d!=='') startDaySession(+d); else startSession(e.currentTarget.dataset.start); },wrap);
+    on('[data-groupday]','click',function(e){ openDayDetail(+e.currentTarget.dataset.groupday); },wrap);
+    on('[data-daydetail]','click',function(e){ openDayDetail(+e.currentTarget.dataset.daydetail); },wrap);
+    on('[data-useplanned]','click',function(e){ setDayOverride(+e.currentTarget.dataset.useplanned,'planned'); },wrap);
+    on('[data-usealt]','click',function(e){ setDayOverride(+e.currentTarget.dataset.usealt,'alternative'); },wrap);
     on('[data-goto]','click',function(){ setScreen('map'); },wrap);
+    on('[data-goweek]','click',function(){ setScreen('week'); },wrap);
     on('[data-toggle-readiness]','click',function(){ UI.readinessOpen=!UI.readinessOpen; renderToday(); },wrap);
-    on('[data-exdetail]','click',function(e){ openExerciseSheet(e.currentTarget.dataset.exdetail); },wrap);
+    on('[data-exmeta]','click',function(e){ openExMetaSheet(e.currentTarget.dataset.exmeta); },wrap);
     on('[data-editwk]','click',function(e){ openWorkoutEditor(e.currentTarget.dataset.editwk,'today'); },wrap);
+    on('[data-exdetail]','click',function(e){ openExerciseSheet(e.currentTarget.dataset.exdetail); },wrap);
     on('[data-resettoday]','click',function(e){ delete todayEdits[e.currentTarget.dataset.resettoday]; renderToday(); },wrap);
+  }
+
+  // ---- Week screen (Part 9) -------------------------------------------------
+  // A recognizable Sunday–Saturday training schedule: each day shows its planned
+  // session, main + Priority A/B items, supported goals, and live status.
+  function renderWeek(){
+    var plan=getPlan(), ctx=weekCtx(), todayId=ctx.todayId;
+    var week=Week.resolveWeek(plan,ctx);
+    var cards=week.map(function(res){
+      var d=res.day, cur=d.id===todayId;
+      var goalName=res.goal?res.goal.name:'';
+      var keyItems=res.items.filter(function(it){return it.included&&(it.priority==='A'||it.priority==='B');});
+      if(!keyItems.length) keyItems=res.items.filter(function(it){return it.included;}).slice(0,3);
+      var itemsHtml=keyItems.map(function(it){return '<div class="wd-item">'+prioPill(it.priority)+'<span>'+esc((it.ex&&it.ex.name)||it.exId)+'</span></div>';}).join('')
+        ||'<div class="muted small">'+(d.type==='rest'?'Rest &amp; recovery':'Log what actually appeared')+'</div>';
+      return '<button class="wd-card'+(cur?' today':'')+'" data-daydetail="'+d.id+'">'+
+        '<div class="wd-head"><div><div class="wd-day">'+esc(d.label)+(cur?' <span class="wd-now">Today</span>':'')+'</div>'+
+        '<div class="wd-session">'+esc(d.session)+(d.sub?' &middot; '+esc(d.sub):'')+'</div></div>'+
+        weekStatusBadge(res)+'</div>'+
+        (goalName?'<div class="wd-goal muted small">Supports: '+esc(goalName)+'</div>':'')+
+        '<div class="wd-items">'+itemsHtml+'</div>'+
+        (res.adapted?'<div class="wd-adapt">Adapted — tap for why</div>':'')+
+        '</button>';
+    }).join('');
+    var html='<div class="hero"><h1>Your Week</h1><div class="path-summary">Sunday–Saturday · tap any day for the full plan</div></div>'+
+      '<div class="week-grid">'+cards+'</div>';
+    var wrap=shell(html,'week');
+    on('[data-daydetail]','click',function(e){ openDayDetail(+e.currentTarget.dataset.daydetail); },wrap);
+  }
+  function weekStatusBadge(res){
+    var st=res.status, label, cls;
+    if(st==='completed'){label='Completed';cls='done';}
+    else if(st==='adapted'){label='Adapted';cls='adapted';}
+    else if(st==='group-pending'){label='Awaiting details';cls='pending';}
+    else if(st==='rest'){label='Rest';cls='rest';}
+    else {label='Upcoming';cls='upcoming';}
+    return '<span class="wd-badge '+cls+'">'+label+'</span>';
+  }
+
+  // ---- Day detail (Part 9 / Part 13) — opens as a side panel in landscape ---
+  function openDayDetail(dayId){
+    var plan=getPlan(), ctx=weekCtx();
+    var res=Week.resolveDay(plan,dayId,ctx), d=res.day;
+    var body='<div class="grip"></div>'+
+      '<div class="between"><h2>'+esc(d.label)+'</h2>'+weekStatusBadge(res)+'</div>'+
+      '<div class="muted small" style="margin-bottom:6px">'+esc(d.session)+(d.sub?' &middot; '+esc(d.sub):'')+'</div>'+
+      (res.goal?'<div class="tag gold" style="margin-bottom:6px">'+ICON.star+' '+esc(res.goal.name)+'</div>':'');
+    if(d.type==='climbing'){ body+=emphasisHtml(plan,dayId); }
+    if(res.adapted){
+      body+='<div class="adapt-banner"><b>Adapted from your weekly plan</b>'+
+        res.adaptations.map(function(a){return '<div class="adapt-cause">'+esc(a.cause)+'</div>';}).join('')+'</div>';
+    }
+    // full planned exercise list with role/priority/why
+    body+='<div class="section">Planned exercises</div>';
+    body+=res.items.map(function(it){
+      var m=it.ex||{}; var why=m.why&&m.why[d.key]?m.why[d.key]:'';
+      return '<div class="dd-ex'+(it.included?'':' ex-off')+'">'+
+        '<div class="dd-ex-h">'+prioPill(it.priority)+'<b>'+esc(m.name||it.exId)+'</b><span class="muted small">'+esc(m.role||'')+'</span></div>'+
+        (why?'<div class="muted small">'+esc(why)+'</div>':'')+
+        (m.conditional?'<div class="muted tiny">Rule: '+esc(m.conditional)+'</div>':'')+
+        (it.note?'<div class="muted tiny">'+esc(it.note)+'</div>':'')+
+        '</div>';
+    }).join('');
+    if(d.type==='group'){ body+=groupLogHtml(plan,dayId); }
+    // controls (Part 13)
+    body+='<div class="section">Actions</div><div class="dd-actions">';
+    if(res.templateId&&d.type!=='group'){ body+='<button class="btn primary" data-startday="'+dayId+'">Start Workout</button>'; }
+    if(d.type!=='rest'){ body+='<button class="btn ghost" data-markdone="'+dayId+'">Mark Completed</button>'; }
+    if(res.adapted){ body+='<button class="btn ghost" data-useplanned="'+dayId+'">Restore planned session</button>'; }
+    else if(res.alternative&&res.templateId&&d.type!=='group'){ body+='<button class="btn ghost" data-usealt="'+dayId+'">Use lighter alternative</button>'; }
+    if(plan.overrides&&plan.overrides[dayId]){ body+='<button class="link" data-clearoverride="'+dayId+'">Clear my override</button>'; }
+    body+='</div><button class="btn ghost" data-close>Close</button>';
+    showSheet(body,function(sheet){
+      on('[data-start]','click',function(e){ closeSheet(); startSession(e.currentTarget.dataset.start); },sheet);
+      on('[data-startday]','click',function(e){ closeSheet(); startDaySession(+e.currentTarget.dataset.startday); },sheet);
+      on('[data-emph]','click',function(e){ setEmphasis(dayId,e.currentTarget.dataset.emph); },sheet);
+      on('[data-gmove]','click',function(e){ toggleGroupMove(dayId,e.currentTarget.dataset.gmove); },sheet);
+      on('[data-savegroup]','click',function(){ saveGroupLog(dayId); },sheet);
+      on('[data-markdone]','click',function(e){ markDayDone(+e.currentTarget.dataset.markdone); },sheet);
+      on('[data-useplanned]','click',function(e){ setDayOverride(+e.currentTarget.dataset.useplanned,'planned'); },sheet);
+      on('[data-usealt]','click',function(e){ setDayOverride(+e.currentTarget.dataset.usealt,'alternative'); },sheet);
+      on('[data-clearoverride]','click',function(e){ clearDayOverride(+e.currentTarget.dataset.clearoverride); },sheet);
+      on('[data-close]','click',closeSheet,sheet);
+    });
+  }
+  function emphasisHtml(plan,dayId){
+    var d=Week.DAYS_BY_ID[dayId], sel=(plan.emphasis&&plan.emphasis[dayId])||null;
+    return '<div class="section">Session emphasis</div><div class="opts">'+
+      d.emphasis.map(function(e){return '<button class="pill '+(sel===e.v?'on':'')+'" data-emph="'+e.v+'">'+esc(e.label)+'</button>';}).join('')+'</div>';
+  }
+  function groupLogHtml(plan,dayId){
+    var log=(plan.dayLog&&plan.dayLog[dayId])||{}, moves=(log.group&&log.group.moves)||[];
+    return '<div class="section">What actually appeared</div>'+
+      '<div class="muted small" style="margin-bottom:6px">Log the real movements — actual load (not the label) shapes the rest of your week.</div>'+
+      '<div class="opts group-moves">'+Week.GROUP_MOVES.map(function(m){return '<button class="pill '+(moves.indexOf(m.v)>=0?'on':'')+'" data-gmove="'+m.v+'">'+esc(m.label)+'</button>';}).join('')+'</div>'+
+      '<button class="btn primary sp" data-savegroup="'+dayId+'">Save Group Workout Log</button>';
+  }
+
+  // ---- plan mutations (Part 13 — never rewrite the program template) --------
+  function setEmphasis(dayId,v){ var p=getPlan(); p.emphasis=p.emphasis||{}; p.emphasis[dayId]=v; savePlan(p); openDayDetail(dayId); }
+  var _pendingGroup={};
+  function toggleGroupMove(dayId,v){
+    var p=getPlan(); p.dayLog=p.dayLog||{}; var log=p.dayLog[dayId]||{};
+    log.group=log.group||{moves:[]}; var i=log.group.moves.indexOf(v);
+    if(i>=0) log.group.moves.splice(i,1); else log.group.moves.push(v);
+    p.dayLog[dayId]=log; savePlan(p); openDayDetail(dayId);
+  }
+  function saveGroupLog(dayId){
+    var p=getPlan(); p.dayLog=p.dayLog||{}; var log=p.dayLog[dayId]||{};
+    log.group=log.group||{moves:[]}; log.completed=true; p.dayLog[dayId]=log; savePlan(p);
+    closeSheet(); toast('Group workout logged — Friday will adjust to the actual pulling load.');
+    if(UI.screen==='week') renderWeek(); else renderToday();
+  }
+  function markDayDone(dayId){
+    var p=getPlan(); p.dayLog=p.dayLog||{}; var log=p.dayLog[dayId]||{}; log.completed=true; p.dayLog[dayId]=log; savePlan(p);
+    closeSheet(); toast('Marked completed.'); if(UI.screen==='week') renderWeek(); else renderToday();
+  }
+  function setDayOverride(dayId,mode){
+    var p=getPlan(); p.overrides=p.overrides||{}; p.overrides[dayId]=mode; savePlan(p);
+    closeSheet(); toast(mode==='planned'?'Restored the planned session for today.':'Using the lighter option for today.');
+    if(UI.screen==='week') renderWeek(); else renderToday();
+  }
+  function clearDayOverride(dayId){
+    var p=getPlan(); if(p.overrides) delete p.overrides[dayId]; savePlan(p);
+    closeSheet(); toast('Override cleared — back to the load-based suggestion.');
+    if(UI.screen==='week') renderWeek(); else renderToday();
+  }
+
+  // ---- start a day's session (applies plan adaptations to the runner) -------
+  function startDaySession(dayId){
+    var plan=getPlan(), ctx=weekCtx();
+    var res=Week.resolveDay(plan,dayId,ctx);
+    if(!res.templateId){ openDayDetail(dayId); return; }
+    // launch in the right world so the session records against the right goal
+    if(res.goal) UI.worldId=res.goal.world;
+    var t=Data.templates[res.templateId];
+    if(!t){ openDayDetail(dayId); return; }
+    if(t.kind==='climbing'){ startClimbing(t); return; }
+    // apply a Friday ladder-round reduction as a today-only override
+    if(res.ladderRounds!=null){
+      var rt=clone(prescriptionFor(t));
+      (rt.blocks||[]).forEach(function(b){ if(b.scheme==='ladder') b.rounds=res.ladderRounds; });
+      UI.workout=buildWorkout(rt); delete todayEdits[t.id];
+      saveWorkoutState(); window.scrollTo(0,0); renderStrength(); return;
+    }
+    startStrength(t);
+  }
+
+  // ---- exercise-metadata sheet (one canonical record, Part 11) --------------
+  function openExMetaSheet(exId){
+    var m=Week.EX[exId]; if(!m){ if(Data.exercises[exId]) return openExerciseSheet(exId); return; }
+    var goals=m.goals.map(function(g){return Week.GOALS[g]?Week.GOALS[g].name:g;});
+    var skills=m.skills.map(function(s){return Week.SKILLS[s]?Week.SKILLS[s].name:s;});
+    var days=Week.DAYS.filter(function(d){return d.exercises.indexOf(exId)>=0;});
+    var body='<div class="grip"></div>'+
+      '<div class="between"><h2>'+esc(m.name)+'</h2>'+prioPill(m.priority)+'</div>'+
+      '<div class="muted small" style="margin-bottom:8px">'+esc(m.role)+'</div>'+
+      (goals.length?'<div class="dd-kv"><span>Goals</span><b>'+esc(goals.join(', '))+'</b></div>':'')+
+      (skills.length?'<div class="dd-kv"><span>Skills</span><b>'+esc(skills.join(', '))+'</b></div>':'')+
+      '<div class="section">In your weekly plan</div>'+
+      days.map(function(d){var why=m.why&&m.why[d.key]?m.why[d.key]:'';return '<div class="dd-ex"><div class="dd-ex-h"><b>'+esc(d.label)+'</b><span class="muted small">'+esc(d.session)+'</span></div>'+(why?'<div class="muted small">'+esc(why)+'</div>':'')+'</div>';}).join('')+
+      (m.overlaps&&m.overlaps.length?'<div class="section">Overlaps</div><p class="muted small">'+m.overlaps.map(esc).join(' ')+'</p>':'')+
+      (m.sub&&m.sub.length?'<div class="section">Substitutions</div><p class="muted small">'+m.sub.map(function(s){return esc(Week.EX[s]?Week.EX[s].name:s);}).join(', ')+'</p>':'')+
+      (m.conditional?'<div class="section">Conditional rule</div><p class="muted small">'+esc(m.conditional)+'</p>':'')+
+      (m.nodes&&m.nodes.length?'<div class="section">Skill map nodes</div><p class="muted small">'+m.nodes.map(function(id){return esc(Data.nodeIndex[id]?Data.nodeIndex[id].node.name:id);}).join(', ')+'</p>':'')+
+      '<button class="btn ghost" data-close>Close</button>';
+    showSheet(body,function(sheet){ on('[data-close]','click',closeSheet,sheet); });
+  }
+
+  // The dominant scheduled-session card (Part 8 hierarchy).
+  function scheduledCard(res,dominant){
+    var day=res.day;
+    if(day.type==='rest'){
+      return '<div class="rec sched">'+
+        '<div class="kick">Scheduled today</div><div class="name">Rest &amp; Recovery</div>'+
+        '<div class="why">Saturday is a rest day by default — recovery is part of the plan.</div>'+
+        (res.alternative?'<div class="muted small" style="margin-top:8px">'+esc(res.alternative.note)+'</div>':'')+
+        '</div>';
+    }
+    var mainItem=res.items.filter(function(it){return it.included&&it.role===Week.ROLE.MAIN;})[0]||res.items.filter(function(it){return it.included;})[0];
+    var why=mainItem&&mainItem.ex&&mainItem.ex.why?mainItem.ex.why[day.key]:'';
+    var skillsTouched={};
+    res.items.forEach(function(it){ if(it.included&&it.ex){ it.ex.skills.forEach(function(s){skillsTouched[s]=true;}); } });
+    var skillTags=Object.keys(skillsTouched).map(function(s){var sk=Week.SKILLS[s];return sk?'<span class="tag'+(sk.active?' gold':'')+'">'+(sk.active?ICON.star+' ':'')+esc(sk.name)+'</span>':'';}).join('');
+    var adaptHtml=res.adapted?
+      '<div class="adapt-banner"><b>Adapted from your weekly plan</b>'+
+      res.adaptations.map(function(a){return '<div class="adapt-cause">'+esc(a.cause)+'</div>';}).join('')+'</div>'
+      :'<div class="asplanned">&#10003; As planned</div>';
+    var startBtn;
+    if(day.type==='group'){
+      var logged=res.status==='completed';
+      startBtn='<button class="btn primary" data-groupday="'+day.id+'">'+(logged?'Edit Group Workout Log':'Log Group Workout')+'</button>';
+    } else if(res.templateId){
+      // data-start keeps the resolved template id for compatibility; data-day
+      // routes through startDaySession so plan adaptations (world, ladder
+      // rounds) are applied.
+      startBtn='<button class="btn primary" data-start="'+esc(res.templateId)+'" data-day="'+day.id+'">Start Workout</button>';
+    } else {
+      startBtn='<button class="btn" data-daydetail="'+day.id+'">View Session</button>';
+    }
+    return '<div class="rec sched">'+
+      '<div class="kick">Scheduled today</div>'+
+      '<div class="name">'+esc(day.session)+(day.sub?' &middot; '+esc(day.sub):'')+'</div>'+
+      (res.templateId&&Data.templates[res.templateId]?'<div class="meta"><span>'+durationText(Data.templates[res.templateId])+'</span><span>'+esc(Data.templates[res.templateId].difficulty||'')+'</span></div>':'')+
+      (res.goal?'<div class="sched-goal">Primary contribution: <b>'+esc(res.goal.name)+'</b></div>':'')+
+      (skillTags?'<div class="foci">'+skillTags+'</div>':'')+
+      (why?'<div class="why">'+esc(why)+'</div>':'')+
+      adaptHtml+
+      '<div class="preview">'+planItemsHtml(res)+'</div>'+
+      execPreviewHtml(res)+
+      startBtn+
+      '<button class="btn ghost sm" data-daydetail="'+day.id+'">Full day details</button>'+
+      '</div>';
+  }
+  // For a day whose main practice maps to an executable strength workout, show
+  // the resolved workout (the actual sets/rounds the Start button will run) and
+  // let the user edit it for today only — the same editing surface as before,
+  // now anchored under the plan card.
+  function execPreviewHtml(res){
+    if(!res.templateId||res.day.type==='group'||res.day.type==='rest') return '';
+    var t=Data.templates[res.templateId];
+    if(!t||t.kind!=='strength') return '';
+    var rt=prescriptionFor(t);
+    if(res.ladderRounds!=null){ rt=clone(rt); (rt.blocks||[]).forEach(function(b){ if(b.scheme==='ladder') b.rounds=res.ladderRounds; }); }
+    var modified=Settings.isModifiedForToday(t,settings(),todayEdits[t.id]);
+    return '<div class="exec-preview"><div class="section" style="margin-top:12px">Start Workout will run</div>'+
+      (modified?'<div class="modified-flag">&#9679; Modified for today &middot; <button class="link" data-resettoday="'+esc(t.id)+'">Reset to default</button></div>':'')+
+      '<div class="wk-list">'+workoutExerciseList(rt)+'</div>'+
+      '<button class="btn ghost sm inline-edit" data-editwk="'+esc(t.id)+'">Edit Workout</button></div>';
+  }
+
+  // Plan exercise list with priority + role, honestly showing what was adjusted.
+  // Uses .pl-ex (distinct from the executable workout's .wk-ex list below it).
+  function planItemsHtml(res){
+    var n=0;
+    return res.items.map(function(it){
+      var meta=it.ex||{}; var name=meta.name||it.exId;
+      if(!it.included){
+        return '<div class="pl-ex ex-off" data-exmeta="'+esc(it.exId)+'"><div class="wk-ex-h">'+
+          '<span class="wk-ex-nm">'+esc(name)+'</span>'+prioPill(it.priority)+'</div>'+
+          '<div class="wk-ex-struct muted small">'+esc(it.note||'Not today')+'</div></div>';
+      }
+      n++;
+      return '<div class="pl-ex" data-exmeta="'+esc(it.exId)+'"><div class="wk-ex-h">'+
+        '<span class="wk-ex-n">'+n+'</span><span class="wk-ex-nm">'+esc(name)+'</span>'+
+        prioPill(it.priority)+'<span class="wk-ex-info">Details &rsaquo;</span></div>'+
+        '<div class="wk-ex-struct muted small">'+esc(meta.role||'')+(it.note?' &middot; '+esc(it.note):'')+'</div></div>';
+    }).join('');
+  }
+  function prioPill(p){ return '<span class="prio prio-'+esc(p)+'" title="Priority '+esc(p)+'">'+esc(p)+'</span>'; }
+
+  // Compact "this week at a glance" strip (Part 8 secondary / Part 9 teaser).
+  function weekStripCard(plan,ctx,todayId){
+    var week=Week.resolveWeek(plan,ctx);
+    var chips=week.map(function(res){
+      var d=res.day, cur=d.id===todayId;
+      var st=res.status;
+      var cls='wk-day-chip'+(cur?' today':'')+(st==='completed'?' done':'')+(st==='adapted'?' adapted':'')+(d.type==='rest'?' rest':'');
+      return '<button class="'+cls+'" data-daydetail="'+d.id+'"><span class="wdc-d">'+esc(d.label.slice(0,3))+'</span>'+
+        '<span class="wdc-s">'+esc(shortSession(d))+'</span></button>';
+    }).join('');
+    return '<div class="card tight"><div class="between"><div class="section" style="margin:0">This Week</div>'+
+      '<button class="btn sm" data-goweek>Open Week</button></div><div class="wk-strip">'+chips+'</div></div>';
+  }
+  function shortSession(d){
+    if(d.type==='rest') return 'Rest';
+    if(d.type==='climbing') return 'Climb';
+    if(d.type==='group') return 'Group';
+    return d.sub?d.sub.split(' ')[0]:d.session.split(' ')[0];
   }
   function greeting(){var hh=new Date().getHours();return hh<12?'Good Morning':hh<18?'Good Afternoon':'Good Evening';}
   function readinessCard(r,world){
@@ -542,6 +862,7 @@
       '<div class="section">Mastery Criteria</div>'+(crits||'<p class="muted small">&mdash;</p>')+
       lockNote+
       (supports.length?'<div class="section">Supporting Skills</div><p class="muted small">'+supports.map(function(s){return esc(s.name);}).join(' &middot; ')+'</p>':'')+
+      nodeWeeklyPlanHtml(nodeId)+
       '<div class="section">Recommended Workouts</div>'+(tmpls||'<p class="muted small">&mdash;</p>')+
       (canFocus?'<button class="btn ghost" data-focus="'+n.id+'">Set as Current Focus</button>':'')+
       '<button class="btn ghost" data-close>Close</button>';
@@ -550,6 +871,23 @@
       on('[data-focus]','click',function(e){ setFocus(e.currentTarget.dataset.focus); },sheet);
       on('[data-close]','click',closeSheet,sheet);
     });
+  }
+  // Map → Week connection (Part 10): which weekly exercises train this node,
+  // and on which days. The map explains the program; it never invents a
+  // competing session.
+  function nodeWeeklyPlanHtml(nodeId){
+    var rows=[];
+    Object.keys(Week.EX).forEach(function(exId){
+      var m=Week.EX[exId];
+      if(m.nodes.indexOf(nodeId)<0) return;
+      var days=Week.DAYS.filter(function(d){return d.exercises.indexOf(exId)>=0;}).map(function(d){return d.label;});
+      if(days.length) rows.push('<div class="dd-kv"><span>'+esc(days.join(' &amp; '))+'</span><b>'+esc(m.name)+'</b></div>');
+    });
+    // Also surface the active skill note if this node is an active skill.
+    var skillNote='';
+    Object.keys(Week.SKILLS).forEach(function(sid){var sk=Week.SKILLS[sid];if(sk.node===nodeId&&sk.active)skillNote='<div class="tag gold" style="margin:2px 0 6px">'+ICON.star+' Current Active Skill</div>';});
+    if(!rows.length&&!skillNote) return '';
+    return '<div class="section">In your weekly plan</div>'+skillNote+rows.join('');
   }
   function setFocus(nodeId){
     var world=activeWorld(), ws=WS(UI.worldId);
@@ -1005,8 +1343,26 @@
     var res=Progress.applyClimbing(world,ws.nodes,session);
     ws.nodes=res.states; recomputeFocus(world,ws); saveWS(c.worldId,ws);
     var sessions=Store.getSessions(); sessions.push(session); Store.setSessions(sessions);
+    recordClimbLoad(session); // feed the weekly load model (affects Monday etc.)
     UI.climb=null; saveWorkoutState();
     showSummary(world,res,session);
+  }
+
+  // Map a completed climbing session onto the weekly plan's climbing day so its
+  // difficulty / pulling / grip load can shape Monday and the rest of the week
+  // (Part 5). Derived from what the logger already captures — explainable, not
+  // invented: RPE → difficulty, hard grades → pulling, sensitive fingers → grip.
+  function recordClimbLoad(session){
+    var p=getPlan(); p.dayLog=p.dayLog||{};
+    var climbDayId=0; // Sunday in the approved plan
+    var difficulty=session.rpe>=4?'hard':(session.rpe===3?'moderate':'easy');
+    var log=p.dayLog[climbDayId]||{};
+    log.completed=true;
+    log.climb={ difficulty:difficulty,
+      pullingLoad:session.hardPull?'high':'moderate',
+      gripLoad:(session.finger!=null&&session.finger<=1)?'high':'moderate',
+      elbow:'ok' };
+    p.dayLog[climbDayId]=log; savePlan(p);
   }
 
   // ---- post-session summary + unlock ----------------------------------------
@@ -1088,6 +1444,7 @@
   }
   function renderSettingsHome(){
     var html='<h1>Profile &amp; Settings</h1>'+
+      landscapeCard()+
       '<div class="settings-list">'+
       settingsRow('goals','Active Goals','Goal world, training days, session length')+
       settingsRow('workoutDefaults','Workout Defaults','Rounds, reps and rests per workout')+
@@ -1097,6 +1454,27 @@
       '</div>';
     var wrap=shell(html,'profile');
     on('[data-sview]','click',function(e){ settingsView=e.currentTarget.dataset.sview; renderProfile(); },wrap);
+    on('[data-enter-landscape]','click',function(e){ enterLandscapeUI(e.currentTarget); },wrap);
+  }
+  // Real user-initiated landscape action (Part 1B). Reports success/failure
+  // honestly — never claims the device rotated when the API request failed.
+  function landscapeCard(){
+    var L=window.SPC_landscape||{};
+    var note=L.supported
+      ? 'This app is designed for landscape. Tap to lock landscape orientation.'
+      : 'Your browser can’t lock orientation here — turn your phone sideways for the landscape layout.';
+    return '<div class="card tight" id="landscapeCard"><div class="section" style="margin-top:0">Display</div>'+
+      '<div class="muted small" id="landscapeNote">'+esc(note)+'</div>'+
+      (L.supported?'<button class="btn primary sp" data-enter-landscape>Enter Landscape Mode</button>':'')+'</div>';
+  }
+  function enterLandscapeUI(btn){
+    var L=window.SPC_landscape; if(!L){ return; }
+    btn.disabled=true;
+    L.enter({fullscreen:true}).then(function(res){
+      var note=document.getElementById('landscapeNote');
+      if(res.locked){ if(note) note.textContent='Landscape locked. Rotate back anytime by leaving fullscreen.'; btn.textContent='Landscape Active'; }
+      else { if(note) note.textContent='Your browser wouldn’t lock orientation ('+(res.reason||'unsupported')+'). Turn your phone sideways instead.'; btn.disabled=false; }
+    });
   }
   function wireSettingsBack(wrap){ on('[data-sback]','click',function(){ settingsView='home'; renderProfile(); },wrap); }
 

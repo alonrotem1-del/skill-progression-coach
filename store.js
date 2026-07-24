@@ -25,7 +25,8 @@
     state: PREFIX + 'state',
     sessions: PREFIX + 'sessions',
     bench: PREFIX + 'bench',
-    settings: PREFIX + 'settings'
+    settings: PREFIX + 'settings',
+    plan: PREFIX + 'plan'
   };
   var LEGACY_KEYS = ['puc_log', 'puc_plan', 'puc_settings', 'puc_session', 'puc_progression', 'puc_secondary'];
 
@@ -116,6 +117,8 @@
       setBench: function (b) { set(KEYS.bench, b); },
       getSettings: function () { return get(KEYS.settings); },
       setSettings: function (s) { set(KEYS.settings, s); },
+      getPlan: function () { return get(KEYS.plan); },
+      setPlan: function (p) { set(KEYS.plan, p); },
       reset: function () { Object.keys(KEYS).forEach(function (k) { del(KEYS[k]); }); }
     };
   }

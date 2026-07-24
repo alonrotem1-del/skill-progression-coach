@@ -7,11 +7,11 @@
  * activation, deletes only obsolete Skill-Coach caches — never the original
  * app's caches. It also never intercepts requests outside its scope.
  */
-const CACHE = 'skill-progression-coach-v2';
+const CACHE = 'skill-progression-coach-v3';
 const SCOPE = new URL(self.registration.scope).pathname; // e.g. /skill-progression-coach/
 const ASSETS = [
   './', './index.html',
-  './app.js', './data.js', './engine.js', './progress.js', './store.js',
+  './app.js', './data.js', './week.js', './engine.js', './progress.js', './store.js',
   './duration.js', './adapt.js', './settings.js',
   './manifest.webmanifest',
   './icon.svg', './icon-192.png', './icon-512.png', './icon-512-maskable.png', './apple-touch-icon.png'

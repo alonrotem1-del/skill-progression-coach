@@ -414,6 +414,10 @@ test.describe('migration + storage guard', () => {
 
 // ─────────────────────────── browser: UI + full loop ────────────────────────
 async function seed(page, active = 'muscleup', bench = { pullup_max: 9, dips_max: 6 }) {
+  // Pin "today" deterministically so Today's plan-driven session is stable:
+  // Friday (5, Pull-Up Ladder) for the muscle-up world, Sunday (0, Climbing)
+  // for the boulder world. addInitScript persists across the reload below.
+  await page.addInitScript((dayId) => { window.__spcTodayId = dayId; }, active === 'boulder' ? 0 : 5);
   await page.evaluate(({ active, bench }) => {
     const S = window.CoachStore.makeStore(), D = window.CoachData, E = window.CoachEngine;
     const state = {};
@@ -430,6 +434,7 @@ async function seed(page, active = 'muscleup', bench = { pullup_max: 9, dips_max
 
 test.describe('app UI', () => {
   test('boots into onboarding with English title and LTR, then reaches Today', async ({ page }) => {
+    await page.addInitScript(() => { window.__spcTodayId = 5; }); // Friday: a training day
     await page.goto('index.html');
     await expect(page.locator('text=Skill Progression Coach')).toBeVisible();
     expect(await page.locator('html').getAttribute('dir')).toBe('ltr');
@@ -462,16 +467,20 @@ test.describe('app UI', () => {
     expect(meta).not.toContain('—');
   });
 
-  test('workout preview shows the full exercise list as complete rounds before starting', async ({ page }) => {
+  test('Today preview shows the scheduled plan exercises with priorities', async ({ page }) => {
+    // Today is now driven by the weekly plan (Friday = Home Pull Session).
     await page.goto('index.html'); await seed(page);
     await expect(page.locator('.preview').first()).toBeVisible();
     const preview = await page.locator('.preview').first().textContent();
-    // Full exercise list: named exercises + ladder described as N complete rounds.
-    expect(preview).toContain('Strict Pull-Ups');
-    expect(preview).toContain('Scapular Pull-Ups');
-    expect(preview).toMatch(/1–2–3\s*×\s*5\s*complete rounds/);
-    expect(preview).toContain('between steps');
-    expect(preview).toContain('between rounds');
+    expect(preview).toContain('Pistol Squat');   // Priority A main skill
+    expect(preview).toContain('Pull-Up Ladder');  // Priority A main skill
+    // Priority pills are present on the plan items.
+    expect(await page.locator('.preview .prio-A').count()).toBeGreaterThan(0);
+    // The ladder's round structure is still reachable — start it and confirm.
+    await page.locator('.rec.sched [data-start]').first().click();
+    await expect(page.locator('.round-overview').first()).toBeVisible();
+    const rounds = await page.locator('.round-overview').first().locator('.round-chip').count();
+    expect(rounds).toBe(5); // 1–2–3 × 5 complete rounds under normal load
   });
 
   test('map: world rail sits OUTSIDE the blue canvas; both worlds switch the tree', async ({ page }) => {

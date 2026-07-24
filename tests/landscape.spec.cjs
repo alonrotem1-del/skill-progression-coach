@@ -15,6 +15,9 @@ const LANDSCAPE_SIZES = [
 const PORTRAIT = { width: 390, height: 844 };
 
 async function seed(page, active = 'muscleup', bench = { pullup_max: 9, dips_max: 6 }) {
+  // Pin the weekday so Today's plan session is deterministic: Friday (Pull-Up
+  // Ladder) for muscle-up, Sunday (Climbing) for boulder.
+  await page.addInitScript((dayId) => { window.__spcTodayId = dayId; }, active === 'boulder' ? 0 : 5);
   await page.evaluate(({ active, bench }) => {
     const S = window.CoachStore.makeStore(), D = window.CoachData, E = window.CoachEngine;
     const state = {};
