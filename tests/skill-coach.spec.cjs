@@ -455,14 +455,14 @@ test.describe('app UI', () => {
     await page.locator('#days .pill').first().click();
     await page.locator('[data-next]').click();
     await expect(page.locator('.rec .name').first()).toBeVisible();
-    await expect(page.locator('[data-start]').first()).toBeVisible();
+    await expect(page.locator('[data-startday]').first()).toBeVisible();
   });
 
   test('Today screen shows recommendation first and readiness collapsed', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
     // Recommendation card should be visible immediately
     await expect(page.locator('.rec .name').first()).toBeVisible();
-    await expect(page.locator('[data-start]').first()).toBeVisible();
+    await expect(page.locator('[data-startday]').first()).toBeVisible();
     // Readiness should be collapsed by default (energy/fatigue segments not visible)
     expect(await page.locator('.seg button[data-rk="energy"]').count()).toBe(0);
     // Expanding readiness should show the controls
@@ -477,22 +477,21 @@ test.describe('app UI', () => {
     expect(meta).not.toContain('—');
   });
 
-  test('Today preview shows the scheduled plan exercises with priorities', async ({ page }) => {
-    // Today is now driven by the weekly plan (Friday = Home Pull Session).
+  test('Today queue shows the scheduled plan exercises with priorities', async ({ page }) => {
+    // Today is now driven by the weekly plan (Friday = Home Pull Session), shown
+    // as a per-exercise QUEUE rather than one whole-workout preview.
     await page.goto('index.html'); await seed(page);
-    await expect(page.locator('.preview').first()).toBeVisible();
-    const preview = await page.locator('.preview').first().textContent();
-    expect(preview).toContain('Pistol Squat');   // Priority A main skill
-    expect(preview).toContain('Pull-Up Ladder');  // Priority A main skill
-    // Priority pills are present on the plan items.
-    expect(await page.locator('.preview .prio-A').count()).toBeGreaterThan(0);
-    expect(preview).toContain('Toes-to-Bar'); // required, not filtered out
-    // Start Workout builds a runner from the visible plan — Pistol Squat first,
-    // and the Pull-Up Ladder keeps its 1–2–3 × 5 structure.
-    await page.locator('.rec.sched [data-start]').first().click();
+    await expect(page.locator('.queue').first()).toBeVisible();
+    const queue = await page.locator('.queue').first().textContent();
+    expect(queue).toContain('Pistol Squat');   // Priority A main skill
+    expect(queue).toContain('Pull-Up Ladder');  // Priority A main skill
+    // Priority pills are present on the queue items.
+    expect(await page.locator('.queue .prio-A').count()).toBeGreaterThan(0);
+    expect(queue).toContain('Toes-to-Bar'); // required, not filtered out
+    // "Start Daily Workout" begins the FIRST required exercise (Pistol Squat) —
+    // one exercise at a time, never the whole workout as a single block.
+    await page.locator('.rec.sched [data-startday]').first().click();
     await expect(page.locator('.wk-block-wrap').first()).toContainText('Pistol Squat');
-    const ladderChips = await page.locator('.round-overview', { has: page.locator('.round-chip') }).filter({ hasText: 'Round 5' }).locator('.round-chip').count();
-    expect(ladderChips).toBe(5); // 1–2–3 × 5 complete rounds under normal load
   });
 
   test('map: world rail sits OUTSIDE the blue canvas; both worlds switch the tree', async ({ page }) => {
@@ -972,10 +971,10 @@ test.describe('settings UI', () => {
 
   test('the daily plan list is visible on Today and item details open', async ({ page }) => {
     await page.goto('index.html'); await seed(page); // Friday
-    await expect(page.locator('.pl-ex')).not.toHaveCount(0);
-    await expect(page.locator('.pl-ex .wk-ex-nm').first()).toHaveText('Pistol Squat');
-    // Tapping a plan item opens its canonical metadata (goals/skills/plan days).
-    await page.locator('.pl-ex', { hasText: 'Pull-Up Ladder' }).click();
+    await expect(page.locator('.q-ex')).not.toHaveCount(0);
+    await expect(page.locator('.q-ex .q-name').first()).toHaveText('Pistol Squat');
+    // Tapping a queue item opens its canonical metadata (goals/skills/plan days).
+    await page.locator('.q-ex .q-name', { hasText: 'Pull-Up Ladder' }).click();
     await expect(page.locator('.sheet h2')).toContainText('Pull-Up Ladder');
     await expect(page.locator('.sheet')).toContainText('In your weekly plan');
     await expect(page.locator('.sheet')).toContainText('Friday');

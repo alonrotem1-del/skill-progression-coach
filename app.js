@@ -8,6 +8,7 @@
   var Data = window.CoachData, Engine = window.CoachEngine, Progress = window.CoachProgress;
   var Duration = window.CoachDuration, Adapt = window.CoachAdapt, Settings = window.CoachSettings;
   var Week = window.CoachWeek;
+  var Daily = window.CoachDaily;
   var Store = window.CoachStore.makeStore();
 
   var app = document.getElementById('app');
@@ -155,6 +156,29 @@
   }
   function getPlan(){ return ensurePlan(); }
   function savePlan(p){ Store.setPlan(p); }
+
+  // ---- daily workout (the exercise queue for today) -------------------------
+  // Persisted separately so it survives refresh / PWA restart / SW update.
+  var DAY_KEY='spc_c_day';
+  function getDailyRaw(){ return Store.get(DAY_KEY); }
+  function saveDaily(d){ Store.set(DAY_KEY,d); }
+  function clearDaily(){ Store.del(DAY_KEY); }
+  // The daily workout for the current weekday, resuming an in-progress one or
+  // (re)building a fresh queue from the resolved plan. `rebuild:true` forces a
+  // fresh queue (e.g. after the plan changed).
+  function dailyForToday(res){
+    var dayId=todayDayId(), key=Daily.dateKey(new Date());
+    res=res||Week.resolveDay(getPlan(), dayId, weekCtx());
+    var nd=Daily.makeDaily(res, {dateKey:key}); nd.dateKey=key;
+    // Reconcile with any stored same-day daily: preserve per-exercise state +
+    // results (so completed exercises are never restarted), and the active id.
+    var d=getDailyRaw();
+    if(d && d.dateKey===key && d.weekday===dayId){
+      nd.exercises.forEach(function(e){ var prev=Daily.findEx(d,e.exId); if(prev){ e.state=prev.state; e.result=prev.result; } });
+      nd.status=d.status; nd.activeExId=d.activeExId;
+    }
+    saveDaily(nd); return nd;
+  }
   // Context the load model + resolver read. `__spcTodayId` is a test/override
   // hook so a session can inspect any weekday deterministically.
   function weekCtx(){
@@ -370,6 +394,11 @@
     var wrap=shell(html,'today');
     on('[data-rk]','click',function(e){var k=e.currentTarget.dataset.rk,v=e.currentTarget.dataset.rv;if(k==='pain'){r.pain=!r.pain;}else if(k==='time'){r.time=v;}else{r[k]=+v;}renderToday();},wrap);
     on('[data-start]','click',function(e){ var d=e.currentTarget.dataset.day; if(d!=null&&d!=='') startDaySession(+d); else startSession(e.currentTarget.dataset.start); },wrap);
+    on('[data-startday]','click',function(e){ startDaySession(+e.currentTarget.dataset.startday); },wrap);
+    on('[data-exstart]','click',function(e){ startExercise(e.currentTarget.dataset.exstart); },wrap);
+    on('[data-exview]','click',function(e){ openExResult(e.currentTarget.dataset.exview); },wrap);
+    on('[data-exredo]','click',function(e){ redoExercise(e.currentTarget.dataset.exredo); },wrap);
+    on('[data-exskip]','click',function(e){ skipExercise(e.currentTarget.dataset.exskip); },wrap);
     on('[data-groupday]','click',function(e){ openDayDetail(+e.currentTarget.dataset.groupday); },wrap);
     on('[data-daydetail]','click',function(e){ openDayDetail(+e.currentTarget.dataset.daydetail); },wrap);
     on('[data-useplanned]','click',function(e){ setDayOverride(+e.currentTarget.dataset.useplanned,'planned'); },wrap);
@@ -631,20 +660,179 @@
     });
     return rt;
   }
-  // ---- start a day's session (applies plan adaptations to the runner) -------
-  function startDaySession(dayId){
-    var plan=getPlan(), ctx=weekCtx();
-    var res=Week.resolveDay(plan,dayId,ctx);
-    if(res.goal) UI.worldId=res.goal.world;
-    // climbing day → climbing logger
-    if(res.day.type==='climbing'&&res.templateId&&Data.templates[res.templateId]){ startClimbing(Data.templates[res.templateId]); return; }
-    // strength day → a workout assembled from the day's included plan exercises
-    if(res.executable&&res.executable.length){
-      UI.workout=buildWorkout(dayPrescription(res));
-      saveWorkoutState(); window.scrollTo(0,0); renderStrength(); return;
+  // A single-exercise runnable prescription (used by the daily queue). The
+  // Pull-Up Ladder pulls its block from the (possibly user-edited) mu_strength
+  // ladder so saved/today edits still apply.
+  function exercisePrescription(exId, res){
+    var meta=Week.EX[exId], b=meta&&meta.block; if(!b) return null;
+    var block=clone(b);
+    if(block.scheme==='ladder'){
+      var lad=prescriptionFor(Data.templates.mu_strength);
+      var ladBlock=(lad.blocks||[]).filter(function(x){return x.scheme==='ladder';})[0];
+      if(ladBlock){ var lbl=block.label; block=clone(ladBlock); block.label=lbl; }
+      if(res&&res.ladderRounds!=null) block.rounds=res.ladderRounds;
     }
-    if(res.templateId&&Data.templates[res.templateId]){ startSession(res.templateId); return; }
-    openDayDetail(dayId);
+    return {id:'ex_'+exId, worldId:UI.worldId, kind:'strength', name:meta.name, type:'strength', blocks:[block]};
+  }
+
+  // ---- Daily workout: Start / Continue / start-an-exercise / resume ---------
+  // "Start / Continue Daily Workout": begin the first unfinished REQUIRED
+  // exercise (or resume the active one). Never restarts a completed exercise.
+  function startDaySession(dayId){
+    var res=Week.resolveDay(getPlan(),dayId,weekCtx());
+    if(res.goal) UI.worldId=res.goal.world;
+    if(res.day.type==='climbing'&&res.templateId&&Data.templates[res.templateId]){ startClimbing(Data.templates[res.templateId]); return; }
+    if(res.day.type==='group'||res.day.type==='rest'){ openDayDetail(dayId); return; }
+    var daily=dailyForToday();
+    // resume an active exercise if one is mid-flight
+    if(daily.activeExId){ var ae=Daily.findEx(daily,daily.activeExId); if(ae&&ae.state==='in_progress'){ startExercise(daily.activeExId); return; } }
+    // Start/Continue only ever auto-advances through REQUIRED exercises; once
+    // every required one is done or skipped, it opens the review/summary rather
+    // than forcing optional/conditional work.
+    var next=Daily.firstUnfinishedRequired(daily);
+    if(next){ startExercise(next); return; }
+    renderDailySummary();
+  }
+  // Start (or redo) one specific exercise from the queue.
+  function startExercise(exId, opts){
+    opts=opts||{};
+    var dayId=todayDayId(), res=Week.resolveDay(getPlan(),dayId,weekCtx());
+    if(res.goal) UI.worldId=res.goal.world;
+    var rt=exercisePrescription(exId,res); if(!rt){ toast('This exercise has no runner yet.'); return; }
+    var daily=dailyForToday(); var e=Daily.findEx(daily,exId);
+    if(e&&e.state==='completed'&&!opts.redo){ return openExResult(exId); }
+    UI.workout=buildWorkout(rt);
+    UI.workout.dailyExId=exId; UI.workout.dailyId=daily.id;
+    UI.workout.plannedRounds=(UI.workout.blocks[0]&&UI.workout.blocks[0].kind==='ladder')?UI.workout.blocks[0].rounds.length:null;
+    UI.workout.plannedSets=(UI.workout.blocks[0]&&UI.workout.blocks[0].scheme==='pyramid')?UI.workout.blocks[0].sets.length:null;
+    UI.workout.extraRounds=0; UI.workout.extraSets=0; UI.workout.redo=!!opts.redo;
+    if(e){ e.state='in_progress'; }
+    daily.activeExId=exId; daily.status='in_progress'; saveDaily(daily);
+    delete todayEdits.mu_strength;
+    saveWorkoutState(); window.scrollTo(0,0); renderStrength();
+  }
+  // Record a finished daily exercise and show the exercise-completion screen.
+  function finishDailyExercise(){
+    stopTimer(); var w=UI.workout, exId=w.dailyExId, world=worldsById(w.worldId);
+    var daily=dailyForToday(); var e=Daily.findEx(daily,exId);
+    var bl=w.blocks[0];
+    var result=exerciseResult(w,bl);
+    // apply node/benchmark progress for this single exercise
+    var ws=WS(w.worldId);
+    var t={id:'ex_'+exId,type:'strength',difficulty:result.difficulty||'Medium'};
+    var session={id:'cs_'+Date.now(),kind:'strength',templateId:t.id,worldId:w.worldId,date:new Date().toISOString(),
+      exResults:collectExResults(w),targetNodeIds:[ws.focus.primary,ws.focus.supporting].filter(Boolean),pain:w.pain,hardPull:false,difficulty:t.difficulty,adaptations:[]};
+    var pr=Progress.applyStrength(world,ws.nodes,session,Data.exercises);
+    ws.nodes=pr.states; recomputeFocus(world,ws); saveWS(w.worldId,ws);
+    var bench=Store.getBench(); Object.keys(pr.bench||{}).forEach(function(k){bench[k]=Math.max(bench[k]||0,pr.bench[k]);}); Store.setBench(bench);
+    if(e){ e.state='completed'; e.result=result; }
+    daily.activeExId=null; saveDaily(daily);
+    UI.workout=null; saveWorkoutState();
+    renderExerciseComplete(exId,result,daily);
+  }
+  // Compute a per-exercise result (planned vs actual) for history + summary.
+  function exerciseResult(w,bl){
+    var meta=Week.EX[w.dailyExId]||{}, difficulty=lastDifficulty(w);
+    if(bl.kind==='ladder'){
+      var rounds=bl.rounds.length, reps=0; bl.rounds.forEach(function(rd){rd.steps.forEach(function(s){reps+=s.actual;});});
+      return {type:'ladder', exId:w.dailyExId, name:meta.name,
+        plannedRounds:w.plannedRounds, actualRounds:rounds, extraRounds:(w.extraRounds||0),
+        plannedReps:(w.plannedRounds||0)*6, actualReps:reps, bestReps:maxRep(bl), difficulty:difficulty,
+        plannedText:'1–2–3 × '+w.plannedRounds+' rounds', actualText:'1–2–3 × '+rounds+' rounds', state:'completed'};
+    }
+    if(bl.scheme==='pyramid'){
+      var preps=0; bl.sets.forEach(function(s){preps+=s.actual;});
+      return {type:'pyramid', exId:w.dailyExId, name:meta.name, plannedSets:w.plannedSets, actualSets:bl.sets.length,
+        addedSets:(w.extraSets||0), actualReps:preps, bestReps:maxSetRep(bl), difficulty:difficulty, state:'completed',
+        plannedText:'Pyramid × '+(w.plannedSets||bl.sets.length), actualText:'Pyramid × '+bl.sets.length+(w.extraSets?' (+'+w.extraSets+')':'')};
+    }
+    // sets / hold / unilateral
+    var isHold=bl.sets[0]&&bl.sets[0].unit==='sec';
+    var totals=0, best=0; bl.sets.forEach(function(s){ if(s.doneFlag){ totals+=s.actual; best=Math.max(best,s.actual); } });
+    return {type:Daily.typeOf(w.dailyExId), exId:w.dailyExId, name:meta.name, sets:bl.sets.length,
+      actualReps:isHold?0:totals, bestSeconds:isHold?best:0, bestReps:isHold?0:best, difficulty:difficulty, state:'completed',
+      plannedText:setsText(bl), actualText:(isHold?best+'s best hold':totals+' total reps')};
+  }
+  function setsText(bl){ if(bl.sets[0]&&bl.sets[0].unit==='sec') return bl.sets.length+' × '+bl.sets[0].target+'s'; return bl.sets.length+' × '+((bl.sets[0]&&bl.sets[0].target)||'—'); }
+  function maxRep(bl){ var m=0; bl.rounds.forEach(function(rd){rd.steps.forEach(function(s){m=Math.max(m,s.actual);});}); return m; }
+  function maxSetRep(bl){ var m=0; bl.sets.forEach(function(s){m=Math.max(m,s.actual);}); return m; }
+  function lastDifficulty(w){ return (w.lastRoundDifficulty||w.lastSetDifficulty||null); }
+
+  // ---- exercise-completion screen (Part 5) ----------------------------------
+  function renderExerciseComplete(exId,result,daily){
+    var pg=Daily.progress(daily);
+    var nextId=Daily.nextUnfinished(daily,exId);
+    var nextEx=nextId?Daily.findEx(daily,nextId):null;
+    var dayDone=Daily.isDayComplete(daily);
+    var html='<div class="hero" style="text-align:center;padding-top:16px"><div class="badge" style="background:rgba(61,220,151,.15);color:var(--good);margin-bottom:8px">Exercise Complete</div>'+
+      '<h1>'+esc(result.name)+' completed</h1></div>'+
+      '<div class="card"><div class="dd-kv"><span>Planned</span><b>'+esc(result.plannedText||'—')+'</b></div>'+
+      '<div class="dd-kv"><span>Actual</span><b>'+esc(result.actualText||'—')+'</b></div>'+
+      (result.difficulty?'<div class="dd-kv"><span>Difficulty</span><b>'+esc(cap(result.difficulty))+'</b></div>':'')+
+      (result.extraRounds?'<div class="dd-kv"><span>Extra rounds</span><b>+'+result.extraRounds+'</b></div>':'')+
+      (result.bestReps?'<div class="dd-kv"><span>Best set</span><b>'+result.bestReps+' reps</b></div>':'')+
+      '</div>'+
+      '<div class="card tight"><div class="between"><div class="section" style="margin:0">Today\'s workout</div>'+
+      '<b>'+pg.done+' of '+pg.total+' exercises</b></div><div class="prog"><i style="width:'+(pg.total?Math.round(pg.done/pg.total*100):0)+'%"></i></div>'+
+      (nextEx?'<div class="muted small sp">Next: <b>'+esc(nextEx.name)+'</b></div>':'')+'</div>'+
+      (nextEx?'<button class="btn primary" data-continue="'+esc(nextId)+'">Continue to '+esc(nextEx.name)+'</button>':'')+
+      (dayDone?'<button class="btn '+(nextEx?'ghost':'primary')+'" data-finishday>Finish Today\'s Workout</button>':'<button class="btn ghost" data-finishnow>Finish for Now</button>')+
+      '<button class="btn ghost" data-today>Return to Today</button>';
+    window.scrollTo(0,0); app.innerHTML=''; app.appendChild(h('<div class="scr">'+html+'</div>'));
+    on('[data-continue]','click',function(e){ startExercise(e.currentTarget.dataset.continue); });
+    on('[data-finishday]','click',function(){ finishDay(); });
+    on('[data-finishnow]','click',function(){ setScreen('today'); });
+    on('[data-today]','click',function(){ setScreen('today'); });
+  }
+  // Persist the whole daily workout as ONE history session and clear it.
+  function finishDay(){
+    var daily=dailyForToday();
+    var exs=daily.exercises.filter(function(e){return e.state==='completed';}).map(function(e){ var r=e.result||{}; r.exId=e.exId; r.name=e.name; r.state='completed'; return r; });
+    if(exs.length){
+      var totalPull=0; exs.forEach(function(r){ if(r.type==='ladder'||r.type==='pyramid') totalPull+=(r.actualReps||0); });
+      var session={id:daily.id, kind:'daily', date:new Date().toISOString(), weekday:daily.weekday, dayKey:daily.dayKey,
+        session:daily.session, worldId:UI.worldId, status:'completed', exercises:exs, totalPullReps:totalPull, adaptations:daily.adaptations};
+      var sessions=Store.getSessions(); var i=sessions.map(function(s){return s.id;}).indexOf(daily.id);
+      if(i>=0) sessions[i]=session; else sessions.push(session);
+      Store.setSessions(sessions);
+    }
+    daily.status='completed'; saveDaily(daily);
+    toast('Daily workout saved to your history.');
+    setScreen('today');
+  }
+  function skipExercise(exId){
+    var daily=dailyForToday(); var e=Daily.findEx(daily,exId); if(!e) return;
+    e.state='skipped'; saveDaily(daily); renderToday();
+  }
+  function redoExercise(exId){
+    if(!confirm('Redo '+ (Week.EX[exId]?Week.EX[exId].name:exId) +'? This starts a fresh attempt for today.')) return;
+    var daily=dailyForToday(); var e=Daily.findEx(daily,exId); if(e){ e.state='not_started'; e.result=null; saveDaily(daily); }
+    startExercise(exId,{redo:true});
+  }
+  function openExResult(exId){
+    var daily=dailyForToday(); var e=Daily.findEx(daily,exId); if(!e||!e.result){ toast('No result yet.'); return; }
+    var r=e.result;
+    var body='<div class="grip"></div><div class="between"><h2>'+esc(r.name||exId)+'</h2><span class="badge" style="background:rgba(61,220,151,.15);color:var(--good)">Completed</span></div>'+
+      '<div class="dd-kv"><span>Planned</span><b>'+esc(r.plannedText||'—')+'</b></div>'+
+      '<div class="dd-kv"><span>Actual</span><b>'+esc(r.actualText||'—')+'</b></div>'+
+      (r.difficulty?'<div class="dd-kv"><span>Difficulty</span><b>'+esc(cap(r.difficulty))+'</b></div>':'')+
+      '<button class="btn ghost" data-redo="'+esc(exId)+'">Redo Exercise</button>'+
+      '<button class="btn ghost" data-close>Close</button>';
+    showSheet(body,function(sheet){
+      on('[data-redo]','click',function(ev){ closeSheet(); redoExercise(ev.currentTarget.dataset.redo); },sheet);
+      on('[data-close]','click',closeSheet,sheet);
+    });
+  }
+  function renderDailySummary(){
+    var daily=dailyForToday();
+    var html='<div class="hero" style="text-align:center;padding-top:20px"><div class="badge" style="background:rgba(61,220,151,.15);color:var(--good);margin-bottom:8px">All Required Done</div><h1>Nice Work!</h1></div>'+
+      '<div class="card"><div class="section" style="margin-top:0">'+esc(daily.session)+'</div>'+
+      daily.exercises.filter(function(e){return e.state==='completed';}).map(function(e){return '<div class="crit done"><span class="ck">'+ICON.check+'</span><span>'+esc(e.name)+'</span></div>';}).join('')+'</div>'+
+      '<button class="btn primary" data-finishday>Finish &amp; Save Today\'s Workout</button>'+
+      '<button class="btn ghost" data-today>Return to Today</button>';
+    window.scrollTo(0,0); app.innerHTML=''; app.appendChild(h('<div class="scr">'+html+'</div>'));
+    on('[data-finishday]','click',finishDay);
+    on('[data-today]','click',function(){setScreen('today');});
   }
 
   // ---- exercise-metadata sheet (one canonical record, Part 11) --------------
@@ -696,17 +884,30 @@
       '<div class="adapt-banner"><b>Adapted from your weekly plan</b>'+
       res.adaptations.map(function(a){return '<div class="adapt-cause">'+esc(a.cause)+'</div>';}).join('')+'</div>'
       :'<div class="asplanned">&#10003; As planned</div>';
-    var startBtn;
+    // Group day → log form; climbing day → session start; strength day → the
+    // exercise QUEUE (daily workout); other → view details.
+    var body, mainBtn;
     if(day.type==='group'){
       var logged=res.status==='completed';
-      startBtn='<button class="btn primary" data-groupday="'+day.id+'">'+(logged?'Edit Group Workout Log':'Log Group Workout')+'</button>';
-    } else if(res.templateId){
+      body='<div class="preview">'+planItemsHtml(res)+'</div>';
+      mainBtn='<button class="btn primary" data-groupday="'+day.id+'">'+(logged?'Edit Group Workout Log':'Log Group Workout')+'</button>';
+    } else if(day.type==='climbing'&&res.templateId){
+      body='<div class="preview">'+planItemsHtml(res)+'</div>';
       // data-start keeps the resolved template id for compatibility; data-day
-      // routes through startDaySession so plan adaptations (world, ladder
-      // rounds) are applied.
-      startBtn='<button class="btn primary" data-start="'+esc(res.templateId)+'" data-day="'+day.id+'">Start Workout</button>';
+      // routes through startDaySession so plan adaptations apply.
+      mainBtn='<button class="btn primary" data-start="'+esc(res.templateId)+'" data-day="'+day.id+'">Start Climbing Session</button>';
+    } else if(res.executable&&res.executable.length){
+      var daily=dailyForToday(res);
+      var pg=Daily.progress(daily);
+      body='<div class="queue">'+queueHtml(daily)+'</div>'+execPreviewHtml(res);
+      var started=daily.exercises.some(function(e){return e.state==='completed'||e.state==='in_progress'||e.state==='skipped';});
+      var allReqDone=Daily.isDayComplete(daily);
+      var label=allReqDone?'Review Today\'s Workout':(started?'Continue Daily Workout':'Start Daily Workout');
+      mainBtn='<button class="btn primary" data-startday="'+day.id+'">'+label+'</button>'+
+        (pg.requiredTotal?'<div class="muted small" style="text-align:center;margin-top:6px">'+pg.requiredDone+' of '+pg.requiredTotal+' required done'+(pg.total>pg.requiredTotal?' &middot; '+pg.done+'/'+pg.total+' total':'')+'</div>':'');
     } else {
-      startBtn='<button class="btn" data-daydetail="'+day.id+'">View Session</button>';
+      body='<div class="preview">'+planItemsHtml(res)+'</div>';
+      mainBtn='<button class="btn" data-daydetail="'+day.id+'">View Session</button>';
     }
     return '<div class="rec sched">'+
       '<div class="kick">Scheduled today</div>'+
@@ -716,11 +917,49 @@
       (skillTags?'<div class="foci">'+skillTags+'</div>':'')+
       (why?'<div class="why">'+esc(why)+'</div>':'')+
       adaptHtml+
-      '<div class="preview">'+planItemsHtml(res)+'</div>'+
-      execPreviewHtml(res)+
-      startBtn+
+      body+
+      mainBtn+
       '<button class="btn ghost sm" data-daydetail="'+day.id+'">Full day details</button>'+
       '</div>';
+  }
+  // The daily exercise QUEUE (Part 4): every planned exercise with status,
+  // prescription and its own Start / Resume / View+Redo / Skip actions.
+  function queueHtml(daily){
+    var n=0;
+    return daily.exercises.map(function(e){
+      var runnable=e.included&&e.runner!=='none'&&!e.removed&&!e.replaced;
+      if(runnable&&e.state!=='skipped') n++;
+      var num=(runnable&&e.state!=='skipped')?n:'&ndash;';
+      var chip=e.state==='completed'?'<span class="status-chip sc-required">Completed</span>'
+        :e.state==='in_progress'?'<span class="status-chip sc-conditional">In Progress</span>'
+        :e.state==='skipped'?'<span class="status-chip sc-skipped">Skipped</span>'
+        :statusChip(e.statusLabel);
+      var presc=runnable?exPrescriptionText(e.exId):'';
+      var actions='';
+      if(!runnable){ actions='<div class="q-sub muted small">'+esc(e.reason||e.note||'Not today')+'</div>'; }
+      else if(e.state==='completed'){
+        actions='<div class="q-actions"><button class="link" data-exview="'+esc(e.exId)+'">View</button>'+
+          '<button class="link" data-exredo="'+esc(e.exId)+'">Redo</button></div>';
+      } else if(e.state==='in_progress'){
+        actions='<div class="q-actions"><button class="btn sm primary" data-exstart="'+esc(e.exId)+'">Resume</button></div>';
+      } else {
+        actions='<div class="q-actions"><button class="btn sm" data-exstart="'+esc(e.exId)+'">Start This Exercise</button>'+
+          (!e.required?'<button class="link" data-exskip="'+esc(e.exId)+'">Skip</button>':'')+'</div>';
+      }
+      return '<div class="q-ex'+(runnable?'':' ex-off')+(e.state==='completed'?' q-done':'')+'" >'+
+        '<div class="q-head"><span class="wk-ex-n'+(runnable?'':' off')+'">'+num+'</span>'+
+        '<button class="q-name" data-exmeta="'+esc(e.exId)+'">'+esc(e.name)+'</button>'+prioPill(e.priority)+chip+'</div>'+
+        (presc?'<div class="q-presc muted small">'+esc(presc)+'</div>':'')+
+        actions+'</div>';
+    }).join('');
+  }
+  function exPrescriptionText(exId){
+    var m=Week.EX[exId], b=m&&m.block; if(!b) return '';
+    if(b.scheme==='ladder'){ var lad=prescriptionFor(Data.templates.mu_strength); var lb=(lad.blocks||[]).filter(function(x){return x.scheme==='ladder';})[0]; var r=lb?lb.rounds:b.rounds; return '1–2–3 × '+r+' rounds'; }
+    if(b.scheme==='pyramid') return 'Pyramid 1-2-3-2-1';
+    if(b.scheme==='hold') return b.sets+' × '+b.seconds+'s hold';
+    if(b.scheme==='amrap') return 'Max reps';
+    return b.sets+' × '+b.reps+(m.unilateral?' each side':' reps');
   }
   // For a day whose main practice maps to an executable strength workout, show
   // the resolved workout (the actual sets/rounds the Start button will run) and
@@ -731,7 +970,7 @@
     var rt=dayPrescription(res);
     var hasLadder=(rt.blocks||[]).some(function(b){return b.scheme==='ladder';});
     var modified=hasLadder&&Settings.isModifiedForToday(Data.templates.mu_strength,settings(),todayEdits.mu_strength);
-    return '<div class="exec-preview"><div class="section" style="margin-top:12px">Start Workout will run</div>'+
+    return '<div class="exec-preview"><div class="section" style="margin-top:12px">Prescription detail &amp; ladder edit</div>'+
       (modified?'<div class="modified-flag">&#9679; Ladder modified for today &middot; <button class="link" data-resettoday="mu_strength">Reset to default</button></div>':'')+
       '<div class="wk-list">'+workoutExerciseList(rt)+'</div>'+
       (hasLadder?'<button class="btn ghost sm inline-edit" data-editwk="mu_strength">Edit Pull-Up Ladder</button>':'')+'</div>';
@@ -1099,7 +1338,7 @@
           adaptEnabled:b.adaptEnabled!==false,
           origSteps:(b.steps||[1,2,3]).slice(), rounds:rounds};
       }
-      return {kind:'straight',label:b.label,exId:b.exId,note:b.note||'',
+      return {kind:'straight',scheme:b.scheme,label:b.label,exId:b.exId,note:b.note||'',
         restSecs:(b.restSecs!=null?b.restSecs:Duration.restForType(rt.type)),
         adaptEnabled:b.adaptEnabled!==false,
         sets:sets.map(function(s){return {target:s.target,actual:s.actual,unit:s.unit,amrap:!!s.amrap,doneFlag:false,adapted:''};})};
@@ -1183,10 +1422,60 @@
       '<div class="wk-body">'+body+'</div>'+
       '<div class="wk-side"><div id="rest"></div>'+renderAdaptPrompt(w)+side+'</div>'+
       '<div class="flag"><label class="pill '+(w.pain?'on warnbtn':'')+'" data-painflag><input type="checkbox" style="display:none" '+(w.pain?'checked':'')+'>Pain / Discomfort</label></div>'+
-      (allDone?'<button class="btn primary sp" data-finish>Finish &amp; Save Workout</button>':'')+
+      (allDone&&!ratingPending?finishPanelHtml(w):'')+
       '</div>';
     app.innerHTML=''; app.appendChild(h('<div class="scr wk-runner">'+html+'</div>'));
     wireStrength(w);
+  }
+  // The finish / flexible-extension panel shown when all work is done. A single
+  // Ladder or Pyramid block offers Add Round / Add Set so the workout can be
+  // extended in the SAME session (Parts 6/7). Never auto-launches a max test.
+  function finishPanelHtml(w){
+    var single=w.blocks.length===1?w.blocks[0]:null, isDaily=!!w.dailyExId;
+    if(single&&single.kind==='ladder'){
+      var extra=w.extraRounds||0, planned=w.plannedRounds||single.rounds.length;
+      return '<div class="ladder-done card sp"><div class="section" style="margin-top:0">Planned rounds completed</div>'+
+        '<div class="dd-kv"><span>Rounds</span><b>'+single.rounds.length+' of '+planned+' planned'+(extra?' (+'+extra+' extra)':'')+'</b></div>'+
+        '<div class="dd-kv"><span>Total pull-ups</span><b>'+ladderReps(single)+'</b></div>'+
+        (extra>2?'<div class="caution">That\'s '+extra+' extra rounds. Watch your form — stop if fatigue rises. You can still continue deliberately.</div>':'')+
+        '<button class="btn primary" data-addround>Add One Full Round</button>'+
+        '<button class="btn ghost" data-finishex>Finish '+(isDaily?'Ladder':'&amp; Save Workout')+'</button>'+
+        (isDaily?'<button class="btn ghost" data-savedefault="'+single.rounds.length+'">Save '+single.rounds.length+' rounds as my default</button>':'')+
+        (isDaily?'<button class="link" data-enddaily>End Daily Workout</button>':'')+'</div>';
+    }
+    if(single&&single.scheme==='pyramid'){
+      return '<div class="ladder-done card sp"><div class="section" style="margin-top:0">Planned pyramid completed</div>'+
+        '<div class="dd-kv"><span>Sets</span><b>'+single.sets.length+(w.extraSets?' (+'+w.extraSets+' added)':'')+'</b></div>'+
+        '<button class="btn primary" data-addset>Add One Set</button>'+
+        '<button class="btn ghost" data-finishex>Finish '+(isDaily?'Pyramid':'&amp; Save Workout')+'</button></div>';
+    }
+    return '<button class="btn primary sp" data-finish>Finish '+(isDaily?'Exercise':'&amp; Save Workout')+'</button>';
+  }
+  function ladderReps(bl){ var n=0; bl.rounds.forEach(function(rd){rd.steps.forEach(function(s){n+=s.actual;});}); return n; }
+  function onFinishWorkout(){ if(UI.workout&&UI.workout.dailyExId) finishDailyExercise(); else finishStrength(); }
+  // Append another full 1–2–3 round to the SAME ladder session (Part 6).
+  function addLadderRound(){
+    var w=UI.workout, bl=w.blocks[0]; if(!bl||bl.kind!=='ladder') return;
+    var steps=(bl.origSteps||[1,2,3]).map(function(t){return {target:t,actual:t,doneFlag:false};});
+    bl.rounds.push({steps:steps,rated:false,difficulty:null,adaptedNote:'',reduced:false});
+    w.extraRounds=(w.extraRounds||0)+1;
+    saveWorkoutState(); window.scrollTo(0,0); renderStrength();
+  }
+  // Append one more set to the SAME pyramid session (Part 7).
+  function addPyramidSet(){
+    var w=UI.workout, bl=w.blocks[0]; if(!bl||bl.scheme!=='pyramid') return;
+    var top=bl.sets.reduce(function(m,s){return Math.max(m,s.target||0);},1);
+    bl.sets.push({target:top,actual:top,unit:'reps',amrap:false,doneFlag:false,adapted:''});
+    w.extraSets=(w.extraSets||0)+1;
+    saveWorkoutState(); window.scrollTo(0,0); renderStrength();
+  }
+  function saveLadderDefault(rounds){
+    if(!confirm('Save '+rounds+' rounds as your Pull-Up Ladder default? This changes your saved workout default.')) return;
+    var s=settings(); var def=Settings.defaultsForTemplate(Data.templates.mu_strength);
+    var cur=(s.workoutDefaults&&s.workoutDefaults.mu_strength)||def;
+    (cur.blocks||[]).forEach(function(b){ if(b.scheme==='ladder') b.rounds=rounds; });
+    s.workoutDefaults=s.workoutDefaults||{}; s.workoutDefaults.mu_strength=cur; saveSettings();
+    toast('Saved '+rounds+' rounds as your default.');
   }
 
   // The target/stepper/Done card ONLY — the "next action" line is a separate
@@ -1287,7 +1576,12 @@
     on('[data-diff]','click',function(e){ rateCurrent(w,e.currentTarget.dataset.diff); });
     on('[data-keepfull]','click',function(){ overrideKeepFull(w); });
     on('[data-painflag]','click',function(){ w.pain=!w.pain; saveWorkoutState(); renderStrengthKeepScroll(); });
-    on('[data-finish]','click',finishStrength);
+    on('[data-finish]','click',onFinishWorkout);
+    on('[data-finishex]','click',onFinishWorkout);
+    on('[data-addround]','click',addLadderRound);
+    on('[data-addset]','click',addPyramidSet);
+    on('[data-savedefault]','click',function(e){ saveLadderDefault(+e.currentTarget.dataset.savedefault); });
+    on('[data-enddaily]','click',function(){ if(UI.workout&&UI.workout.dailyExId){ finishDailyExercise(); } });
   }
   function stepTargetRef(w,set){
     var bl=w.blocks[+set.dataset.bi];
@@ -1325,7 +1619,7 @@
   function rateCurrent(w,diff){
     if(w.lastRound&&!w.lastRound.rated){
       var bl=w.blocks[w.lastRound.bi], rd=bl.rounds[w.lastRound.ri];
-      rd.rated=true; rd.difficulty=diff; w.lastRound.rated=true;
+      rd.rated=true; rd.difficulty=diff; w.lastRound.rated=true; w.lastRoundDifficulty=diff;
       var steps=rd.steps.map(function(s){return s.target;});
       var failedAt=diff===Adapt.FAILED?firstFailedStep(rd):null;
       var result=Adapt.adaptNextRound(diff,steps,failedAt);
@@ -1343,6 +1637,7 @@
     } else if(w.lastSet&&!w.lastSet.rated){
       var bl2=w.blocks[w.lastSet.bi], lastSet=bl2.sets[w.lastSet.si];
       var res=Adapt.adaptNext(diff,lastSet);
+      w.lastSetDifficulty=diff;
       w.adaptations.push({type:'set',bi:w.lastSet.bi,si:w.lastSet.si,difficulty:diff,result:res});
       var nx=findNextUndoneSet(bl2,w.lastSet.si);
       if(nx!=null){
@@ -1537,15 +1832,14 @@
     var unlocked=(res.unlocked||[]).map(function(id){return cm[id];}).filter(Boolean);
     function proceed(){
       var ws=WS(UI.worldId);
-      var rec=Engine.recommend({world:world,states:ws.nodes,focus:ws.focus,templates:Data.templates,readiness:readiness(),recent:recentForRec()});
-      var nt=Data.templates[rec.sessionTemplateId];
       var affected=(session.targetNodeIds||[]).map(function(id){return cm[id];}).filter(Boolean);
+      // No "Recommended Next" / max-test suggestion here — a completed volume
+      // workout never turns into an assessment (Part 8).
       var html='<div class="hero" style="text-align:center;padding-top:20px"><div class="badge" style="background:rgba(61,220,151,.15);color:var(--good);margin-bottom:8px">Workout Saved</div><h1>Nice Work!</h1></div>'+
         '<div class="card"><div class="section" style="margin-top:0">Progress</div>'+
         (affected.length?affected.map(function(n){return '<div class="crit"><span>'+esc(n.name)+' — '+esc(Engine.progressText(n,ws.nodes))+'</span></div>';}).join(''):'<p class="muted small">Data updated.</p>')+'</div>'+
         (unlocked.length?'<div class="card ok" style="border-color:var(--focus)"><div class="section" style="margin-top:0">New Skills Unlocked</div>'+unlocked.map(function(n){return '<div class="crit done"><span class="ck">'+ICON.check+'</span><span>'+esc(n.name)+'</span></div>';}).join('')+'</div>':'')+
-        (nt?'<div class="section">Recommended Next</div><div class="rec"><div class="name" style="font-size:18px">'+esc(nt.name)+'</div><div class="why">'+esc(rec.why||'')+'</div></div>':'')+
-        '<button class="btn primary" data-map>View Map</button><button class="btn ghost" data-today>Back to Today</button>';
+        '<button class="btn primary" data-today>Back to Today</button><button class="btn ghost" data-map>View Map</button>';
       window.scrollTo(0,0);
       app.innerHTML=''; app.appendChild(h('<div class="scr">'+html+'</div>'));
       on('[data-map]','click',function(){setScreen('map');});
@@ -1558,35 +1852,144 @@
   }
 
   // ---- Progress -------------------------------------------------------------
+  // Progress / History (Round 4). A weekly completion summary keyed to the
+  // plan's requirements, plus a chronological, expandable workout history with
+  // per-session Delete / Exclude / Mark-as-test controls that recompute stats.
+  var histFilter='all';
   function renderProgress(){
     var world=activeWorld(), ws=WS(UI.worldId), cm=contentMap(world);
-    var sessions=(Store.getSessions()||[]).filter(function(s){return s.worldId===UI.worldId;});
+    var plan=getPlan();
+    var allSessions=(Store.getSessions()||[]);
     var completed=world.nodes.filter(function(n){return Engine.isComplete(n,ews(ws,world));});
     var primary=ws.focus.primary?cm[ws.focus.primary]:null;
-    var weekAgo=Date.now()-7*864e5; var thisWeek=sessions.filter(function(s){return new Date(s.date).getTime()>=weekAgo;}).length;
+
+    // ── weekly completion summary (Part 12) ──
+    var sum=Daily.weeklySummary(allSessions,plan,Date.now());
+    var sumRows=sum.lines.filter(function(l){return l.target>0||l.done>0;}).map(function(l){
+      var met=l.target>0&&l.done>=l.target;
+      var pct=l.target>0?Math.min(100,Math.round(l.done/l.target*100)):(l.done?100:0);
+      return '<div class="sum-row"><div style="flex:1"><div class="sum-nm">'+esc(l.label)+(l.optional?' <span class="muted tiny">(optional)</span>':'')+'</div>'+
+        '<div class="sum-bar"><i class="'+(met?'met':'')+'" style="width:'+pct+'%"></i></div></div>'+
+        '<div class="sum-ct'+(met?' met':'')+'">'+l.done+(l.target>0?' / '+l.target:'')+(met?' &#10003;':'')+'</div></div>';
+    }).join('');
+    var weeklyCard='<div class="section" style="margin-top:0">This Week</div>'+
+      '<div class="card tight">'+
+      '<div class="between" style="margin-bottom:6px"><b>'+sum.dailySessions+' workout'+(sum.dailySessions===1?'':'s')+' completed</b>'+
+      '<span class="muted small">'+sum.pullReps+' pull-up reps'+(sum.ladderRounds?' &middot; '+sum.ladderRounds+' ladder rounds':'')+'</span></div>'+
+      (sumRows||'<p class="muted small">No completed exercises yet this week.</p>')+
+      '</div>';
+
+    // ── pull-up max over time (kept) ──
     var chart='';
     if(world.id==='muscleup'){
-      var pts=sessions.filter(function(s){return s.exResults&&s.exResults.pullup&&s.exResults.pullup.bestReps;}).map(function(s){return {v:s.exResults.pullup.bestReps,d:s.date};});
-      if(pts.length){var mx=Math.max.apply(null,pts.map(function(p){return p.v;}));chart='<div class="section">Pull-Up Max Over Time</div><div class="chart">'+pts.slice(-8).map(function(p){return '<div class="bar" style="height:'+Math.round(p.v/mx*80)+'px"><span>'+p.v+'</span><em>'+new Date(p.d).toLocaleDateString('en-US',{day:'numeric',month:'numeric'})+'</em></div>';}).join('')+'</div>';}
+      var bench0=Store.getBench();
+      var pts=[];
+      allSessions.slice().sort(function(a,b){return new Date(a.date)-new Date(b.date);}).forEach(function(s){
+        if(s.excluded) return;
+        var best=0; Daily.sessionExercises(s).forEach(function(e){ if((e.type||Daily.typeOf(e.exId))==='ladder'||(e.type||Daily.typeOf(e.exId))==='pyramid'||e.exId==='pullup') best=Math.max(best,e.bestReps||0); });
+        if(best>0) pts.push({v:best,d:s.date});
+      });
+      if(pts.length){var mx=Math.max.apply(null,pts.map(function(p){return p.v;}));chart='<div class="section">Pull-Up Best Set Over Time</div><div class="chart">'+pts.slice(-8).map(function(p){return '<div class="bar" style="height:'+Math.round(p.v/mx*80)+'px"><span>'+p.v+'</span><em>'+new Date(p.d).toLocaleDateString('en-US',{day:'numeric',month:'numeric'})+'</em></div>';}).join('')+'</div>';}
     } else {
-      var byGrade={}; sessions.forEach(function(s){(s.problems||[]).forEach(function(p){if(p.result==='send'||p.result==='flash'){byGrade[p.grade]=(byGrade[p.grade]||0)+1;}});});
+      var worldSessions=allSessions.filter(function(s){return s.worldId===UI.worldId&&!s.excluded;});
+      var byGrade={}; worldSessions.forEach(function(s){(s.problems||[]).forEach(function(p){if(p.result==='send'||p.result==='flash'){byGrade[p.grade]=(byGrade[p.grade]||0)+1;}});});
       var gs=Object.keys(byGrade).sort(); if(gs.length){var gm=Math.max.apply(null,gs.map(function(g){return byGrade[g];}));chart='<div class="section">Sends by Grade</div><div class="chart">'+gs.map(function(g){return '<div class="bar" style="height:'+Math.round(byGrade[g]/gm*80)+'px"><span>'+byGrade[g]+'</span><em>'+g+'</em></div>';}).join('')+'</div>';}
     }
+
+    // ── exercise progress summaries (Part 15): best per exercise type, all time ──
+    var perType={};
+    allSessions.forEach(function(s){ if(s.excluded) return; Daily.sessionExercises(s).forEach(function(e){
+      if(e.state&&e.state!=='completed') return;
+      var t=e.type||Daily.typeOf(e.exId); var o=perType[t]||(perType[t]={count:0,best:0,rounds:0,sec:0});
+      o.count++; o.best=Math.max(o.best,e.bestReps||0); o.rounds+=(e.actualRounds||0); o.sec=Math.max(o.sec,e.bestSeconds||0);
+    }); });
+    var typeNames={ladder:'Pull-Up Ladder',pyramid:'Pull-Up Pyramid',pistol:'Pistol Squat',t2b:'Toes-to-Bar',hold:'Holds',ring:'Ring Support',climbing:'Climbing',pull:'Pulling',push:'Pushing',legs:'Legs',grip:'Grip',skill:'Skill Work',arms:'Arms',other:'Other'};
+    var exSummary=Object.keys(perType).map(function(t){var o=perType[t];
+      var detail=o.best?('best '+o.best+' reps'):(o.sec?('best '+o.sec+'s'):(o.count+'×'));
+      return '<div class="sum-row"><div class="sum-nm">'+esc(typeNames[t]||cap(t))+'</div><div class="muted small" style="text-align:right">'+o.count+' session'+(o.count===1?'':'s')+' &middot; '+detail+'</div></div>';
+    }).join('');
+
     var bench=Store.getBench();
     var left=''+
+      weeklyCard+
       '<div class="card tight" style="margin-top:12px"><div class="between"><div><div style="font-size:26px;font-weight:900;color:var(--accent)">'+completed.length+'</div><div class="muted small">Skills Completed</div></div>'+
-      '<div><div style="font-size:26px;font-weight:900">'+sessions.length+'</div><div class="muted small">Sessions in World</div></div>'+
-      '<div><div style="font-size:26px;font-weight:900">'+thisWeek+'</div><div class="muted small">This Week</div></div></div></div>'+
-      chart;
-    var right=''+
-      '<div class="section">Recently Completed</div>'+
-      (completed.length?completed.slice(-6).reverse().map(function(n){return '<div class="crit done"><span class="ck">'+ICON.check+'</span><span>'+esc(n.name)+'</span></div>';}).join(''):'<p class="muted small">None yet — finish a workout to progress.</p>')+
-      (world.id==='muscleup'&&bench.pullup_max?'<div class="section">Personal Records</div><table class="kv"><tr><td>Pull-Up Max</td><td>'+bench.pullup_max+'</td></tr>'+(bench.dips_max?'<tr><td>Dip Max</td><td>'+bench.dips_max+'</td></tr>':'')+'</table>':'')+
-      '<p class="footnote muted tiny sp">Data is based on completed workouts and Pull-Up Coach history (read-only).</p>';
+      '<div><div style="font-size:26px;font-weight:900">'+allSessions.filter(function(s){return !s.excluded;}).length+'</div><div class="muted small">Total Sessions</div></div>'+
+      '<div><div style="font-size:26px;font-weight:900">'+sum.dailySessions+'</div><div class="muted small">This Week</div></div></div></div>'+
+      chart+
+      (exSummary?'<div class="section">By Exercise</div><div class="card tight">'+exSummary+'</div>':'')+
+      (world.id==='muscleup'&&bench.pullup_max?'<div class="section">Personal Records</div><table class="kv"><tr><td>Pull-Up Best</td><td>'+bench.pullup_max+'</td></tr>'+(bench.dips_max?'<tr><td>Dip Max</td><td>'+bench.dips_max+'</td></tr>':'')+'</table>':'');
+
+    // ── workout history (Parts 13-14) ──
+    var right=historyHtml(allSessions);
+
     var html=''+
       '<h1>Progress</h1><p class="muted small">'+esc(world.name)+(primary?' &middot; Focus: '+esc(primary.name):'')+'</p>'+
-      '<div class="progress-grid"><div class="progress-left">'+left+'</div><div class="progress-right">'+right+'</div></div>';
-    shell(html,'progress');
+      '<div class="progress-grid"><div class="progress-left">'+left+'</div><div class="progress-right">'+right+'</div></div>'+
+      '<p class="footnote muted tiny sp">Data is based on completed workouts and Pull-Up Coach history (read-only). Old standalone entries are labelled.</p>';
+    var wrap=shell(html,'progress');
+    on('[data-hfilter]','click',function(e){ histFilter=e.currentTarget.dataset.hfilter; renderProgress(); },wrap);
+    on('[data-htoggle]','click',function(e){ var id=e.currentTarget.dataset.htoggle; UI.histOpen=(UI.histOpen===id?null:id); renderProgress(); },wrap);
+    on('[data-hdelete]','click',function(e){ deleteSession(e.currentTarget.dataset.hdelete); },wrap);
+    on('[data-hexclude]','click',function(e){ toggleExclude(e.currentTarget.dataset.hexclude); },wrap);
+    on('[data-htest]','click',function(e){ toggleTest(e.currentTarget.dataset.htest); },wrap);
+  }
+  var WEEKDAY_ABBR=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var TYPE_LABEL={ladder:'Ladder',pyramid:'Pyramid',pistol:'Pistol',t2b:'T2B',hold:'Hold',ring:'Ring',climbing:'Climb',pull:'Pull',push:'Push',legs:'Legs',grip:'Grip',skill:'Skill',arms:'Arms',assessment:'Test',other:'Other'};
+  function historyHtml(allSessions){
+    var entries=Daily.historyEntries(allSessions);
+    // filter chips: All + the types present
+    var typesPresent={}; entries.forEach(function(en){ en.types.forEach(function(t){typesPresent[t]=true;}); });
+    var chips=['all'].concat(Object.keys(typesPresent));
+    var chipHtml=chips.map(function(t){return '<button class="hist-fchip'+(histFilter===t?' on':'')+'" data-hfilter="'+esc(t)+'">'+esc(t==='all'?'All':(TYPE_LABEL[t]||cap(t)))+'</button>';}).join('');
+    var shown=entries.filter(function(en){ return histFilter==='all'||en.types.indexOf(histFilter)>=0; });
+    var list=shown.length?shown.map(function(en){ return historyItem(en); }).join(''):'<p class="muted small">No workouts recorded yet.</p>';
+    return '<div class="section">Workout History</div>'+
+      '<div class="hist-filters">'+chipHtml+'</div>'+list;
+  }
+  function historyItem(en){
+    var open=UI.histOpen===en.id;
+    var d=new Date(en.date);
+    var dateStr=WEEKDAY_ABBR[en.weekday]+' '+d.toLocaleDateString('en-US',{day:'numeric',month:'short'});
+    var tags=en.types.map(function(t){return '<span class="hist-tag">'+esc(TYPE_LABEL[t]||t)+'</span>';}).join('');
+    var badges=(en.standalone?'<span class="hist-badge">Standalone</span>':'')+(en.assessment?'<span class="hist-badge">Test</span>':'')+(en.excluded?'<span class="hist-badge">Excluded</span>':'');
+    var body='';
+    if(open){
+      var exLines=en.exercises.map(function(e){
+        var nm=e.name||(Week.EX[e.exId]?Week.EX[e.exId].name:e.exId);
+        var val=e.actualText||(e.actualReps!=null?e.actualReps+' reps':(e.reps!=null?e.reps+' reps':''));
+        return '<div class="hist-ex"><span>'+esc(nm)+'</span><b>'+esc(val||'—')+'</b></div>';
+      }).join('')||'<div class="hist-ex"><span>No exercise detail</span><b>—</b></div>';
+      body='<div class="hist-body">'+exLines+
+        '<div class="hist-actions">'+
+        '<button class="link" data-htest="'+esc(en.id)+'">'+(en.assessment?'Unmark test':'Mark as test')+'</button>'+
+        '<button class="link" data-hexclude="'+esc(en.id)+'">'+(en.excluded?'Include in stats':'Exclude from stats')+'</button>'+
+        '<button class="link danger" data-hdelete="'+esc(en.id)+'">Delete</button>'+
+        '</div></div>';
+    }
+    return '<div class="hist-item'+(en.excluded?' excluded':'')+'">'+
+      '<div class="hist-h" data-htoggle="'+esc(en.id)+'"><span class="hist-date">'+esc(dateStr)+'</span><span class="hist-nm">'+esc(en.name)+'</span><span class="muted small">'+(open?'&#9652;':'&#9662;')+'</span></div>'+
+      (tags||badges?'<div class="hist-tags">'+tags+badges+'</div>':'')+
+      body+'</div>';
+  }
+  function recomputeBenchFromSessions(){
+    var b=Daily.recomputeBench(Store.getSessions()||[]);
+    var bench=Store.getBench(); bench.pullup_max=b.pullup_max||0; Store.setBench(bench);
+  }
+  function deleteSession(id){
+    if(!confirm('Delete this workout from your history? This cannot be undone.')) return;
+    var sessions=(Store.getSessions()||[]).filter(function(s){return s.id!==id;});
+    Store.setSessions(sessions); recomputeBenchFromSessions();
+    toast('Workout deleted.'); renderProgress();
+  }
+  function toggleExclude(id){
+    var sessions=(Store.getSessions()||[]); var s=sessions.filter(function(x){return x.id===id;})[0]; if(!s) return;
+    s.excluded=!s.excluded; Store.setSessions(sessions); recomputeBenchFromSessions();
+    toast(s.excluded?'Excluded from your stats.':'Included in your stats.'); renderProgress();
+  }
+  function toggleTest(id){
+    var sessions=(Store.getSessions()||[]); var s=sessions.filter(function(x){return x.id===id;})[0]; if(!s) return;
+    s.assessment=!s.assessment; Store.setSessions(sessions); recomputeBenchFromSessions();
+    toast(s.assessment?'Marked as a max test.':'No longer marked as a test.'); renderProgress();
   }
 
   // ---- Profile / Settings ---------------------------------------------------

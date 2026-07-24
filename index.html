@@ -309,6 +309,47 @@
     .sc-conditional{background:rgba(244,183,64,.16);color:var(--focus)}
     .sc-replaced{background:rgba(122,162,247,.18);color:#a9c0ff}
     .sc-skipped,.sc-removed{background:rgba(245,97,109,.15);color:#f5919b}
+    /* Daily-workout exercise queue (Today) */
+    .queue{margin:6px 0 4px}
+    .q-ex{padding:9px 0;border-bottom:1px solid rgba(39,72,99,.5)}
+    .q-ex:last-child{border-bottom:none}
+    .q-ex.q-done{opacity:.72}
+    .q-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .q-name{background:none;border:none;color:var(--text);font-weight:700;font-size:15px;padding:0;cursor:pointer;text-align:left;flex:1;min-width:120px}
+    .q-ex.q-done .q-name{text-decoration:line-through;text-decoration-color:var(--dim)}
+    .q-ex.ex-off .q-name{text-decoration:line-through;color:var(--dim)}
+    .q-presc{margin:3px 0 0 30px}
+    .q-actions{display:flex;align-items:center;gap:10px;margin:7px 0 0 30px;flex-wrap:wrap}
+    .q-sub{margin:4px 0 0 30px}
+    .btn.sm{padding:7px 14px;font-size:13px;width:auto;margin:0}
+    /* Exercise-complete + daily summary */
+    .sp{margin-top:8px}
+    .ladder-done{background:rgba(61,220,151,.1);border:1px solid rgba(61,220,151,.3);border-radius:12px;padding:12px;margin:8px 0}
+    .ladder-done .ld-h{font-weight:800;color:var(--good);margin-bottom:4px}
+    /* Progress: weekly summary + history */
+    .sum-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(39,72,99,.4)}
+    .sum-row:last-child{border-bottom:none}
+    .sum-nm{flex:1;font-weight:600}
+    .sum-ct{font-weight:800;font-variant-numeric:tabular-nums}
+    .sum-ct.met{color:var(--good)}
+    .sum-bar{height:5px;background:var(--card2);border-radius:3px;overflow:hidden;margin-top:5px}
+    .sum-bar i{display:block;height:100%;background:var(--accent)}
+    .sum-bar i.met{background:var(--good)}
+    .hist-filters{display:flex;gap:6px;overflow-x:auto;margin:6px 0 10px;padding-bottom:2px}
+    .hist-fchip{flex:none;background:var(--card2);border:1px solid var(--border);color:var(--muted);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer}
+    .hist-fchip.on{background:var(--accent);color:#04202f;border-color:transparent}
+    .hist-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+    .hist-item.excluded{opacity:.55}
+    .hist-h{display:flex;align-items:center;gap:8px;cursor:pointer}
+    .hist-date{font-size:12px;color:var(--muted);font-weight:700}
+    .hist-nm{font-weight:800;flex:1}
+    .hist-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+    .hist-tag{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.02em;background:var(--card2);color:var(--muted);border-radius:6px;padding:1px 6px}
+    .hist-body{margin-top:8px;border-top:1px solid rgba(39,72,99,.4);padding-top:8px}
+    .hist-ex{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:3px 0}
+    .hist-ex span{color:var(--muted)}
+    .hist-actions{display:flex;gap:10px;margin-top:8px;flex-wrap:wrap}
+    .hist-badge{font-size:10px;font-weight:800;text-transform:uppercase;background:rgba(148,163,184,.16);color:#c7d2de;border-radius:6px;padding:1px 6px}
     /* Edit Plan editor */
     .ep-tabs{display:flex;gap:8px;margin:10px 0}
     .ep-tab{flex:1;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px;color:var(--muted);font-weight:700;cursor:pointer}
@@ -636,14 +677,15 @@
       });
     })();
   </script>
-  <script src="data.js?v=20260724d"></script>
-  <script src="week.js?v=20260724d"></script>
-  <script src="engine.js?v=20260724d"></script>
-  <script src="progress.js?v=20260724d"></script>
-  <script src="store.js?v=20260724d"></script>
-  <script src="duration.js?v=20260724d"></script>
-  <script src="adapt.js?v=20260724d"></script>
-  <script src="settings.js?v=20260724d"></script>
-  <script src="app.js?v=20260724d"></script>
+  <script src="data.js?v=20260724e"></script>
+  <script src="week.js?v=20260724e"></script>
+  <script src="daily.js?v=20260724e"></script>
+  <script src="engine.js?v=20260724e"></script>
+  <script src="progress.js?v=20260724e"></script>
+  <script src="store.js?v=20260724e"></script>
+  <script src="duration.js?v=20260724e"></script>
+  <script src="adapt.js?v=20260724e"></script>
+  <script src="settings.js?v=20260724e"></script>
+  <script src="app.js?v=20260724e"></script>
 </body>
 </html>

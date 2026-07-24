@@ -132,7 +132,7 @@
       why: { wed: 'Posterior-chain strength when load is appropriate.',
         thu: 'Posterior-chain strength when load is appropriate.' } }),
 
-    pistol: X({ id: 'pistol', name: 'Pistol Squat', goals: ['v5'], skills: ['pistol'], role: ROLE.MAIN, priority: 'A',
+    pistol: X({ id: 'pistol', name: 'Pistol Squat', goals: ['v5'], skills: ['pistol'], role: ROLE.MAIN, priority: 'A', unilateral: true,
       loads: { legs: 2 },
       why: { fri: 'Main skill practice for the Pistol Squat active skill. Placed first, before fatigue lowers skill quality.' },
       overlaps: ['Supported by Bulgarian Split Squat / Step-Up in the group workouts.'] }),
