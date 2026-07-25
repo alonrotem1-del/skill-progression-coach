@@ -26,7 +26,9 @@
     sessions: PREFIX + 'sessions',
     bench: PREFIX + 'bench',
     settings: PREFIX + 'settings',
-    plan: PREFIX + 'plan'
+    plan: PREFIX + 'plan',
+    templates: PREFIX + 'templates',
+    adhoc: PREFIX + 'adhoc'
   };
   var LEGACY_KEYS = ['puc_log', 'puc_plan', 'puc_settings', 'puc_session', 'puc_progression', 'puc_secondary'];
 
@@ -119,6 +121,15 @@
       setSettings: function (s) { set(KEYS.settings, s); },
       getPlan: function () { return get(KEYS.plan); },
       setPlan: function (p) { set(KEYS.plan, p); },
+      // User-saved custom workout templates (ad-hoc). Additive: never part of the
+      // permanent weekly plan unless the user assigns them via Edit Plan.
+      getTemplates: function () { return get(KEYS.templates) || []; },
+      setTemplates: function (a) { set(KEYS.templates, a); },
+      // The active ad-hoc workout queue (separate from the scheduled daily so the
+      // two never collide). null when no ad-hoc workout is in progress.
+      getAdhoc: function () { return get(KEYS.adhoc) || null; },
+      setAdhoc: function (d) { set(KEYS.adhoc, d); },
+      clearAdhoc: function () { del(KEYS.adhoc); },
       reset: function () { Object.keys(KEYS).forEach(function (k) { del(KEYS[k]); }); }
     };
   }

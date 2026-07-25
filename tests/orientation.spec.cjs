@@ -112,7 +112,7 @@ test.describe('5/6 — physical landscape viewport activates the real layout', (
     await expect(page.locator('.map-frame')).toBeVisible();
     // Active workout keeps target + timer side by side (two runner columns).
     await page.locator('.nav [data-s="today"]').click();
-    await page.locator('.rec.sched [data-start]').first().click();
+    await page.locator('.rec.sched [data-startday]').first().click();
     await expect(page.locator('.wk-runner-body')).toBeVisible();
     const runnerCols = await page.locator('.wk-runner-body').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length);
     expect(runnerCols).toBe(2);

@@ -447,8 +447,11 @@ test.describe('Progress + History', () => {
     await expect(page.locator('.hist-item', { hasText: 'Standalone workout' })).toHaveClass(/excluded/);
     const bench = await page.evaluate(() => window.CoachStore.makeStore().getBench().pullup_max);
     expect(bench).toBe(3);
-    // the item stays expanded after the toggle → mark-as-test toggles the flag
-    await legacy.locator('[data-htest]').click();
+    // excluded sessions read as the "Test / Excluded" category
     await expect(legacy).toContainText('Test');
+    // …and re-including restores the benchmark to 8
+    await legacy.locator('[data-hexclude]').click();
+    const bench2 = await page.evaluate(() => window.CoachStore.makeStore().getBench().pullup_max);
+    expect(bench2).toBe(8);
   });
 });

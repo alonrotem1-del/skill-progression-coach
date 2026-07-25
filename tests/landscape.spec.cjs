@@ -77,7 +77,7 @@ function defineLandscapeTests(viewport) {
       expect(leftBox.x).toBeLessThan(rightBox.x); // left column really is on the left
       // The recommendation (dominant element) lives in the left column.
       await expect(page.locator('.today-left .rec').first()).toBeVisible();
-      await expect(page.locator('.today-left [data-start]').first()).toBeVisible();
+      await expect(page.locator('.today-left [data-startday]').first()).toBeVisible();
       await expect(page.locator('.rotate-hint')).toBeHidden();
       await noHorizontalOverflow(page);
     });
@@ -132,7 +132,7 @@ function defineLandscapeTests(viewport) {
 
     test('Active workout keeps the current target on the left and the timer/overview on the right, both visible without scrolling', async ({ page }) => {
       await page.goto('index.html'); await seed(page);
-      await page.locator('[data-start]').first().click();
+      await page.locator('[data-exstart="pullup_ladder"]').first().click();  // ladder = round-overview
       await expect(page.locator('.wk-runner-body')).toBeVisible();
       const curBox = await page.locator('.cur-card').first().boundingBox();
       const overviewBox = await page.locator('.round-overview').first().boundingBox();
@@ -158,8 +158,8 @@ function defineLandscapeTests(viewport) {
       // Start button below the fold; the workout must not inherit that scroll
       // offset (the browser does not reset scroll on innerHTML replacement).
       await page.goto('index.html'); await seed(page);
-      await page.locator('[data-start]').first().scrollIntoViewIfNeeded();
-      await page.locator('[data-start]').first().click();
+      await page.locator('[data-startday]').first().scrollIntoViewIfNeeded();
+      await page.locator('[data-startday]').first().click();
       await expect(page.locator('.wk-block-wrap').first()).toBeVisible();
       const scrollY = await page.evaluate(() => window.scrollY);
       expect(scrollY).toBe(0);
@@ -216,9 +216,9 @@ test.describe('portrait fallback (rotate-device suggestion)', () => {
     // Non-blocking: it sits in normal flow (not covering the app), and the
     // main flow (start the recommended workout) stays fully reachable.
     const hintBox = await hint.boundingBox();
-    const startBox = await page.locator('[data-start]').first().boundingBox();
+    const startBox = await page.locator('[data-startday]').first().boundingBox();
     expect(startBox.y).toBeGreaterThanOrEqual(hintBox.y + hintBox.height - 2);
-    await page.locator('[data-start]').first().click();
+    await page.locator('[data-startday]').first().click();
     await expect(page.locator('.wk-block-wrap').first()).toBeVisible();
   });
 
@@ -267,7 +267,7 @@ test.describe('portrait is unaffected (regression guard)', () => {
 
   test('active workout blocks still stack in one column', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('[data-start]').first().click();
+    await page.locator('[data-startday]').first().click();
     const wraps = page.locator('.wk-block-wrap');
     expect(await wraps.count()).toBeGreaterThan(1);
     const first = await wraps.nth(0).boundingBox();

@@ -73,6 +73,44 @@
   }
   function dateKey(d) { return d.toISOString().slice(0, 10); }
 
+  // Build an AD-HOC daily-workout entity from a chosen list of exercises. Same
+  // shape as a scheduled daily so it flows through the identical runner, resume
+  // and completion code — never a weaker "quick log". `items` is an ordered list
+  // of { exId, block? } where an optional block overrides the exercise's default
+  // prescription (used by the custom builder + the Max Test amrap).
+  function makeAdhocDaily(items, ctx) {
+    ctx = ctx || {};
+    var W = Week();
+    var exercises = (items || []).map(function (it, i) {
+      var meta = (W && W.EX[it.exId]) || {};
+      var runner = it.block ? schemeRunner(it.block, meta) : runnerType(it.exId);
+      return {
+        exId: it.exId, name: it.name || meta.name || it.exId, priority: meta.priority || 'C',
+        role: meta.role || '', runner: runner, statusLabel: 'Required', reason: '', note: it.note || '',
+        included: true, replaced: false, removed: false,
+        required: true, optional: false, conditional: false,
+        order: i, state: 'not_started', result: null, block: it.block || null
+      };
+    });
+    return {
+      version: DAILY_VERSION, id: ctx.id || ('adhoc_' + Date.now()), adhoc: true,
+      date: (ctx.date || new Date().toISOString()), weekday: ctx.weekday != null ? ctx.weekday : new Date().getDay(),
+      dayKey: 'adhoc', session: ctx.session || 'Custom Workout', sub: ctx.sub || '', goal: null,
+      planVersion: (W && W.PLAN_VERSION) || 0, adaptations: [],
+      classification: ctx.classification || 'extra', appliedDay: (ctx.appliedDay != null ? ctx.appliedDay : null),
+      templateName: ctx.templateName || '', exercises: exercises, activeExId: null, status: 'not_started'
+    };
+  }
+  function schemeRunner(b, m) {
+    if (!b) return 'none';
+    if (b.scheme === 'ladder') return 'ladder';
+    if (b.scheme === 'pyramid') return 'pyramid';
+    if (b.scheme === 'hold') return 'hold';
+    if (b.scheme === 'amrap') return 'assessment';
+    if (m && m.unilateral) return 'unilateral';
+    return 'sets';
+  }
+
   function findEx(daily, exId) { for (var i = 0; i < daily.exercises.length; i++) if (daily.exercises[i].exId === exId) return daily.exercises[i]; return null; }
   function runnable(ex) { return ex.included && ex.runner !== 'none' && !ex.removed && !ex.replaced; }
 
@@ -177,22 +215,66 @@
   // Chronological history entries (newest first).
   // A session predates the daily-workout system when it is not one of the new
   // structured kinds — those legacy entries are labelled "Standalone workout".
-  function isStandalone(s) { return !!s.standalone || (s.kind !== 'daily' && s.kind !== 'climbing' && s.kind !== 'group'); }
+  function isStandalone(s) { return !!s.standalone || (s.kind !== 'daily' && s.kind !== 'climbing' && s.kind !== 'group' && !s.classification); }
+
+  // Canonical history classification (Part 9). A single, explicit label per
+  // session drives both the history badge and the load/progress accounting.
+  var CLASS_LABEL = {
+    scheduled: 'Scheduled Workout', adapted: 'Adapted Scheduled Workout', extra: 'Extra Workout',
+    standalone: 'Standalone Exercise', assessment: 'Assessment', test: 'Test / Excluded'
+  };
+  function classify(s) {
+    if (s.excluded) return 'test';
+    if (s.classification && CLASS_LABEL[s.classification]) return s.classification;
+    if (s.assessment) return 'assessment';
+    if (s.kind === 'daily') return (s.adaptations && s.adaptations.length) ? 'adapted' : 'scheduled';
+    if (s.kind === 'climbing' || s.kind === 'group') return 'scheduled';
+    return 'standalone';
+  }
+  function classLabel(c) { return CLASS_LABEL[c] || 'Workout'; }
+
   function historyEntries(sessions) {
     return (sessions || []).slice().sort(function (a, b) { return new Date(b.date) - new Date(a.date); })
       .map(function (s) {
         var exs = sessionExercises(s);
         var standalone = isStandalone(s);
+        var cls = classify(s);
         return {
           id: s.id, date: s.date, weekday: s.weekday != null ? s.weekday : new Date(s.date).getDay(),
-          name: s.session || (s.kind === 'climbing' ? 'Climbing Session' : (standalone ? 'Standalone workout' : 'Workout')),
+          name: s.session || (s.kind === 'climbing' ? 'Climbing Session' : (cls === 'extra' ? 'Extra Workout' : (standalone ? 'Standalone workout' : 'Workout'))),
           kind: s.kind, exercises: exs, excluded: !!s.excluded, standalone: standalone,
           assessment: !!s.assessment, status: s.status || 'completed',
+          classification: cls, classLabel: classLabel(cls), reason: s.classReason || '',
+          appliedExIds: s.appliedExIds || [], origin: s.origin || (standalone ? 'adhoc' : 'plan'),
           types: uniq(exs.map(function (e) { return e.type || typeOf(e.exId); }).concat(s.kind === 'climbing' ? ['climbing'] : []))
         };
       });
   }
   function uniq(a) { var o = {}, r = []; a.forEach(function (x) { if (!o[x]) { o[x] = 1; r.push(x); } }); return r; }
+
+  // Pulling/grip load contributed by this week's EXTRA (ad-hoc, non-test)
+  // sessions, so the Weekly Coach sees real unscheduled volume (Part 5). Test /
+  // excluded sessions never contribute.
+  // A dedicated extra pull session (ladder/pyramid) is elevated load on its own
+  // (score 3 crosses the weeklyLoad 'elevated' threshold); lighter pulling is 2.
+  var PULL_SCORE = { ladder: 3, pyramid: 3, pull: 2, push: 0 };
+  var GRIP_SCORE = { ladder: 1, pyramid: 1, hold: 1, grip: 1, t2b: 1 };
+  function extraLoad(sessions, now) {
+    now = now || Date.now();
+    var pull = 0, grip = 0;
+    (sessions || []).forEach(function (s) {
+      if (s.excluded) return;
+      if (classify(s) !== 'extra') return;
+      if (!inThisWeek(s.date, now)) return;
+      sessionExercises(s).forEach(function (e) {
+        if (e.state && e.state !== 'completed') return;
+        var t = e.type || typeOf(e.exId);
+        pull += (PULL_SCORE[t] || 0);
+        grip += (GRIP_SCORE[t] || 0);
+      });
+    });
+    return { pull: pull, grip: grip };
+  }
 
   // Recompute the pull-up-max benchmark from the surviving (non-excluded)
   // sessions — used after a delete/exclude so a removed PR no longer counts.
@@ -213,9 +295,10 @@
 
   return {
     DAILY_VERSION: DAILY_VERSION, typeOf: typeOf, runnerType: runnerType,
-    makeDaily: makeDaily, findEx: findEx, firstUnfinishedRequired: firstUnfinishedRequired,
+    makeDaily: makeDaily, makeAdhocDaily: makeAdhocDaily, findEx: findEx, firstUnfinishedRequired: firstUnfinishedRequired,
     nextUnfinished: nextUnfinished, progress: progress, isDayComplete: isDayComplete,
     weeklySummary: weeklySummary, historyEntries: historyEntries, sessionExercises: sessionExercises,
-    recomputeBench: recomputeBench, inThisWeek: inThisWeek, weekStart: weekStart, dateKey: dateKey
+    recomputeBench: recomputeBench, classify: classify, classLabel: classLabel, CLASS_LABEL: CLASS_LABEL,
+    extraLoad: extraLoad, inThisWeek: inThisWeek, weekStart: weekStart, dateKey: dateKey
   };
 });

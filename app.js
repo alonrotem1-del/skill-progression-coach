@@ -179,13 +179,34 @@
     }
     saveDaily(nd); return nd;
   }
+
+  // ---- ad-hoc workout state -------------------------------------------------
+  // An ad-hoc (unplanned) workout is a queue that lives beside the scheduled
+  // daily so the two never collide. When one is active, the runner + completion
+  // + resume code all target it instead of Today's plan.
+  var adhoc=null;               // in-memory active ad-hoc daily (mirrors spc_c_adhoc)
+  function getAdhoc(){ if(adhoc) return adhoc; adhoc=Store.getAdhoc(); return adhoc; }
+  function saveAdhoc(d){ adhoc=d; Store.setAdhoc(d); }
+  function clearAdhoc(){ adhoc=null; Store.clearAdhoc(); }
+  // The daily entity every runner/completion function should act on: the active
+  // ad-hoc queue if one is in progress, otherwise Today's scheduled daily.
+  function activeDaily(res){ var a=getAdhoc(); if(a&&a.status==='in_progress') return a; return dailyForToday(res); }
+  function persistDaily(d){ if(d && d.adhoc) saveAdhoc(d); else saveDaily(d); }
+  // Custom workout templates saved to the user profile.
+  function getTemplates(){ return Store.getTemplates(); }
+  function saveTemplates(a){ Store.setTemplates(a); }
+
   // Context the load model + resolver read. `__spcTodayId` is a test/override
   // hook so a session can inspect any weekday deterministically.
   function weekCtx(){
     var r=readiness();
+    // Extra (ad-hoc, non-test) pulling/grip load logged this week feeds the
+    // Weekly Coach so an unscheduled session still shapes later adaptations.
+    var xl=Daily.extraLoad(Store.getSessions()||[], Date.now());
     return {
       todayId: (typeof window.__spcTodayId==='number')?window.__spcTodayId:new Date().getDay(),
-      readiness:r, pain:!!r.pain, cleanCompletions:cleanCompletions()
+      readiness:r, pain:!!r.pain, cleanCompletions:cleanCompletions(),
+      extraPullScore:xl.pull, extraGripScore:xl.grip
     };
   }
   function todayDayId(){ return (typeof window.__spcTodayId==='number')?window.__spcTodayId:new Date().getDay(); }
@@ -378,7 +399,9 @@
       '<div class="hero"><div class="between"><div><div class="goal">'+esc(res.day.label)+' &middot; '+esc(res.day.session)+'</div>'+
       '<h1>'+greet+'</h1></div></div>'+
       focusSummary+'</div>'+
-      scheduledCard(res,true);
+      adhocResumeBanner()+
+      scheduledCard(res,true)+
+      adhocActionsCard();
     var altHtml=res.alternative?
       '<div class="section">'+esc(res.alternative.label)+'</div>'+
       '<div class="card tight alt-card"><div class="muted small">'+esc(res.alternative.note)+'</div>'+
@@ -395,10 +418,14 @@
     on('[data-rk]','click',function(e){var k=e.currentTarget.dataset.rk,v=e.currentTarget.dataset.rv;if(k==='pain'){r.pain=!r.pain;}else if(k==='time'){r.time=v;}else{r[k]=+v;}renderToday();},wrap);
     on('[data-start]','click',function(e){ var d=e.currentTarget.dataset.day; if(d!=null&&d!=='') startDaySession(+d); else startSession(e.currentTarget.dataset.start); },wrap);
     on('[data-startday]','click',function(e){ startDaySession(+e.currentTarget.dataset.startday); },wrap);
-    on('[data-exstart]','click',function(e){ startExercise(e.currentTarget.dataset.exstart); },wrap);
+    on('[data-exstart]','click',function(e){ startExercise(e.currentTarget.dataset.exstart,{scheduled:true}); },wrap);
     on('[data-exview]','click',function(e){ openExResult(e.currentTarget.dataset.exview); },wrap);
     on('[data-exredo]','click',function(e){ redoExercise(e.currentTarget.dataset.exredo); },wrap);
     on('[data-exskip]','click',function(e){ skipExercise(e.currentTarget.dataset.exskip); },wrap);
+    on('[data-startany]','click',function(){ openWorkoutChooser(); },wrap);
+    on('[data-startone]','click',function(){ openExercisePicker(); },wrap);
+    on('[data-resumeadhoc]','click',function(){ resumeAdhoc(); },wrap);
+    on('[data-discardadhoc]','click',function(){ discardAdhoc(); },wrap);
     on('[data-groupday]','click',function(e){ openDayDetail(+e.currentTarget.dataset.groupday); },wrap);
     on('[data-daydetail]','click',function(e){ openDayDetail(+e.currentTarget.dataset.daydetail); },wrap);
     on('[data-useplanned]','click',function(e){ setDayOverride(+e.currentTarget.dataset.useplanned,'planned'); },wrap);
@@ -410,6 +437,22 @@
     on('[data-editwk]','click',function(e){ openWorkoutEditor(e.currentTarget.dataset.editwk,'today'); },wrap);
     on('[data-exdetail]','click',function(e){ openExerciseSheet(e.currentTarget.dataset.exdetail); },wrap);
     on('[data-resettoday]','click',function(e){ delete todayEdits[e.currentTarget.dataset.resettoday]; renderToday(); },wrap);
+  }
+
+  // Secondary/tertiary ad-hoc actions under the dominant scheduled card. The
+  // plan stays the default; the user can always train independently (Part 1).
+  function adhocActionsCard(){
+    var a=getAdhoc(); if(a&&a.status==='in_progress') return ''; // banner handles it
+    return '<div class="adhoc-actions"><div class="muted small" style="margin-bottom:6px">Feel like training something else?</div>'+
+      '<button class="btn ghost" data-startany>Start Any Workout</button>'+
+      '<button class="btn ghost sm" data-startone>Start One Exercise</button></div>';
+  }
+  function adhocResumeBanner(){
+    var a=getAdhoc(); if(!a) return '';
+    var pg=Daily.progress(a);
+    return '<div class="resume-banner"><div class="rb-h"><b>Extra workout in progress</b><span class="hist-badge">'+esc(a.classification==='test'?'Test':(a.classification==='apply'?'Applies to plan':'Extra'))+'</span></div>'+
+      '<div class="muted small">'+esc(a.templateName||a.session)+' &middot; '+pg.done+' of '+pg.total+' done</div>'+
+      '<div class="rb-acts"><button class="btn sm primary" data-resumeadhoc>Resume</button><button class="btn sm ghost" data-discardadhoc>Discard</button></div></div>';
   }
 
   // ---- Week screen (Part 9) -------------------------------------------------
@@ -663,16 +706,17 @@
   // A single-exercise runnable prescription (used by the daily queue). The
   // Pull-Up Ladder pulls its block from the (possibly user-edited) mu_strength
   // ladder so saved/today edits still apply.
-  function exercisePrescription(exId, res){
-    var meta=Week.EX[exId], b=meta&&meta.block; if(!b) return null;
+  function exercisePrescription(exId, res, override){
+    var meta=Week.EX[exId]||{};
+    var b=override||(meta&&meta.block); if(!b) return null;
     var block=clone(b);
-    if(block.scheme==='ladder'){
+    if(block.scheme==='ladder'&&!override){
       var lad=prescriptionFor(Data.templates.mu_strength);
       var ladBlock=(lad.blocks||[]).filter(function(x){return x.scheme==='ladder';})[0];
       if(ladBlock){ var lbl=block.label; block=clone(ladBlock); block.label=lbl; }
       if(res&&res.ladderRounds!=null) block.rounds=res.ladderRounds;
     }
-    return {id:'ex_'+exId, worldId:UI.worldId, kind:'strength', name:meta.name, type:'strength', blocks:[block]};
+    return {id:'ex_'+exId, worldId:UI.worldId, kind:'strength', name:meta.name||exId, type:'strength', blocks:[block]};
   }
 
   // ---- Daily workout: Start / Continue / start-an-exercise / resume ---------
@@ -698,35 +742,39 @@
     opts=opts||{};
     var dayId=todayDayId(), res=Week.resolveDay(getPlan(),dayId,weekCtx());
     if(res.goal) UI.worldId=res.goal.world;
-    var rt=exercisePrescription(exId,res); if(!rt){ toast('This exercise has no runner yet.'); return; }
-    var daily=dailyForToday(); var e=Daily.findEx(daily,exId);
+    var daily=opts.scheduled?dailyForToday(res):activeDaily(res); var e=Daily.findEx(daily,exId);
+    var rt=exercisePrescription(exId,res,(e&&e.block)||null); if(!rt){ toast('This exercise has no runner yet.'); return; }
     if(e&&e.state==='completed'&&!opts.redo){ return openExResult(exId); }
     UI.workout=buildWorkout(rt);
-    UI.workout.dailyExId=exId; UI.workout.dailyId=daily.id;
+    UI.workout.dailyExId=exId; UI.workout.dailyId=daily.id; UI.workout.adhoc=!!daily.adhoc;
     UI.workout.plannedRounds=(UI.workout.blocks[0]&&UI.workout.blocks[0].kind==='ladder')?UI.workout.blocks[0].rounds.length:null;
     UI.workout.plannedSets=(UI.workout.blocks[0]&&UI.workout.blocks[0].scheme==='pyramid')?UI.workout.blocks[0].sets.length:null;
     UI.workout.extraRounds=0; UI.workout.extraSets=0; UI.workout.redo=!!opts.redo;
     if(e){ e.state='in_progress'; }
-    daily.activeExId=exId; daily.status='in_progress'; saveDaily(daily);
+    daily.activeExId=exId; daily.status='in_progress'; persistDaily(daily);
     delete todayEdits.mu_strength;
     saveWorkoutState(); window.scrollTo(0,0); renderStrength();
   }
   // Record a finished daily exercise and show the exercise-completion screen.
   function finishDailyExercise(){
     stopTimer(); var w=UI.workout, exId=w.dailyExId, world=worldsById(w.worldId);
-    var daily=dailyForToday(); var e=Daily.findEx(daily,exId);
+    var daily=activeDaily(); var e=Daily.findEx(daily,exId);
     var bl=w.blocks[0];
     var result=exerciseResult(w,bl);
-    // apply node/benchmark progress for this single exercise
-    var ws=WS(w.worldId);
-    var t={id:'ex_'+exId,type:'strength',difficulty:result.difficulty||'Medium'};
-    var session={id:'cs_'+Date.now(),kind:'strength',templateId:t.id,worldId:w.worldId,date:new Date().toISOString(),
-      exResults:collectExResults(w),targetNodeIds:[ws.focus.primary,ws.focus.supporting].filter(Boolean),pain:w.pain,hardPull:false,difficulty:t.difficulty,adaptations:[]};
-    var pr=Progress.applyStrength(world,ws.nodes,session,Data.exercises);
-    ws.nodes=pr.states; recomputeFocus(world,ws); saveWS(w.worldId,ws);
-    var bench=Store.getBench(); Object.keys(pr.bench||{}).forEach(function(k){bench[k]=Math.max(bench[k]||0,pr.bench[k]);}); Store.setBench(bench);
+    // Apply node/benchmark progress for this single exercise — but never for a
+    // Test/excluded ad-hoc workout (Part 13). Extra workouts DO progress.
+    var isTest=!!(daily.adhoc&&daily.classification==='test');
+    if(!isTest){
+      var ws=WS(w.worldId);
+      var t={id:'ex_'+exId,type:'strength',difficulty:result.difficulty||'Medium'};
+      var session={id:'cs_'+Date.now(),kind:'strength',templateId:t.id,worldId:w.worldId,date:new Date().toISOString(),
+        exResults:collectExResults(w),targetNodeIds:[ws.focus.primary,ws.focus.supporting].filter(Boolean),pain:w.pain,hardPull:false,difficulty:t.difficulty,adaptations:[]};
+      var pr=Progress.applyStrength(world,ws.nodes,session,Data.exercises);
+      ws.nodes=pr.states; recomputeFocus(world,ws); saveWS(w.worldId,ws);
+      var bench=Store.getBench(); Object.keys(pr.bench||{}).forEach(function(k){bench[k]=Math.max(bench[k]||0,pr.bench[k]);}); Store.setBench(bench);
+    }
     if(e){ e.state='completed'; e.result=result; }
-    daily.activeExId=null; saveDaily(daily);
+    daily.activeExId=null; persistDaily(daily);
     UI.workout=null; saveWorkoutState();
     renderExerciseComplete(exId,result,daily);
   }
@@ -764,6 +812,9 @@
     var nextId=Daily.nextUnfinished(daily,exId);
     var nextEx=nextId?Daily.findEx(daily,nextId):null;
     var dayDone=Daily.isDayComplete(daily);
+    var adhocFlow=!!daily.adhoc;
+    var title=adhocFlow?(daily.templateName||daily.session):'Today\'s workout';
+    var finishLabel=adhocFlow?'Finish Workout':'Finish Today\'s Workout';
     var html='<div class="hero" style="text-align:center;padding-top:16px"><div class="badge" style="background:rgba(61,220,151,.15);color:var(--good);margin-bottom:8px">Exercise Complete</div>'+
       '<h1>'+esc(result.name)+' completed</h1></div>'+
       '<div class="card"><div class="dd-kv"><span>Planned</span><b>'+esc(result.plannedText||'—')+'</b></div>'+
@@ -772,17 +823,17 @@
       (result.extraRounds?'<div class="dd-kv"><span>Extra rounds</span><b>+'+result.extraRounds+'</b></div>':'')+
       (result.bestReps?'<div class="dd-kv"><span>Best set</span><b>'+result.bestReps+' reps</b></div>':'')+
       '</div>'+
-      '<div class="card tight"><div class="between"><div class="section" style="margin:0">Today\'s workout</div>'+
+      '<div class="card tight"><div class="between"><div class="section" style="margin:0">'+esc(title)+'</div>'+
       '<b>'+pg.done+' of '+pg.total+' exercises</b></div><div class="prog"><i style="width:'+(pg.total?Math.round(pg.done/pg.total*100):0)+'%"></i></div>'+
       (nextEx?'<div class="muted small sp">Next: <b>'+esc(nextEx.name)+'</b></div>':'')+'</div>'+
       (nextEx?'<button class="btn primary" data-continue="'+esc(nextId)+'">Continue to '+esc(nextEx.name)+'</button>':'')+
-      (dayDone?'<button class="btn '+(nextEx?'ghost':'primary')+'" data-finishday>Finish Today\'s Workout</button>':'<button class="btn ghost" data-finishnow>Finish for Now</button>')+
+      (dayDone?'<button class="btn '+(nextEx?'ghost':'primary')+'" data-finishday>'+finishLabel+'</button>':'<button class="btn ghost" data-finishnow>Finish for Now</button>')+
       '<button class="btn ghost" data-today>Return to Today</button>';
     window.scrollTo(0,0); app.innerHTML=''; app.appendChild(h('<div class="scr">'+html+'</div>'));
     on('[data-continue]','click',function(e){ startExercise(e.currentTarget.dataset.continue); });
-    on('[data-finishday]','click',function(){ finishDay(); });
-    on('[data-finishnow]','click',function(){ setScreen('today'); });
-    on('[data-today]','click',function(){ setScreen('today'); });
+    on('[data-finishday]','click',function(){ if(adhocFlow) renderAdhocComplete(); else finishDay(); });
+    on('[data-finishnow]','click',function(){ if(adhocFlow) pauseAdhoc(); setScreen('today'); });
+    on('[data-today]','click',function(){ if(adhocFlow) pauseAdhoc(); setScreen('today'); });
   }
   // Persist the whole daily workout as ONE history session and clear it.
   function finishDay(){
@@ -801,16 +852,16 @@
     setScreen('today');
   }
   function skipExercise(exId){
-    var daily=dailyForToday(); var e=Daily.findEx(daily,exId); if(!e) return;
-    e.state='skipped'; saveDaily(daily); renderToday();
+    var daily=activeDaily(); var e=Daily.findEx(daily,exId); if(!e) return;
+    e.state='skipped'; persistDaily(daily); if(daily.adhoc) renderAdhocRunner(); else renderToday();
   }
   function redoExercise(exId){
-    if(!confirm('Redo '+ (Week.EX[exId]?Week.EX[exId].name:exId) +'? This starts a fresh attempt for today.')) return;
-    var daily=dailyForToday(); var e=Daily.findEx(daily,exId); if(e){ e.state='not_started'; e.result=null; saveDaily(daily); }
+    if(!confirm('Redo '+ (Week.EX[exId]?Week.EX[exId].name:exId) +'? This starts a fresh attempt.')) return;
+    var daily=activeDaily(); var e=Daily.findEx(daily,exId); if(e){ e.state='not_started'; e.result=null; persistDaily(daily); }
     startExercise(exId,{redo:true});
   }
   function openExResult(exId){
-    var daily=dailyForToday(); var e=Daily.findEx(daily,exId); if(!e||!e.result){ toast('No result yet.'); return; }
+    var daily=activeDaily(); var e=Daily.findEx(daily,exId); if(!e||!e.result){ toast('No result yet.'); return; }
     var r=e.result;
     var body='<div class="grip"></div><div class="between"><h2>'+esc(r.name||exId)+'</h2><span class="badge" style="background:rgba(61,220,151,.15);color:var(--good)">Completed</span></div>'+
       '<div class="dd-kv"><span>Planned</span><b>'+esc(r.plannedText||'—')+'</b></div>'+
@@ -833,6 +884,323 @@
     window.scrollTo(0,0); app.innerHTML=''; app.appendChild(h('<div class="scr">'+html+'</div>'));
     on('[data-finishday]','click',finishDay);
     on('[data-today]','click',function(){setScreen('today');});
+  }
+
+  // ======= AD-HOC WORKOUTS ("Start Any Workout" / "Start One Exercise") =======
+  // The weekly plan guides; it never restricts. An ad-hoc workout is a queue that
+  // runs through the SAME runner/completion/resume code as the scheduled daily,
+  // then is classified (Extra / Applied to plan / Test) before it is saved.
+
+  function pauseAdhoc(){ var a=getAdhoc(); if(a){ a.status='paused'; saveAdhoc(a); } }
+  function resumeAdhoc(){ var a=getAdhoc(); if(!a) return; a.status='in_progress'; saveAdhoc(a);
+    if(a.activeExId){ var e=Daily.findEx(a,a.activeExId); if(e&&e.state==='in_progress'){ startExercise(a.activeExId); return; } }
+    var next=Daily.firstUnfinishedRequired(a); if(next){ startExercise(next); return; } renderAdhocComplete(); }
+  function discardAdhoc(){ if(!confirm('Discard this unplanned workout? Nothing will be saved.')) return; clearAdhoc(); toast('Extra workout discarded.'); setScreen('today'); }
+
+  // Executable exercises the user can pick from the library (those with a runner).
+  function libraryExercises(){
+    return Object.keys(Week.EX).filter(function(id){ return Week.EX[id].block; })
+      .map(function(id){ return {exId:id, name:Week.EX[id].name, priority:Week.EX[id].priority, role:Week.EX[id].role, scheme:Week.EX[id].block.scheme}; });
+  }
+  // Familiar / saved workouts — only things that actually exist in the app.
+  function familiarWorkouts(){
+    return [
+      {label:'Pull-Up Ladder', items:[{exId:'pullup_ladder'}]},
+      {label:'Pull-Up Pyramid', items:[{exId:'pullup_pyramid'}]},
+      {label:'Light Pull-Up Practice', items:[{exId:'light_pullups'}]},
+      {label:'Pull-Up Max Test', test:true, items:[{exId:'pullup_ladder', name:'Pull-Up Max Test', block:{scheme:'amrap',label:'Pull-Up Max Test',exId:'pullup',sets:1,reps:0,amrap:true}}]},
+      {label:'Pistol Squat Practice', items:[{exId:'pistol'}]},
+      {label:'Core / Toes-to-Bar', items:[{exId:'t2b'}]},
+      {label:'Holds', items:[{exId:'deadhang'}]},
+      {label:'Muscle-Up Skill Practice', items:[{exId:'transition_drill'}]},
+      {label:'Climbing Session', climbing:'b_project'},
+      {label:'Group Workout Log', group:true}
+    ];
+  }
+
+  // Which of these chosen exercises overlap Today's plan (included & runnable)?
+  function planExerciseIds(){
+    var d=dailyForToday(); var out={};
+    d.exercises.forEach(function(e){ if(e.included&&e.runner!=='none'&&!e.removed&&!e.replaced) out[e.exId]=true; });
+    return out;
+  }
+  function overlapWith(items){ var plan=planExerciseIds(); return items.filter(function(it){ return plan[it.exId]; }).map(function(it){ return it.exId; }); }
+
+  // ---- Start Any Workout: the chooser ---------------------------------------
+  function openWorkoutChooser(){
+    UI.screen='chooser';
+    var fam=familiarWorkouts().map(function(w,i){
+      return '<button class="chooser-row" data-fam="'+i+'"><span class="cr-name">'+esc(w.label)+'</span>'+(w.test?'<span class="hist-badge">Test</span>':'')+'<span class="sr-arrow">&rsaquo;</span></button>';
+    }).join('');
+    var tmpls=getTemplates();
+    var saved=tmpls.length?tmpls.map(function(t){
+      return '<button class="chooser-row" data-tmpl="'+esc(t.id)+'"><span class="cr-name">'+esc(t.name)+'</span><span class="muted small">'+(t.blocks?t.blocks.length:0)+' ex</span><span class="sr-arrow">&rsaquo;</span></button>';
+    }).join(''):'<p class="muted small">No saved workouts yet — build one below.</p>';
+    var html='<div class="wk-top"><div class="between"><button class="link" data-back>&lsaquo; Today</button><b>Start Any Workout</b><span style="width:52px"></span></div></div>'+
+      '<div class="section" style="margin-top:8px">Saved &amp; Familiar Workouts</div><div class="chooser-list">'+fam+'</div>'+
+      '<div class="section">Your Saved Workouts</div><div class="chooser-list">'+saved+'</div>'+
+      '<div class="section">Build a Custom Workout</div><div class="card tight"><p class="muted small">Pick exercises from the library, set the order and prescriptions, then start or save it as a reusable workout.</p>'+
+      '<button class="btn primary" data-build>Build a Custom Workout</button></div>'+
+      '<button class="btn ghost" data-manage>Manage Saved Workouts</button>';
+    var wrap=shell(html,'today');
+    on('[data-back]','click',function(){ setScreen('today'); },wrap);
+    on('[data-fam]','click',function(e){ chooseFamiliar(+e.currentTarget.dataset.fam); },wrap);
+    on('[data-tmpl]','click',function(e){ startSavedTemplate(e.currentTarget.dataset.tmpl); },wrap);
+    on('[data-build]','click',function(){ openCustomBuilder(); },wrap);
+    on('[data-manage]','click',function(){ openTemplateManager(); },wrap);
+  }
+  function chooseFamiliar(i){
+    var w=familiarWorkouts()[i]; if(!w) return;
+    if(w.group){ setScreen('today'); openDayDetail(3); toast('Log a group workout from any group day.'); return; }
+    if(w.climbing){ classifyThenStart(w, {climbing:w.climbing, session:w.label}); return; }
+    classifyThenStart(w, {items:w.items, session:w.label, test:!!w.test});
+  }
+  function startSavedTemplate(id){
+    var t=getTemplates().filter(function(x){return x.id===id;})[0]; if(!t) return;
+    var items=(t.blocks||[]).map(function(b){ return {exId:b.exId, block:clone(b.block||b)}; });
+    classifyThenStart({items:items}, {items:items, session:t.name, templateName:t.name});
+  }
+
+  // ---- Start One Exercise: the library picker -------------------------------
+  function openExercisePicker(){
+    UI.screen='onepick';
+    var rows=libraryExercises().map(function(x){
+      return '<button class="chooser-row" data-pick="'+esc(x.exId)+'"><span class="cr-name">'+esc(x.name)+'</span>'+prioPill(x.priority)+'<span class="muted small">'+esc(schemeLabel(x.scheme))+'</span><span class="sr-arrow">&rsaquo;</span></button>';
+    }).join('');
+    var html='<div class="wk-top"><div class="between"><button class="link" data-back>&lsaquo; Today</button><b>Start One Exercise</b><span style="width:52px"></span></div></div>'+
+      '<p class="muted small" style="margin:8px 2px">Choose any exercise to configure and start it now.</p>'+
+      '<div class="chooser-list">'+rows+'</div>';
+    var wrap=shell(html,'today');
+    on('[data-back]','click',function(){ setScreen('today'); },wrap);
+    on('[data-pick]','click',function(e){ var id=e.currentTarget.dataset.pick; classifyThenStart({items:[{exId:id}]}, {items:[{exId:id}], session:Week.EX[id].name}); },wrap);
+  }
+  function schemeLabel(s){ return ({ladder:'Ladder',pyramid:'Pyramid',hold:'Timed hold',amrap:'Max reps',sets:'Sets & reps'})[s]||'Sets'; }
+
+  // ---- overlap classification (Part 4) --------------------------------------
+  // Decide how an ad-hoc workout should count BEFORE it starts. No overlap → it
+  // is simply an Extra Workout. Overlap → ask the user.
+  function classifyThenStart(w, opts){
+    opts=opts||{};
+    if(opts.climbing){ startClimbing(Data.templates[opts.climbing]); return; }
+    var items=opts.items||[];
+    if(opts.test){ startAdhoc(items, {classification:'test', session:opts.session, templateName:opts.templateName, reason:'Started as a Max Test — excluded from progress.'}); return; }
+    var overlap=overlapWith(items);
+    if(!overlap.length){ startAdhoc(items, {classification:'extra', session:opts.session, templateName:opts.templateName, reason:'No overlap with today’s plan.'}); return; }
+    var names=overlap.map(function(id){return Week.EX[id]?Week.EX[id].name:id;}).join(', ');
+    var body='<div class="grip"></div><h2>How should this workout count?</h2>'+
+      '<p class="muted small">It overlaps today’s plan: <b>'+esc(names)+'</b>.</p>'+
+      '<button class="btn primary" data-cl="apply">Complete the matching exercises in Today’s Plan</button>'+
+      '<button class="btn" data-cl="extra">Record as an extra workout</button>'+
+      '<button class="btn ghost" data-cl="test">Test only — exclude from progress</button>'+
+      '<button class="btn ghost" data-close>Cancel</button>';
+    showSheet(body,function(sheet){
+      on('[data-cl]','click',function(e){ var c=e.currentTarget.dataset.cl; closeSheet();
+        var reason=c==='apply'?('Applied to today’s plan: '+names+'.'):c==='test'?'Marked as a test — excluded from progress.':'Kept as an extra workout despite overlapping the plan.';
+        startAdhoc(items, {classification:c, session:opts.session, templateName:opts.templateName, appliedDay:todayDayId(), reason:reason}); },sheet);
+      on('[data-close]','click',closeSheet,sheet);
+    });
+  }
+
+  // ---- start / run an ad-hoc workout ----------------------------------------
+  function startAdhoc(items, opts){
+    opts=opts||{};
+    var d=Daily.makeAdhocDaily(items, {classification:opts.classification, session:opts.session||'Custom Workout',
+      templateName:opts.templateName, appliedDay:opts.appliedDay});
+    d.classReason=opts.reason||''; d.status='in_progress';
+    saveAdhoc(d);
+    var next=Daily.firstUnfinishedRequired(d)||(d.exercises[0]&&d.exercises[0].exId);
+    if(next){ startExercise(next); } else renderAdhocRunner();
+  }
+  // The ad-hoc queue screen (mirrors Today's queue but for the ad-hoc workout).
+  function renderAdhocRunner(){
+    var d=getAdhoc(); if(!d){ setScreen('today'); return; }
+    d.status='in_progress'; saveAdhoc(d);
+    var pg=Daily.progress(d);
+    var clsName={extra:'Extra Workout',apply:'Counts toward Today’s Plan',test:'Test — excluded'}[d.classification]||'Extra Workout';
+    var html='<div class="wk-top"><div class="between"><button class="link" data-back>&lsaquo; Today</button><b>'+esc(d.templateName||d.session)+'</b><span class="muted small">'+pg.done+'/'+pg.total+'</span></div></div>'+
+      '<div class="rec sched"><div class="kick">Unplanned workout</div><div class="name">'+esc(d.templateName||d.session)+'</div>'+
+      '<div class="badge" style="background:rgba(122,162,247,.18);color:#a9c0ff;margin:2px 0 6px">'+esc(clsName)+'</div>'+
+      (d.classReason?'<div class="muted small">'+esc(d.classReason)+'</div>':'')+
+      '<div class="queue">'+queueHtml(d)+'</div>'+
+      '<button class="btn primary" data-finishadhoc>Finish Workout</button>'+
+      '<button class="btn ghost sm" data-discard>Discard Workout</button></div>';
+    var wrap=shell(html,'today');
+    on('[data-back]','click',function(){ pauseAdhoc(); setScreen('today'); },wrap);
+    on('[data-finishadhoc]','click',renderAdhocComplete,wrap);
+    on('[data-discard]','click',discardAdhoc,wrap);
+    wireQueue(wrap);
+  }
+  // Shared wiring for a queue rendered by queueHtml (scheduled or ad-hoc).
+  function wireQueue(wrap){
+    on('[data-exstart]','click',function(e){ startExercise(e.currentTarget.dataset.exstart); },wrap);
+    on('[data-exview]','click',function(e){ openExResult(e.currentTarget.dataset.exview); },wrap);
+    on('[data-exredo]','click',function(e){ redoExercise(e.currentTarget.dataset.exredo); },wrap);
+    on('[data-exskip]','click',function(e){ skipExercise(e.currentTarget.dataset.exskip); },wrap);
+    on('[data-exmeta]','click',function(e){ openExMetaSheet(e.currentTarget.dataset.exmeta); },wrap);
+  }
+
+  // ---- ad-hoc completion + classification (Part 6) --------------------------
+  function renderAdhocComplete(){
+    var d=getAdhoc(); if(!d){ setScreen('today'); return; }
+    var done=d.exercises.filter(function(e){return e.state==='completed';});
+    var totalPull=0; done.forEach(function(e){ var r=e.result||{}; if(r.type==='ladder'||r.type==='pyramid') totalPull+=(r.actualReps||0); });
+    var overlap=overlapWith(d.exercises.map(function(e){return {exId:e.exId};}));
+    var cls=d.classification;
+    function opt(v,label){ return '<button class="btn '+(cls===v?'primary':'ghost')+' sm" data-setcls="'+v+'">'+label+'</button>'; }
+    var loadNote=cls==='test'?'This workout is excluded from load and Progress.':
+      'Contributes to this week’s totals, pull volume and the Weekly Coach.';
+    var html='<div class="hero" style="text-align:center;padding-top:16px"><div class="badge" style="background:rgba(61,220,151,.15);color:var(--good);margin-bottom:8px">Workout Complete</div><h1>'+esc(d.templateName||d.session)+'</h1></div>'+
+      '<div class="card"><div class="section" style="margin-top:0">Result</div>'+
+      done.map(function(e){var r=e.result||{};return '<div class="dd-kv"><span>'+esc(e.name)+'</span><b>'+esc(r.actualText||'done')+'</b></div>';}).join('')+
+      (totalPull?'<div class="dd-kv"><span>Total pull-up reps</span><b>'+totalPull+'</b></div>':'')+
+      '</div>'+
+      '<div class="card tight"><div class="section" style="margin-top:0">How should this count?</div>'+
+      '<div class="cls-opts">'+opt('extra','Extra Workout')+(overlap.length?opt('apply','Apply to Today’s Plan'):'')+opt('test','Test / Exclude')+'</div>'+
+      '<div class="muted small sp">'+esc(loadNote)+'</div></div>'+
+      '<button class="btn primary" data-save>Save Workout</button>'+
+      '<button class="btn ghost" data-savetmpl>Save as Reusable Template</button>'+
+      '<button class="btn ghost" data-discard>Delete</button>';
+    window.scrollTo(0,0); app.innerHTML=''; app.appendChild(h('<div class="scr">'+html+'</div>'));
+    on('[data-setcls]','click',function(e){ var a=getAdhoc(); a.classification=e.currentTarget.dataset.setcls; saveAdhoc(a); renderAdhocComplete(); });
+    on('[data-save]','click',function(){ finishAdhocWorkout(getAdhoc().classification); });
+    on('[data-savetmpl]','click',function(){ saveCurrentAsTemplate(); });
+    on('[data-discard]','click',discardAdhoc);
+  }
+
+  // Persist the finished ad-hoc workout under its classification, applying to the
+  // plan or recording an extra/test session — never both (no double count).
+  function finishAdhocWorkout(classification){
+    var d=getAdhoc(); if(!d) return setScreen('today');
+    var done=d.exercises.filter(function(e){return e.state==='completed';});
+    var sessions=Store.getSessions();
+    if(classification==='apply'){
+      var plan=dailyForToday(); var planIds={}; plan.exercises.forEach(function(e){planIds[e.exId]=e;});
+      var matched=[], extra=[];
+      done.forEach(function(e){ var pe=planIds[e.exId]; if(pe&&pe.included&&!pe.removed&&!pe.replaced){ pe.state='completed'; pe.result=e.result; matched.push(e.name); } else extra.push(e); });
+      saveDaily(plan);
+      if(extra.length) recordAdhocSession(sessions, d, extra, 'extra', 'Extra exercises alongside a plan-applied workout.');
+      Store.setSessions(sessions);
+      toast(matched.length?('Applied to today’s plan: '+matched.join(', ')+'.'):'Saved.');
+    } else {
+      recordAdhocSession(sessions, d, done, classification, d.classReason);
+      Store.setSessions(sessions);
+      toast(classification==='test'?'Saved as a test (excluded from progress).':'Extra workout saved to your history.');
+    }
+    recomputeBenchFromSessions();
+    clearAdhoc();
+    setScreen('today');
+  }
+  function recordAdhocSession(sessions, d, exs, classification, reason){
+    var results=exs.map(function(e){ var r=e.result||{}; r.exId=e.exId; r.name=e.name; r.state='completed'; return r; });
+    var totalPull=0; results.forEach(function(r){ if(r.type==='ladder'||r.type==='pyramid') totalPull+=(r.actualReps||0); });
+    var session={ id:d.id+'_'+classification, kind:'daily', origin:'adhoc', classification:classification,
+      excluded:classification==='test', assessment:false, date:new Date().toISOString(), weekday:todayDayId(),
+      dayKey:'adhoc', session:(d.templateName||(classification==='test'?'Test Workout':'Extra Workout')),
+      worldId:UI.worldId, status:'completed', exercises:results, totalPullReps:totalPull, classReason:reason||'', adaptations:[] };
+    var i=sessions.map(function(s){return s.id;}).indexOf(session.id);
+    if(i>=0) sessions[i]=session; else sessions.push(session);
+  }
+
+  // ---- saved templates ------------------------------------------------------
+  function currentAdhocBlocks(){
+    var d=getAdhoc(); if(!d) return [];
+    return d.exercises.map(function(e){ var b=e.block?clone(e.block):clone((Week.EX[e.exId]||{}).block||{}); return {exId:e.exId, name:e.name, block:b}; });
+  }
+  function saveCurrentAsTemplate(){
+    var name=prompt('Name this workout template:', getAdhoc().templateName||'My Workout'); if(!name) return;
+    saveTemplate(name, currentAdhocBlocks());
+    var a=getAdhoc(); a.templateName=name; saveAdhoc(a);
+    toast('Saved "'+name+'" to your workouts.'); renderAdhocComplete();
+  }
+  function saveTemplate(name, blocks){
+    var tmpls=getTemplates();
+    tmpls.push({ id:'tmpl_'+Date.now(), name:name, blocks:blocks, createdAt:new Date().toISOString() });
+    saveTemplates(tmpls);
+  }
+  function openTemplateManager(){
+    UI.screen='tmplmgr';
+    var tmpls=getTemplates();
+    var rows=tmpls.length?tmpls.map(function(t){
+      return '<div class="tmpl-row"><div class="between"><b>'+esc(t.name)+'</b><span class="muted small">'+(t.blocks?t.blocks.length:0)+' exercises</span></div>'+
+        '<div class="tmpl-acts"><button class="link" data-tstart="'+esc(t.id)+'">Start</button>'+
+        '<button class="link" data-tdup="'+esc(t.id)+'">Duplicate</button>'+
+        '<button class="link" data-tren="'+esc(t.id)+'">Rename</button>'+
+        '<button class="link danger" data-tdel="'+esc(t.id)+'">Delete</button></div></div>';
+    }).join(''):'<p class="muted small">No saved workouts yet.</p>';
+    var html='<div class="wk-top"><div class="between"><button class="link" data-back>&lsaquo; Back</button><b>Saved Workouts</b><span style="width:52px"></span></div></div>'+
+      '<p class="muted small" style="margin:8px 2px">Your saved workouts stay separate from the weekly plan. Assign one to a day in Edit Plan if you want it scheduled.</p>'+
+      '<div class="tmpl-list">'+rows+'</div>';
+    var wrap=shell(html,'today');
+    on('[data-back]','click',openWorkoutChooser,wrap);
+    on('[data-tstart]','click',function(e){ startSavedTemplate(e.currentTarget.dataset.tstart); },wrap);
+    on('[data-tdup]','click',function(e){ var t=getTemplates().filter(function(x){return x.id===e.currentTarget.dataset.tdup;})[0]; if(t){ saveTemplate(t.name+' (copy)', clone(t.blocks)); openTemplateManager(); } },wrap);
+    on('[data-tren]','click',function(e){ var id=e.currentTarget.dataset.tren; var t=getTemplates().filter(function(x){return x.id===id;})[0]; if(!t)return; var n=prompt('Rename workout:',t.name); if(n){ var all=getTemplates(); all.forEach(function(x){if(x.id===id)x.name=n;}); saveTemplates(all); openTemplateManager(); } },wrap);
+    on('[data-tdel]','click',function(e){ var id=e.currentTarget.dataset.tdel; if(!confirm('Delete this saved workout?'))return; saveTemplates(getTemplates().filter(function(x){return x.id!==id;})); openTemplateManager(); },wrap);
+  }
+
+  // ---- custom workout builder (tap-based, no drag & drop) --------------------
+  var builder=null;
+  function openCustomBuilder(){
+    if(!builder) builder={ items:[] };
+    UI.screen='builder';
+    renderCustomBuilder();
+  }
+  function renderCustomBuilder(){
+    var items=builder.items;
+    var list=items.length?items.map(function(it,i){
+      var m=Week.EX[it.exId]||{};
+      return '<div class="bld-row"><div class="between"><b>'+(i+1)+'. '+esc(m.name||it.exId)+'</b>'+
+        '<div class="bld-move"><button class="link" data-up="'+i+'" '+(i===0?'disabled':'')+'>&uarr;</button>'+
+        '<button class="link" data-down="'+i+'" '+(i===items.length-1?'disabled':'')+'>&darr;</button>'+
+        '<button class="link" data-rm="'+i+'">Remove</button></div></div>'+
+        '<div class="muted small">'+esc(blockText(it.block))+' &middot; <button class="link" data-edit="'+i+'">Edit</button></div></div>';
+    }).join(''):'<p class="muted small">No exercises yet — add some below.</p>';
+    var lib=libraryExercises().map(function(x){ return '<button class="chip-add" data-add="'+esc(x.exId)+'">+ '+esc(x.name)+'</button>'; }).join('');
+    var html='<div class="wk-top"><div class="between"><button class="link" data-back>&lsaquo; Chooser</button><b>Build a Workout</b><span style="width:52px"></span></div></div>'+
+      '<div class="section" style="margin-top:8px">Your queue</div><div class="bld-list">'+list+'</div>'+
+      '<div class="section">Add from the library</div><div class="chip-wrap">'+lib+'</div>'+
+      (items.length?'<button class="btn primary" data-start>Start Workout</button>'+
+        '<button class="btn ghost" data-savetmpl>Save as Template</button>':'')+
+      '<button class="btn ghost sm" data-clear>Clear</button>';
+    var wrap=shell(html,'today');
+    on('[data-back]','click',openWorkoutChooser,wrap);
+    on('[data-add]','click',function(e){ var id=e.currentTarget.dataset.add; builder.items.push({exId:id, block:clone(Week.EX[id].block)}); renderCustomBuilder(); },wrap);
+    on('[data-rm]','click',function(e){ builder.items.splice(+e.currentTarget.dataset.rm,1); renderCustomBuilder(); },wrap);
+    on('[data-up]','click',function(e){ var i=+e.currentTarget.dataset.up; if(i>0){ var t=builder.items[i-1]; builder.items[i-1]=builder.items[i]; builder.items[i]=t; } renderCustomBuilder(); },wrap);
+    on('[data-down]','click',function(e){ var i=+e.currentTarget.dataset.down; if(i<builder.items.length-1){ var t=builder.items[i+1]; builder.items[i+1]=builder.items[i]; builder.items[i]=t; } renderCustomBuilder(); },wrap);
+    on('[data-edit]','click',function(e){ editBuilderBlock(+e.currentTarget.dataset.edit); },wrap);
+    on('[data-clear]','click',function(){ builder.items=[]; renderCustomBuilder(); },wrap);
+    on('[data-start]','click',function(){ var items=clone(builder.items); classifyThenStart({items:items}, {items:items, session:'Custom Workout'}); },wrap);
+    on('[data-savetmpl]','click',function(){ var n=prompt('Name this workout template:','My Workout'); if(n){ saveTemplate(n, builder.items.map(function(it){return {exId:it.exId,name:(Week.EX[it.exId]||{}).name,block:clone(it.block)};})); toast('Saved "'+n+'".'); } },wrap);
+  }
+  function blockText(b){ if(!b) return '';
+    if(b.scheme==='ladder') return Settings.stepsText(b.steps||[1,2,3])+' × '+b.rounds+' rounds';
+    if(b.scheme==='pyramid') return 'Pyramid';
+    if(b.scheme==='hold') return b.sets+' × '+b.seconds+'s hold';
+    if(b.scheme==='amrap') return 'Max reps';
+    return b.sets+' × '+b.reps+(Week.EX[b.exId]&&Week.EX[b.exId].unilateral?' each side':' reps');
+  }
+  // Tap-based prescription editor (sets/reps/rounds/hold seconds/rest).
+  function editBuilderBlock(i){
+    var it=builder.items[i]; if(!it) return; var b=it.block;
+    function step(field,label,min,max,unit){ if(b[field]==null) return '';
+      return '<div class="ed-line"><span>'+label+'</span><div class="ep-target"><button data-dec="'+field+'">&minus;</button><b class="edv" data-f="'+field+'">'+b[field]+(unit||'')+'</b><button data-inc="'+field+'">+</button></div></div>'; }
+    var fields=b.scheme==='ladder'?[['rounds','Rounds',1,10,'']]
+      :b.scheme==='hold'?[['sets','Sets',1,8,''],['seconds','Seconds',5,120,'s']]
+      :b.scheme==='pyramid'?[]
+      :b.scheme==='amrap'?[]
+      :[['sets','Sets',1,10,''],['reps','Reps',1,30,'']];
+    var body='<div class="grip"></div><h2>'+esc(Week.EX[it.exId].name)+'</h2>'+
+      (fields.length?fields.map(function(f){return step(f[0],f[1],f[2],f[3],f[4]);}).join(''):'<p class="muted small">This exercise has a fixed structure.</p>')+
+      '<button class="btn primary" data-done>Done</button>';
+    showSheet(body,function(sheet){
+      fields.forEach(function(f){
+        on('[data-dec="'+f[0]+'"]','click',function(){ b[f[0]]=Math.max(f[2],(b[f[0]]||f[2])-1); refresh(f[0],f[4]); },sheet);
+        on('[data-inc="'+f[0]+'"]','click',function(){ b[f[0]]=Math.min(f[3],(b[f[0]]||f[2])+1); refresh(f[0],f[4]); },sheet);
+      });
+      function refresh(field,unit){ var el=sheet.querySelector('.edv[data-f="'+field+'"]'); if(el) el.textContent=b[field]+(unit||''); }
+      on('[data-done]','click',function(){ closeSheet(); renderCustomBuilder(); },sheet);
+    });
   }
 
   // ---- exercise-metadata sheet (one canonical record, Part 11) --------------
@@ -1087,7 +1455,7 @@
   }
   function blockRestText(b){
     if(b.scheme==='ladder') return fmt(b.restBetweenStepsSec)+' between steps · '+fmt(b.restBetweenRoundsSec)+' between rounds';
-    if(b.scheme==='amrap') return '';
+    if(b.scheme==='amrap'||b.restSecs==null) return '';
     return fmt(b.restSecs)+' rest';
   }
 
@@ -1951,7 +2319,8 @@
     var d=new Date(en.date);
     var dateStr=WEEKDAY_ABBR[en.weekday]+' '+d.toLocaleDateString('en-US',{day:'numeric',month:'short'});
     var tags=en.types.map(function(t){return '<span class="hist-tag">'+esc(TYPE_LABEL[t]||t)+'</span>';}).join('');
-    var badges=(en.standalone?'<span class="hist-badge">Standalone</span>':'')+(en.assessment?'<span class="hist-badge">Test</span>':'')+(en.excluded?'<span class="hist-badge">Excluded</span>':'');
+    var clsBadge='<span class="hist-badge cls-'+esc(en.classification)+'">'+esc(en.classLabel)+'</span>';
+    var badges=clsBadge+(en.excluded&&en.classification!=='test'?'<span class="hist-badge">Excluded</span>':'');
     var body='';
     if(open){
       var exLines=en.exercises.map(function(e){
@@ -1960,8 +2329,9 @@
         return '<div class="hist-ex"><span>'+esc(nm)+'</span><b>'+esc(val||'—')+'</b></div>';
       }).join('')||'<div class="hist-ex"><span>No exercise detail</span><b>—</b></div>';
       body='<div class="hist-body">'+exLines+
+        (en.reason?'<div class="muted small sp">'+esc(en.reason)+'</div>':'')+
         '<div class="hist-actions">'+
-        '<button class="link" data-htest="'+esc(en.id)+'">'+(en.assessment?'Unmark test':'Mark as test')+'</button>'+
+        '<button class="link" data-htest="'+esc(en.id)+'">'+(en.classification==='test'?'Make it count':'Mark as test')+'</button>'+
         '<button class="link" data-hexclude="'+esc(en.id)+'">'+(en.excluded?'Include in stats':'Exclude from stats')+'</button>'+
         '<button class="link danger" data-hdelete="'+esc(en.id)+'">Delete</button>'+
         '</div></div>';
@@ -1988,8 +2358,15 @@
   }
   function toggleTest(id){
     var sessions=(Store.getSessions()||[]); var s=sessions.filter(function(x){return x.id===id;})[0]; if(!s) return;
-    s.assessment=!s.assessment; Store.setSessions(sessions); recomputeBenchFromSessions();
-    toast(s.assessment?'Marked as a max test.':'No longer marked as a test.'); renderProgress();
+    var isTest=(Daily.classify(s)==='test');
+    if(isTest){ // make it count again
+      s.excluded=false; s.assessment=false;
+      s.classification=s._prevClass||(s.origin==='adhoc'?'extra':(s.kind==='daily'?'scheduled':'standalone'));
+    } else {
+      s._prevClass=s.classification||null; s.classification='test'; s.excluded=true;
+    }
+    Store.setSessions(sessions); recomputeBenchFromSessions();
+    toast(isTest?'This workout now counts again.':'Marked as a test — excluded from progress.'); renderProgress();
   }
 
   // ---- Profile / Settings ---------------------------------------------------

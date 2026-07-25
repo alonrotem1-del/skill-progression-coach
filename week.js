@@ -353,6 +353,15 @@
         groupGripScore += (m.grip || 0);
       });
     });
+    // Extra (ad-hoc) workouts logged this week contribute REAL pulling/grip load
+    // even though they were never scheduled (Part 5). The app sums them from
+    // this-week non-test sessions and passes them in; a scheduled resolve with no
+    // ad-hoc history leaves these at 0, so the base plan is unchanged.
+    var extraPull = (ctx.extraPullScore || 0);
+    var extraGrip = (ctx.extraGripScore || 0);
+    groupPullScore += extraPull;
+    groupGripScore += extraGrip;
+
     // Bucketed, explainable — not a rigid rule. 0=low,1-2=normal,3-4=elevated,5+=high.
     var groupPull = groupPullScore <= 0 ? 'low'
       : groupPullScore <= 2 ? 'normal'

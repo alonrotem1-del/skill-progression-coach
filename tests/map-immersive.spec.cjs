@@ -196,7 +196,7 @@ test.describe('Edit Plan', () => {
   test('22 — Today updates after a saved plan change', async ({ page }) => {
     await page.goto('index.html'); await seed(page, 'muscleup', 2); // Tuesday
     // Tuesday lists Top Hold by default.
-    await expect(page.locator('.rec.sched .preview')).toContainText('Top Hold');
+    await expect(page.locator('.rec.sched .queue')).toContainText('Top Hold');
     // Unassign Top Hold from Tuesday (its only eligible day) and save.
     await page.locator('.nav [data-s="week"]').click();
     await page.locator('[data-editplan]').click();
@@ -204,8 +204,8 @@ test.describe('Edit Plan', () => {
     await page.locator('[data-epsave]').click();
     // Today (Tuesday) no longer lists Top Hold — the plan change flowed through.
     await page.locator('.nav [data-s="today"]').click();
-    await expect(page.locator('.rec.sched .preview')).toBeVisible();
-    await expect(page.locator('.rec.sched .preview')).not.toContainText('Top Hold');
+    await expect(page.locator('.rec.sched .queue')).toBeVisible();
+    await expect(page.locator('.rec.sched .queue')).not.toContainText('Top Hold');
   });
 });
 
@@ -213,10 +213,10 @@ test.describe('Edit Plan', () => {
 test.describe('Friday completeness', () => {
   test('23/24 — normal Friday shows all five with correct statuses (optionals visible)', async ({ page }) => {
     await page.goto('index.html'); await seed(page, 'muscleup', 5);
-    const names = await page.locator('.rec.sched .pl-ex .wk-ex-nm').allTextContents();
+    const names = await page.locator('.rec.sched .q-ex .q-name').allTextContents();
     expect(names).toEqual(['Pistol Squat', 'Pull-Up Ladder', 'Toes-to-Bar', 'Ring Support Hold', 'Wrist Roller']);
     // status chips: Required×3, Optional (ring), Conditional (wrist).
-    const chips = await page.locator('.rec.sched .pl-ex .status-chip').allTextContents();
+    const chips = await page.locator('.rec.sched .q-ex .status-chip').allTextContents();
     expect(chips).toContain('Optional');
     expect(chips).toContain('Conditional');
     expect(chips.filter(c => c === 'Required').length).toBe(3);
@@ -224,17 +224,16 @@ test.describe('Friday completeness', () => {
 
   test('25/28 — Start Workout matches the visible Friday list and the ladder stays 1–2–3 × 5', async ({ page }) => {
     await page.goto('index.html'); await seed(page, 'muscleup', 5);
-    const planNames = await page.locator('.rec.sched .pl-ex .wk-ex-nm').allTextContents();
-    await page.locator('.rec.sched [data-start]').first().click();
-    const blockLabels = await page.locator('.wk-block-wrap .section').allTextContents();
-    // every included plan exercise appears as a runner block, in order.
+    // Today's queue lists every included Friday exercise…
+    const planNames = await page.locator('.rec.sched .q-ex .q-name').allTextContents();
     ['Pistol Squat', 'Pull-Up Ladder', 'Toes-to-Bar', 'Ring Support Hold', 'Wrist Roller'].forEach(n => {
-      expect(blockLabels.join(' | ')).toContain(n);
+      expect(planNames.join(' | ')).toContain(n);
     });
-    // ladder keeps 5 rounds.
+    expect(planNames.length).toBe(5);
+    // …and starting the Pull-Up Ladder keeps its 1–2–3 × 5 structure.
+    await page.locator('.rec.sched [data-exstart="pullup_ladder"]').first().click();
     const ladderChips = await page.locator('.round-overview', { hasText: 'Round 5' }).locator('.round-chip').count();
     expect(ladderChips).toBe(5);
-    expect(planNames.length).toBe(5);
   });
 
   test('26 — a Dead Hang substitution is explicitly explained', async ({ page }) => {
@@ -257,7 +256,7 @@ test.describe('Friday completeness', () => {
     // Mark Tuesday complete so Ring Support is skipped Friday with a reason.
     await page.evaluate(() => { const S = window.CoachStore.makeStore(); const p = S.getPlan(); p.dayLog[2] = { completed: true }; S.setPlan(p); });
     await page.reload();
-    const ring = page.locator('.rec.sched .pl-ex', { hasText: 'Ring Support Hold' });
+    const ring = page.locator('.rec.sched .q-ex', { hasText: 'Ring Support Hold' });
     await expect(ring).toContainText('Skipped');
     await expect(ring).toContainText(/already completed Tuesday/i);
   });
