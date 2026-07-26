@@ -255,6 +255,21 @@
     .round-chip.current{border-color:var(--focus);box-shadow:0 0 0 1px var(--focus)}
     .round-chip.current .rc-steps{color:var(--focus)}
     .round-chip.upcoming{opacity:.72}
+    .round-chip.skipped{opacity:.5;text-decoration:line-through}
+
+    /* ---- timed hold runner ---- */
+    .hold-card{text-align:center}
+    .hold-target{font-size:15px;color:var(--muted);margin:2px 0 10px}
+    .hold-big{font-size:64px;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums;line-height:1;margin:4px 0 12px}
+    .hold-prep .hold-big{color:var(--focus)}
+    .hold-progress{height:8px;border-radius:6px;background:var(--card2);overflow:hidden;margin:0 0 14px}
+    .hold-progress i{display:block;height:100%;background:var(--accent);transition:width .2s linear}
+    .hold-btns{display:flex;flex-direction:column;gap:8px;align-items:stretch}
+    .hold-btns .btn{width:100%}
+    .hold-result{font-size:17px;font-weight:800;margin-bottom:12px}
+    .hold-start{width:100%}
+    .hold-edit-link{display:block;margin-top:8px}
+    .hold-idle-acts{display:flex;justify-content:center;gap:18px;margin-top:10px}
 
     /* ---- path summary ---- */
     .path-summary{font-size:13px;color:var(--muted);margin:4px 0 6px}
@@ -588,6 +603,10 @@
       .cur-done{min-width:96px;padding:11px 16px;font-size:15px}
       .stepper.big button{width:38px;height:38px;font-size:20px}
       .stepper.big .num{min-width:38px;font-size:22px}
+      /* the hold countdown is the single most important number on screen, but
+         at this width/height it still has to leave room for its buttons */
+      .hold-big{font-size:44px;margin:2px 0 8px}
+      .hold-btns{gap:6px}
 
       /* ---- Climbing session: logging on the left, log + summary on the right */
       .climb-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
@@ -718,15 +737,15 @@
       });
     })();
   </script>
-  <script src="data.js?v=20260726b"></script>
-  <script src="week.js?v=20260726b"></script>
-  <script src="daily.js?v=20260726b"></script>
-  <script src="engine.js?v=20260726b"></script>
-  <script src="progress.js?v=20260726b"></script>
-  <script src="store.js?v=20260726b"></script>
-  <script src="duration.js?v=20260726b"></script>
-  <script src="adapt.js?v=20260726b"></script>
-  <script src="settings.js?v=20260726b"></script>
-  <script src="app.js?v=20260726b"></script>
+  <script src="data.js?v=20260726c"></script>
+  <script src="week.js?v=20260726c"></script>
+  <script src="daily.js?v=20260726c"></script>
+  <script src="engine.js?v=20260726c"></script>
+  <script src="progress.js?v=20260726c"></script>
+  <script src="store.js?v=20260726c"></script>
+  <script src="duration.js?v=20260726c"></script>
+  <script src="adapt.js?v=20260726c"></script>
+  <script src="settings.js?v=20260726c"></script>
+  <script src="app.js?v=20260726c"></script>
 </body>
 </html>

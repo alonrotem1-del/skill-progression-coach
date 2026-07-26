@@ -80,12 +80,27 @@
       osc.start(t);osc.stop(t+0.1);
     }catch(e){}
   }
+  // Distinct, lower single tone marking the moment a timed hold begins —
+  // deliberately different from the 3-tone completion chime (playBeep) so the
+  // two cues are never confused mid-set.
+  function playHoldStart(){
+    try{
+      if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+      if(audioCtx.state==='suspended') audioCtx.resume();
+      var osc=audioCtx.createOscillator(),gain=audioCtx.createGain();
+      osc.connect(gain);gain.connect(audioCtx.destination);
+      osc.frequency.value=330;osc.type='triangle';
+      var t=audioCtx.currentTime;
+      gain.gain.setValueAtTime(0.4,t);gain.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+      osc.start(t);osc.stop(t+0.3);
+    }catch(e){}
+  }
   function vibrate(ms){try{if(navigator.vibrate)navigator.vibrate(ms);}catch(e){}}
   document.addEventListener('touchstart',unlockAudio,{once:true});
   document.addEventListener('click',unlockAudio,{once:true});
 
   // ---- app/session state ----------------------------------------------------
-  var UI = { screen:'today', worldId:null, sheet:null, workout:null, climb:null, timer:null, timerPaused:false, timerLeft:0, readiness:null, readinessOpen:false };
+  var UI = { screen:'today', worldId:null, sheet:null, workout:null, climb:null, timer:null, timerPaused:false, timerLeft:0, readiness:null, readinessOpen:false, holdTicker:null };
 
   function worldsById(id){return Data.worldsById[id];}
   function activeWorld(){return worldsById(UI.worldId);}
@@ -134,7 +149,7 @@
   function restoreWorkoutState(){
     var saved = Store.get(WK_KEY);
     if(!saved) return false;
-    if(saved.type==='strength'){UI.workout=saved.data;renderStrength();return true;}
+    if(saved.type==='strength'){UI.workout=saved.data;recomputeHoldOnLoad(UI.workout);renderStrength();return true;}
     if(saved.type==='climbing'){UI.climb=saved.data;renderClimbing();return true;}
     return false;
   }
@@ -898,10 +913,28 @@
     }
     // sets / hold / unilateral
     var isHold=bl.sets[0]&&bl.sets[0].unit==='sec';
+    if(isHold){
+      // History and Progress read ONLY the actual measured duration of each
+      // completed hold — never the planned target — so a hold stopped early
+      // can never be mistaken for (or credited as) a full completion.
+      var holdActuals=[], totalHoldSec=0, completedHolds=0, bestSec=0, anyStoppedEarly=false;
+      bl.sets.forEach(function(s){
+        if(s.skipped) return;
+        if(s.doneFlag){
+          holdActuals.push(s.actual); totalHoldSec+=s.actual; bestSec=Math.max(bestSec,s.actual); completedHolds++;
+          if(s.stoppedEarly) anyStoppedEarly=true;
+        }
+      });
+      return {type:Daily.typeOf(w.dailyExId), exId:w.dailyExId, name:meta.name, sets:bl.sets.length,
+        holdActuals:holdActuals, totalHoldSec:totalHoldSec, completedHolds:completedHolds, plannedHolds:bl.sets.length,
+        actualReps:0, bestSeconds:bestSec, bestReps:0, stoppedEarly:anyStoppedEarly, difficulty:difficulty, state:'completed',
+        plannedText:bl.sets.length+' × '+bl.sets[0].target+' sec',
+        actualText:holdActuals.length?holdActuals.map(function(v){return v+' sec';}).join(', '):'No holds completed'};
+    }
     var totals=0, best=0; bl.sets.forEach(function(s){ if(s.doneFlag){ totals+=s.actual; best=Math.max(best,s.actual); } });
     return {type:Daily.typeOf(w.dailyExId), exId:w.dailyExId, name:meta.name, sets:bl.sets.length,
-      actualReps:isHold?0:totals, bestSeconds:isHold?best:0, bestReps:isHold?0:best, difficulty:difficulty, state:'completed',
-      plannedText:setsText(bl), actualText:(isHold?best+'s best hold':totals+' total reps')};
+      actualReps:totals, bestSeconds:0, bestReps:best, difficulty:difficulty, state:'completed',
+      plannedText:setsText(bl), actualText:totals+' total reps'};
   }
   function setsText(bl){ if(bl.sets[0]&&bl.sets[0].unit==='sec') return bl.sets.length+' × '+bl.sets[0].target+'s'; return bl.sets.length+' × '+((bl.sets[0]&&bl.sets[0].target)||'—'); }
   function maxRep(bl){ var m=0; bl.rounds.forEach(function(rd){rd.steps.forEach(function(s){m=Math.max(m,s.actual);});}); return m; }
@@ -923,7 +956,11 @@
       '<div class="dd-kv"><span>Actual</span><b>'+esc(result.actualText||'—')+'</b></div>'+
       (result.difficulty?'<div class="dd-kv"><span>Difficulty</span><b>'+esc(cap(result.difficulty))+'</b></div>':'')+
       (result.extraRounds?'<div class="dd-kv"><span>Extra rounds</span><b>+'+result.extraRounds+'</b></div>':'')+
-      (result.bestReps?'<div class="dd-kv"><span>Best set</span><b>'+result.bestReps+' reps</b></div>':'')+
+      (result.holdActuals?
+        '<div class="dd-kv"><span>Best hold</span><b>'+result.bestSeconds+' sec</b></div>'+
+        '<div class="dd-kv"><span>Total hold time</span><b>'+result.totalHoldSec+' sec</b></div>'+
+        '<div class="dd-kv"><span>Completed</span><b>'+result.completedHolds+' of '+result.plannedHolds+' holds</b></div>'
+        :(result.bestReps?'<div class="dd-kv"><span>Best set</span><b>'+result.bestReps+' reps</b></div>':''))+
       '</div>'+
       '<div class="card tight"><div class="between"><div class="section" style="margin:0">'+esc(title)+'</div>'+
       '<b>'+pg.done+' of '+pg.total+' exercises</b></div><div class="prog"><i style="width:'+(pg.total?Math.round(pg.done/pg.total*100):0)+'%"></i></div>'+
@@ -1285,10 +1322,11 @@
   // Tap-based prescription editor (sets/reps/rounds/hold seconds/rest).
   function editBuilderBlock(i){
     var it=builder.items[i]; if(!it) return; var b=it.block;
+    if(b.scheme==='hold'&&b.restSecs==null) b.restSecs=60; // sensible default so the field is editable
     function step(field,label,min,max,unit){ if(b[field]==null) return '';
       return '<div class="ed-line"><span>'+label+'</span><div class="ep-target"><button data-dec="'+field+'">&minus;</button><b class="edv" data-f="'+field+'">'+b[field]+(unit||'')+'</b><button data-inc="'+field+'">+</button></div></div>'; }
     var fields=b.scheme==='ladder'?[['rounds','Rounds',1,10,'']]
-      :b.scheme==='hold'?[['sets','Sets',1,8,''],['seconds','Seconds',5,120,'s']]
+      :b.scheme==='hold'?[['sets','Sets',1,8,''],['seconds','Seconds',5,120,'s'],['restSecs','Rest',10,300,'s']]
       :b.scheme==='pyramid'?[]
       :b.scheme==='amrap'?[]
       :[['sets','Sets',1,10,''],['reps','Reps',1,30,'']];
@@ -1839,11 +1877,14 @@
     var total=0,done=0;
     w.blocks.forEach(function(bl){
       if(bl.kind==='ladder') bl.rounds.forEach(function(rd){rd.steps.forEach(function(st){total++;if(st.doneFlag)done++;});});
-      else bl.sets.forEach(function(s){total++;if(s.doneFlag)done++;});
+      else bl.sets.forEach(function(s){ if(s.skipped) return; total++;if(s.doneFlag)done++;});
     });
     return {total:total,done:done};
   }
   // First undone step/set across the whole workout, or null when finished.
+  // A straight set marked `skipped` (End Exercise bailed past it) is treated as
+  // neither pending nor completed — it is simply excluded from both counts and
+  // from being offered as "current" again.
   function locateCurrent(w){
     for(var bi=0;bi<w.blocks.length;bi++){
       var bl=w.blocks[bi];
@@ -1853,7 +1894,7 @@
           for(var si=0;si<rd.steps.length;si++){ if(!rd.steps[si].doneFlag) return {bi:bi,ri:ri,si:si,kind:'ladder'}; }
         }
       } else {
-        for(var k=0;k<bl.sets.length;k++){ if(!bl.sets[k].doneFlag) return {bi:bi,si:k,kind:'straight'}; }
+        for(var k=0;k<bl.sets.length;k++){ if(!bl.sets[k].doneFlag&&!bl.sets[k].skipped) return {bi:bi,si:k,kind:'straight'}; }
       }
     }
     return null;
@@ -1963,6 +2004,7 @@
   // sibling (curNextHtml) so landscape can place it in the right column while
   // the card itself stays in the left column.
   function renderCurCard(w,cur,bl){
+    if(cur.kind==='straight'&&bl.scheme==='hold') return renderHoldCard(w,cur,bl);
     if(cur.kind==='ladder'){
       var rd=bl.rounds[cur.ri], st=rd.steps[cur.si];
       return '<div class="cur-card" data-cur-round="'+(cur.ri+1)+'" data-cur-step="'+(cur.si+1)+'">'+
@@ -1985,6 +2027,213 @@
       (s.adapted?'<div class="adapt-note muted small">'+esc(s.adapted)+'</div>':'')+
     '</div>';
   }
+  // ---- Timed Hold runner: the app IS the workout timer -----------------------
+  // A hold's live state (w.hold) is a single-slot object mirroring w.lastRound/
+  // w.lastSet — only one hold can be active at a time. Every displayed value is
+  // derived by subtracting Date.now() from persisted timestamps (prepStartTs /
+  // startTs) plus accumulated elapsedMs, never by decrementing a counter — so a
+  // backgrounded tab, a delayed setInterval callback, or a full page refresh all
+  // recover the true elapsed time instead of drifting.
+  var HOLD_PREP_MS=3000;
+  function holdElapsedMs(hd){
+    if(!hd) return 0;
+    if(hd.phase==='running') return (hd.elapsedMs||0)+(Date.now()-hd.startTs);
+    return hd.elapsedMs||0;
+  }
+  function startHold(w,bi,si){
+    w.hold={bi:bi,si:si,phase:'prep',prepStartTs:Date.now()};
+    saveWorkoutState(); startHoldTicker(); renderStrengthKeepScroll();
+  }
+  function cancelHoldPrep(w){ w.hold=null; saveWorkoutState(); stopHoldTicker(); renderStrengthKeepScroll(); }
+  function pauseHold(w){ var hd=w.hold; if(!hd||hd.phase!=='running') return;
+    hd.elapsedMs=(hd.elapsedMs||0)+(Date.now()-hd.startTs); hd.phase='paused'; saveWorkoutState(); renderStrengthKeepScroll(); }
+  function resumeHold(w){ var hd=w.hold; if(!hd||hd.phase!=='paused') return;
+    hd.startTs=Date.now(); hd.phase='running'; saveWorkoutState(); renderStrengthKeepScroll(); }
+  function toggleHoldPause(w){ var hd=w.hold; if(!hd) return; if(hd.phase==='running') pauseHold(w); else if(hd.phase==='paused') resumeHold(w); }
+  function stopHoldEarly(w){
+    var hd=w.hold; if(!hd) return;
+    var elapsed=holdElapsedMs(hd);
+    hd.elapsedMs=elapsed; hd.phase='stopped'; hd.resultSec=Math.round(elapsed/1000); hd.stoppedEarly=true;
+    stopHoldTicker(); saveWorkoutState(); renderStrengthKeepScroll();
+  }
+  function redoHold(w){ w.hold=null; saveWorkoutState(); stopHoldTicker(); renderStrengthKeepScroll(); }
+  // Confirm the shown result (natural completion or an early stop) as the
+  // set's actual duration, then hand off to the SAME finish path a reps set
+  // uses — reusing the shared difficulty-rating + rest-timer infrastructure.
+  function confirmHoldResult(w){
+    var hd=w.hold; if(!hd) return;
+    var bi=hd.bi, si=hd.si, bl=w.blocks[bi];
+    bl.sets[si].actual=hd.resultSec!=null?hd.resultSec:bl.sets[si].target;
+    bl.sets[si].stoppedEarly=!!hd.stoppedEarly;
+    w.hold=null; stopHoldTicker();
+    finishStraightSet(w,bi,si);
+  }
+  function skipHold(w,bi,si){ w.blocks[bi].sets[si].skipped=true; w.hold=null; saveWorkoutState(); renderStrengthKeepScroll(); }
+  // End the exercise right now: the in-flight result (if any) is saved as its
+  // actual duration, every remaining hold is marked skipped (never counted as
+  // the planned target), then the daily exercise / workout finishes.
+  function endHoldExerciseNow(w,bi,si,fromResult){
+    var bl=w.blocks[bi];
+    if(fromResult&&w.hold){
+      bl.sets[si].actual=w.hold.resultSec!=null?w.hold.resultSec:bl.sets[si].target;
+      bl.sets[si].doneFlag=true; bl.sets[si].stoppedEarly=!!w.hold.stoppedEarly;
+    } else if(!bl.sets[si].doneFlag){
+      bl.sets[si].skipped=true;
+    }
+    for(var k=si+1;k<bl.sets.length;k++){ bl.sets[k].skipped=true; }
+    w.hold=null; stopHoldTicker(); saveWorkoutState();
+    if(w.dailyExId) finishDailyExercise(); else finishStrength();
+  }
+  function startHoldTicker(){ stopHoldTicker(); UI.holdTicker=setInterval(holdTick,200); holdTick(); }
+  function stopHoldTicker(){ if(UI.holdTicker){ clearInterval(UI.holdTicker); UI.holdTicker=null; } }
+  function holdTick(){
+    var w=UI.workout; if(!w||!w.hold){ stopHoldTicker(); return; }
+    var hd=w.hold, bl=w.blocks[hd.bi], target=bl.sets[hd.si].target;
+    if(hd.phase==='prep'){
+      var remainMs=HOLD_PREP_MS-(Date.now()-hd.prepStartTs);
+      var remainSec=Math.max(0,Math.ceil(remainMs/1000));
+      if(hd._lastPrepSec!==remainSec){ hd._lastPrepSec=remainSec; if(remainSec>0&&settings().timer.countdown) playCountdownTick(); }
+      if(remainMs<=0){
+        // The prep phase ends EXACTLY prepStartTs+HOLD_PREP_MS, not "now" — any
+        // overshoot (a delayed/coalesced timer callback) must still count
+        // toward the hold itself, so fall straight into the running check
+        // below within this same tick instead of waiting for the next one.
+        hd.phase='running'; hd.startTs=hd.prepStartTs+HOLD_PREP_MS; hd.elapsedMs=0;
+        if(settings().timer.sound) playHoldStart();
+        if(settings().timer.vibrate) vibrate(80);
+        saveWorkoutState();
+      } else {
+        updateHoldDom(); return;
+      }
+    }
+    if(hd.phase==='running'){
+      var elapsed=holdElapsedMs(hd);
+      var remaining=target*1000-elapsed;
+      var remainSec2=Math.max(0,Math.ceil(remaining/1000));
+      if(hd._lastSec!==remainSec2){
+        hd._lastSec=remainSec2;
+        if(remainSec2<=3&&remainSec2>0&&settings().timer.countdown) playCountdownTick();
+      }
+      if(remaining<=0){
+        hd.phase='complete'; hd.elapsedMs=target*1000; hd.resultSec=target;
+        stopHoldTicker();
+        if(settings().timer.sound) playBeep();
+        if(settings().timer.vibrate) vibrate([100,50,100,50,200]);
+        saveWorkoutState();
+      }
+      updateHoldDom();
+    }
+  }
+  // Restore an active hold across a refresh/PWA restart/backgrounding: the
+  // ticker itself is in-memory only, but the timestamps it reads back are
+  // persisted, so remaining time is always correct the moment it resumes.
+  function recomputeHoldOnLoad(w){
+    if(!w||!w.hold) return;
+    var hd=w.hold, cur=locateCurrent(w);
+    if(!cur||cur.bi!==hd.bi||cur.si!==hd.si){ w.hold=null; return; }
+    var bl=w.blocks[hd.bi], target=bl.sets[hd.si].target;
+    if(hd.phase==='prep'&&HOLD_PREP_MS-(Date.now()-hd.prepStartTs)<=0){
+      hd.phase='running'; hd.startTs=hd.prepStartTs+HOLD_PREP_MS; hd.elapsedMs=0;
+    }
+    if(hd.phase==='running'){
+      if(holdElapsedMs(hd)>=target*1000){ hd.phase='complete'; hd.elapsedMs=target*1000; hd.resultSec=target; }
+      else startHoldTicker();
+    } else if(hd.phase==='prep'){
+      startHoldTicker();
+    }
+  }
+  function updateHoldDom(){
+    var w=UI.workout; if(!w||!w.hold) return;
+    var old=document.getElementById('holdcard'); if(!old) return;
+    var cur=locateCurrent(w); if(!cur||cur.bi!==w.hold.bi||cur.si!==w.hold.si) return;
+    var bl=w.blocks[w.hold.bi];
+    var tmp=document.createElement('div'); tmp.innerHTML=renderHoldCard(w,cur,bl);
+    var neu=tmp.firstElementChild;
+    old.replaceWith(neu);
+    wireHoldCard(neu);
+  }
+  function renderHoldCard(w,cur,bl){
+    var si=cur.si, s=bl.sets[si];
+    var hd=(w.hold&&w.hold.bi===cur.bi&&w.hold.si===si)?w.hold:null;
+    var meta='<div class="cur-meta">Hold '+(si+1)+' of '+bl.sets.length+'</div>';
+    var body;
+    if(!hd){
+      var canEdit=(si===0)&&bl.sets.every(function(x){return !x.doneFlag&&!x.skipped;});
+      body='<div class="hold-target">Target <b>'+s.target+'</b> seconds</div>'+
+        '<button class="btn primary hold-start" data-holdstart>Start Hold</button>'+
+        (canEdit?'<button class="link hold-edit-link" data-holdedit>Edit prescription</button>':'')+
+        '<div class="hold-idle-acts"><button class="link" data-holdskip>Skip This Hold</button>'+
+        '<button class="link" data-holdfinishidle>Finish Exercise</button></div>';
+    } else if(hd.phase==='prep'){
+      var remainMs=HOLD_PREP_MS-(Date.now()-hd.prepStartTs), n=Math.max(1,Math.ceil(remainMs/1000));
+      body='<div class="hold-target">Get ready — target <b>'+s.target+'</b> seconds</div>'+
+        '<div class="hold-big">'+n+'</div>'+
+        '<button class="btn ghost" data-holdcancel>Cancel</button>';
+    } else if(hd.phase==='running'||hd.phase==='paused'){
+      var elapsed=holdElapsedMs(hd), remaining=Math.max(0,Math.ceil((s.target*1000-elapsed)/1000));
+      var pct=Math.min(100,Math.round(elapsed/(s.target*1000)*100));
+      body='<div class="hold-target">Target <b>'+s.target+'</b> seconds</div>'+
+        '<div class="hold-big">'+remaining+'</div>'+
+        '<div class="hold-progress"><i style="width:'+pct+'%"></i></div>'+
+        '<div class="hold-btns"><button class="btn ghost" data-holdpause>'+(hd.phase==='paused'?'Resume':'Pause')+'</button>'+
+        '<button class="btn danger" data-holdstop>Stop Early</button></div>';
+    } else if(hd.phase==='stopped'){
+      body='<div class="hold-result">'+hd.resultSec+' of '+s.target+' seconds completed</div>'+holdConfirmActions(cur,bl,false);
+    } else {
+      body='<div class="hold-result">Hold complete — '+hd.resultSec+' seconds</div>'+holdConfirmActions(cur,bl,true);
+    }
+    return '<div class="cur-card hold-card'+(hd&&hd.phase==='prep'?' hold-prep':'')+'" id="holdcard">'+meta+body+'</div>';
+  }
+  function holdConfirmActions(cur,bl,natural){
+    var hasMore=cur.si+1<bl.sets.length;
+    var primaryLabel=natural?'Completed Full Hold':(hasMore?'Continue to Next Hold':'Save Result');
+    var btns='<button class="btn primary" data-holdconfirm>'+esc(primaryLabel)+'</button>'+
+      '<button class="btn ghost" data-holdredo>Redo Hold</button>';
+    if(!natural) btns+='<button class="link" data-holdend>End Exercise</button>';
+    return '<div class="hold-btns">'+btns+'</div>';
+  }
+  function wireHoldCard(root){
+    var w=UI.workout; if(!w) return;
+    on('[data-holdstart]','click',function(){ var cur=locateCurrent(w); if(cur) startHold(w,cur.bi,cur.si); },root);
+    on('[data-holdedit]','click',function(){ var cur=locateCurrent(w); if(cur) openHoldPrescriptionEditor(w,w.blocks[cur.bi]); },root);
+    on('[data-holdskip]','click',function(){ var cur=locateCurrent(w); if(cur) skipHold(w,cur.bi,cur.si); },root);
+    on('[data-holdfinishidle]','click',function(){ var cur=locateCurrent(w); if(cur&&confirm('Finish this exercise now? Remaining holds will be skipped.')) endHoldExerciseNow(w,cur.bi,cur.si,false); },root);
+    on('[data-holdcancel]','click',function(){ cancelHoldPrep(w); },root);
+    on('[data-holdpause]','click',function(){ toggleHoldPause(w); },root);
+    on('[data-holdstop]','click',function(){ stopHoldEarly(w); },root);
+    on('[data-holdredo]','click',function(){ redoHold(w); },root);
+    on('[data-holdconfirm]','click',function(){ confirmHoldResult(w); },root);
+    on('[data-holdend]','click',function(){ var hd=w.hold; if(hd&&confirm('End this exercise now? Remaining holds will be skipped.')) endHoldExerciseNow(w,hd.bi,hd.si,true); },root);
+  }
+  // Lightweight tap-stepper editor for the CURRENT block's hold prescription
+  // (holds / seconds each / rest), reusing the same interaction idiom as
+  // editBuilderBlock — offered only before the first hold of the exercise starts.
+  function openHoldPrescriptionEditor(w,bl){
+    var state={sets:bl.sets.length, seconds:bl.sets[0].target, rest:bl.restSecs};
+    var limits={sets:[1,8],seconds:[5,180],rest:[10,300]};
+    var step={sets:1,seconds:5,rest:5};
+    function line(field,label,unit){
+      return '<div class="ed-line"><span>'+label+'</span><div class="ep-target"><button data-dec="'+field+'">&minus;</button><b class="edv" data-f="'+field+'">'+state[field]+(unit||'')+'</b><button data-inc="'+field+'">+</button></div></div>';
+    }
+    var body='<div class="grip"></div><h2>Edit Hold Prescription</h2>'+
+      line('sets','Holds','')+line('seconds','Seconds each','s')+line('rest','Rest between','s')+
+      '<button class="btn primary" data-done>Done</button>';
+    showSheet(body,function(sheet){
+      ['sets','seconds','rest'].forEach(function(f){
+        on('[data-dec="'+f+'"]','click',function(){ state[f]=Math.max(limits[f][0],state[f]-step[f]); refresh(f); },sheet);
+        on('[data-inc="'+f+'"]','click',function(){ state[f]=Math.min(limits[f][1],state[f]+step[f]); refresh(f); },sheet);
+      });
+      function refresh(f){ var el=sheet.querySelector('.edv[data-f="'+f+'"]'); if(el) el.textContent=state[f]+((f==='sets')?'':'s'); }
+      on('[data-done]','click',function(){ applyHoldPrescription(w,bl,state); closeSheet(); renderStrengthKeepScroll(); },sheet);
+    });
+  }
+  function applyHoldPrescription(w,bl,state){
+    var n=Math.max(1,state.sets), sec=Math.max(1,state.seconds);
+    bl.sets=[]; for(var i=0;i<n;i++){ bl.sets.push({target:sec,unit:'sec',actual:sec,doneFlag:false}); }
+    bl.restSecs=Math.max(0,state.rest);
+    saveWorkoutState();
+  }
+
   // The "next action" line, kept as its own sibling element (see above).
   function curNextHtml(bl,cur){
     var nxt=nextStepText(bl,cur);
@@ -2020,10 +2269,12 @@
   }
   function straightOverview(bl,curSi){
     var chips=bl.sets.map(function(s,si){
+      if(s.skipped) return '<div class="round-chip skipped"><span class="rc-lbl">Set '+(si+1)+'</span><span class="rc-steps">Skipped</span></div>';
       var done=s.doneFlag, unit=s.unit==='sec'?'s':'', val=s.amrap?'Max':(s.target==null?'—':s.target+unit);
+      var displayVal=(done&&s.unit==='sec')?s.actual+unit:val;
       var cls=done?'done':(si===curSi?'current':'upcoming');
       var mark=done?'&#10003; ':(si===curSi?'&#9679; ':'');
-      return '<div class="round-chip '+cls+'"><span class="rc-lbl">Set '+(si+1)+'</span><span class="rc-steps">'+mark+val+'</span></div>';
+      return '<div class="round-chip '+cls+'"><span class="rc-lbl">Set '+(si+1)+'</span><span class="rc-steps">'+mark+displayVal+'</span></div>';
     }).join('');
     return '<div class="round-overview">'+chips+'</div>';
   }
@@ -2063,6 +2314,7 @@
     on('[data-addset]','click',addPyramidSet);
     on('[data-savedefault]','click',function(e){ saveLadderDefault(+e.currentTarget.dataset.savedefault); });
     on('[data-enddaily]','click',function(){ if(UI.workout&&UI.workout.dailyExId){ finishDailyExercise(); } });
+    wireHoldCard();
   }
   function stepTargetRef(w,set){
     var bl=w.blocks[+set.dataset.bi];
@@ -2085,10 +2337,17 @@
       if(lastStep&&bl.adaptEnabled){ w.lastRound={bi:bi,ri:ri,rated:false}; renderStrength(); }  // ask, then rest on rate
       else { renderStrength(); if(locateCurrent(w)) startRest(lastStep?bl.restRoundSec:bl.restStepSec); }
     } else {
-      bl.sets[+set.dataset.si].doneFlag=true;
-      if(bl.adaptEnabled){ w.lastSet={bi:bi,si:+set.dataset.si,rated:false}; saveWorkoutState(); renderStrength(); }  // ask, then rest
-      else { saveWorkoutState(); renderStrength(); if(locateCurrent(w)) startRest(bl.restSecs); }
+      finishStraightSet(w,bi,+set.dataset.si);
     }
+  }
+  // Complete one straight-block set (reps or timed hold) and route into the
+  // shared difficulty-rating + rest flow — the single path every straight set
+  // finishes through, whether logged via the reps stepper or the hold timer.
+  function finishStraightSet(w,bi,si){
+    var bl=w.blocks[bi];
+    bl.sets[si].doneFlag=true;
+    if(bl.adaptEnabled){ w.lastSet={bi:bi,si:si,rated:false}; saveWorkoutState(); renderStrength(); }  // ask, then rest
+    else { saveWorkoutState(); renderStrength(); if(locateCurrent(w)) startRest(bl.restSecs); }
   }
   function firstFailedStep(rd){
     for(var i=0;i<rd.steps.length;i++){ if(rd.steps[i].actual<rd.steps[i].target) return i+1; }
