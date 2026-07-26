@@ -44,12 +44,51 @@
     return 'sets';
   }
 
+  // A weekday's BASE session — the climbing session or the group-workout log —
+  // modelled as its own queue item (kind:'base') so it coexists with whatever
+  // exercises the user has assigned to that day, instead of the day's type
+  // (climbing/group/rest) gating whether assigned exercises are executable at
+  // all. Strength days and rest days with no base action return null; the
+  // exercise queue alone is the day's content.
+  function dayBaseItem(res) {
+    var day = res.day;
+    var doneAlready = res.status === 'completed';
+    if (day.type === 'climbing' && res.templateId) {
+      return {
+        exId: 'bouldering', kind: 'base', baseType: 'climbing',
+        name: day.session + (day.sub ? ' · ' + day.sub : ''), templateId: res.templateId,
+        priority: 'A', role: 'Main Session', runner: 'climbing', statusLabel: 'Required',
+        reason: '', note: '', included: true, replaced: false, removed: false,
+        required: true, optional: false, conditional: false, order: 0,
+        state: doneAlready ? 'completed' : 'not_started', result: null
+      };
+    }
+    if (day.type === 'group') {
+      return {
+        exId: '_group', kind: 'base', baseType: 'group', name: 'Group Workout Log',
+        priority: 'A', role: 'Main Session', runner: 'group', statusLabel: 'Required',
+        reason: '', note: '', included: true, replaced: false, removed: false,
+        required: true, optional: false, conditional: false, order: 0,
+        state: doneAlready ? 'completed' : 'not_started', result: null
+      };
+    }
+    return null;
+  }
   // Build the daily-workout entity from a resolved day (Week.resolveDay result).
   // Every planned exercise is kept VISIBLE; `included` marks the ones that run.
+  // The day's base session (if any) is item 0; every exercise the user has
+  // assigned to this weekday — regardless of the day's climbing/group/rest
+  // type — follows as its own independently executable queue item (Part:
+  // "do not model weekdays as mutually exclusive execution modes").
   function makeDaily(res, ctx) {
     ctx = ctx || {};
     var W = Week();
-    var exercises = res.items.map(function (it, i) {
+    var base = dayBaseItem(res);
+    // 'bouldering' is the climbing day's requirement PLACEHOLDER (used only for
+    // Progress/Week display); the base item above represents its real
+    // execution, so it is not duplicated as a dead, non-runnable exercise row.
+    var skipExId = (res.day.type === 'climbing') ? 'bouldering' : null;
+    var exItems = res.items.filter(function (it) { return it.exId !== skipExId; }).map(function (it) {
       var meta = it.ex || {};
       var runnable = it.included && meta.block;
       return {
@@ -59,15 +98,22 @@
         included: !!it.included, replaced: !!it.replaced, removed: !!it.removed,
         required: it.status === 'required' && it.included && !it.removed && !it.replaced,
         optional: it.status === 'optional', conditional: it.status === 'conditional',
-        order: i, state: 'not_started', result: null
+        order: 0, state: 'not_started', result: null
       };
     });
+    var exercises = base ? [base].concat(exItems) : exItems;
+    exercises.forEach(function (e, i) { e.order = i; });
+    // A non-blocking note (never a restriction) when a day originally
+    // recommended as rest now carries executable, user-assigned work.
+    var restWarning = (res.day.type === 'rest' && exItems.some(function (e) { return e.included && e.runner !== 'none'; }))
+      ? 'This day was originally recommended as a rest day.' : '';
     return {
       version: DAILY_VERSION, id: 'dw_' + (ctx.dateKey || dateKey(new Date())),
       date: (ctx.date || new Date().toISOString()), weekday: res.day.id, dayKey: res.day.key,
       session: res.day.session, sub: res.day.sub || '', goal: res.day.goal || null,
       planVersion: (W && W.PLAN_VERSION) || 0,
       adaptations: (res.adaptations || []).map(function (a) { return a.cause; }),
+      restWarning: restWarning,
       exercises: exercises, activeExId: null, status: 'not_started'
     };
   }
@@ -276,6 +322,37 @@
     return { pull: pull, grip: grip };
   }
 
+  // Load contributed by PLAN-ASSIGNED exercises completed on a day OUTSIDE
+  // their recommended day(s) — e.g. Toes-to-Bar assigned (via Edit Plan) to
+  // Sunday and completed there. That is genuinely additional volume the base
+  // approved plan never assumed, so the Weekly Coach treats it the same as an
+  // ad-hoc extra session (same PULL_SCORE/GRIP_SCORE table). Exercises
+  // completed on their recommended day contribute nothing extra here — that
+  // load is already what the approved plan expects.
+  function planExtraLoad(sessions, plan, now) {
+    now = now || Date.now();
+    var req = (plan && plan.requirements) || {};
+    var pull = 0, grip = 0;
+    (sessions || []).forEach(function (s) {
+      if (s.excluded) return;
+      var cls = classify(s);
+      if (cls !== 'scheduled' && cls !== 'adapted') return;
+      if (!inThisWeek(s.date, now)) return;
+      var weekday = s.weekday;
+      sessionExercises(s).forEach(function (e) {
+        if (e.state && e.state !== 'completed') return;
+        if (e.exId === 'bouldering' || e.exId === '_group') return; // base session, not "extra"
+        var r = req[e.exId]; if (!r) return;
+        var recDays = r.recDays || [];
+        if (recDays.length && recDays.indexOf(weekday) >= 0) return; // on its recommended day
+        var t = e.type || typeOf(e.exId);
+        pull += (PULL_SCORE[t] || 0);
+        grip += (GRIP_SCORE[t] || 0);
+      });
+    });
+    return { pull: pull, grip: grip };
+  }
+
   // Recompute the pull-up-max benchmark from the surviving (non-excluded)
   // sessions — used after a delete/exclude so a removed PR no longer counts.
   function recomputeBench(sessions) {
@@ -299,6 +376,6 @@
     nextUnfinished: nextUnfinished, progress: progress, isDayComplete: isDayComplete,
     weeklySummary: weeklySummary, historyEntries: historyEntries, sessionExercises: sessionExercises,
     recomputeBench: recomputeBench, classify: classify, classLabel: classLabel, CLASS_LABEL: CLASS_LABEL,
-    extraLoad: extraLoad, inThisWeek: inThisWeek, weekStart: weekStart, dateKey: dateKey
+    extraLoad: extraLoad, planExtraLoad: planExtraLoad, inThisWeek: inThisWeek, weekStart: weekStart, dateKey: dateKey
   };
 });

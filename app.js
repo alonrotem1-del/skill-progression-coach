@@ -200,13 +200,19 @@
   // hook so a session can inspect any weekday deterministically.
   function weekCtx(){
     var r=readiness();
+    var sessions=Store.getSessions()||[];
     // Extra (ad-hoc, non-test) pulling/grip load logged this week feeds the
     // Weekly Coach so an unscheduled session still shapes later adaptations.
-    var xl=Daily.extraLoad(Store.getSessions()||[], Date.now());
+    var xl=Daily.extraLoad(sessions, Date.now());
+    // Plan-assigned exercises completed OFF their recommended day (e.g. a
+    // user-assigned Toes-to-Bar done on Sunday) are genuinely additional
+    // volume the approved plan never assumed — the same load channel as an
+    // ad-hoc extra session.
+    var pxl=Daily.planExtraLoad(sessions, getPlan(), Date.now());
     return {
       todayId: (typeof window.__spcTodayId==='number')?window.__spcTodayId:new Date().getDay(),
       readiness:r, pain:!!r.pain, cleanCompletions:cleanCompletions(),
-      extraPullScore:xl.pull, extraGripScore:xl.grip
+      extraPullScore:xl.pull+pxl.pull, extraGripScore:xl.grip+pxl.grip
     };
   }
   function todayDayId(){ return (typeof window.__spcTodayId==='number')?window.__spcTodayId:new Date().getDay(); }
@@ -686,7 +692,13 @@
     if(d.type==='group'){ body+=groupLogHtml(plan,dayId); }
     // controls (Part 13)
     body+='<div class="section">Actions</div><div class="dd-actions">';
-    if(res.templateId&&d.type!=='group'){ body+='<button class="btn primary" data-startday="'+dayId+'">Start Workout</button>'; }
+    // Every day resolves into one Daily Workout Queue — the base session
+    // (climbing/group), if any, plus whatever exercises are assigned to it —
+    // so "Start Workout" is available whenever there is a base session OR at
+    // least one executable assigned exercise, regardless of day type.
+    if((res.templateId&&d.type!=='group')||d.type==='climbing'||d.type==='group'||(res.executable&&res.executable.length)){
+      body+='<button class="btn primary" data-startday="'+dayId+'">Start Workout</button>';
+    }
     if(d.type!=='rest'){ body+='<button class="btn ghost" data-markdone="'+dayId+'">Mark Completed</button>'; }
     if(res.adapted){ body+='<button class="btn ghost" data-useplanned="'+dayId+'">Restore planned session</button>'; }
     else if(res.alternative&&res.templateId&&d.type!=='group'){ body+='<button class="btn ghost" data-usealt="'+dayId+'">Use lighter alternative</button>'; }
@@ -730,12 +742,26 @@
   function saveGroupLog(dayId){
     var p=getPlan(); p.dayLog=p.dayLog||{}; var log=p.dayLog[dayId]||{};
     log.group=log.group||{moves:[]}; log.completed=true; p.dayLog[dayId]=log; savePlan(p);
+    completeTodayBaseItem(dayId,'_group',{type:'group',name:'Group Workout Log',
+      plannedText:'Log actual movements', actualText:(log.group.moves.length)+' movement'+(log.group.moves.length===1?'':'s')+' logged'});
     closeSheet(); toast('Group workout logged — Friday will adjust to the actual pulling load.');
     if(UI.screen==='week') renderWeek(); else renderToday();
   }
   function markDayDone(dayId){
     var p=getPlan(); p.dayLog=p.dayLog||{}; var log=p.dayLog[dayId]||{}; log.completed=true; p.dayLog[dayId]=log; savePlan(p);
+    var baseId=Week.DAYS_BY_ID[dayId]&&Week.DAYS_BY_ID[dayId].type==='climbing'?'bouldering':(Week.DAYS_BY_ID[dayId]&&Week.DAYS_BY_ID[dayId].type==='group'?'_group':null);
+    if(baseId) completeTodayBaseItem(dayId,baseId,{type:baseId==='bouldering'?'climbing':'group', name:baseId==='bouldering'?'Climbing Session':'Group Workout Log', actualText:'Marked completed'});
     closeSheet(); toast('Marked completed.'); if(UI.screen==='week') renderWeek(); else renderToday();
+  }
+  // If `dayId` is TODAY, sync its queue's base item (climbing/group) to
+  // completed — so the same session finished via the day-detail sheet or the
+  // "Mark Completed" shortcut is reflected in the queue without a stale
+  // "in progress"/"not started" row.
+  function completeTodayBaseItem(dayId,baseExId,result){
+    if(dayId!==todayDayId()) return;
+    var daily=dailyForToday(); var e=Daily.findEx(daily,baseExId);
+    if(e){ e.state='completed'; e.result=result; }
+    daily.activeExId=null; saveDaily(daily);
   }
   function setDayOverride(dayId,mode){
     var p=getPlan(); p.overrides=p.overrides||{}; p.overrides[dayId]=mode; savePlan(p);
@@ -780,28 +806,33 @@
 
   // ---- Daily workout: Start / Continue / start-an-exercise / resume ---------
   // "Start / Continue Daily Workout": begin the first unfinished REQUIRED
-  // exercise (or resume the active one). Never restarts a completed exercise.
+  // item — the day's base session (climbing/group), if any, comes first, then
+  // its assigned exercises — or resume the active one. Never restarts a
+  // completed item. Every weekday resolves into ONE queue this way; climbing,
+  // group and rest are never mutually-exclusive execution modes that gate out
+  // the user's assigned exercises.
   function startDaySession(dayId){
     var res=Week.resolveDay(getPlan(),dayId,weekCtx());
     if(res.goal) UI.worldId=res.goal.world;
-    if(res.day.type==='climbing'&&res.templateId&&Data.templates[res.templateId]){ startClimbing(Data.templates[res.templateId]); return; }
-    if(res.day.type==='group'||res.day.type==='rest'){ openDayDetail(dayId); return; }
-    var daily=dailyForToday();
-    // resume an active exercise if one is mid-flight
+    var daily=dailyForToday(res);
+    // resume an active item if one is mid-flight
     if(daily.activeExId){ var ae=Daily.findEx(daily,daily.activeExId); if(ae&&ae.state==='in_progress'){ startExercise(daily.activeExId); return; } }
-    // Start/Continue only ever auto-advances through REQUIRED exercises; once
+    // Start/Continue only ever auto-advances through REQUIRED items; once
     // every required one is done or skipped, it opens the review/summary rather
     // than forcing optional/conditional work.
     var next=Daily.firstUnfinishedRequired(daily);
     if(next){ startExercise(next); return; }
     renderDailySummary();
   }
-  // Start (or redo) one specific exercise from the queue.
+  // Start (or redo) one specific queue item. Dispatches the day's base session
+  // (climbing/group) to its own flow; everything else runs the shared
+  // ladder/pyramid/sets/unilateral/hold runner exactly as before.
   function startExercise(exId, opts){
     opts=opts||{};
     var dayId=todayDayId(), res=Week.resolveDay(getPlan(),dayId,weekCtx());
     if(res.goal) UI.worldId=res.goal.world;
     var daily=opts.scheduled?dailyForToday(res):activeDaily(res); var e=Daily.findEx(daily,exId);
+    if(e&&e.kind==='base'){ startBaseItem(daily,e,opts); return; }
     var rt=exercisePrescription(exId,res,(e&&e.block)||null); if(!rt){ toast('This exercise has no runner yet.'); return; }
     if(e&&e.state==='completed'&&!opts.redo){ return openExResult(exId); }
     UI.workout=buildWorkout(rt);
@@ -813,6 +844,18 @@
     daily.activeExId=exId; daily.status='in_progress'; persistDaily(daily);
     delete todayEdits.mu_strength;
     saveWorkoutState(); window.scrollTo(0,0); renderStrength();
+  }
+  // Start (or resume) the day's BASE session — climbing or the group-workout
+  // log — as its own queue item, coexisting with whatever exercises the user
+  // has assigned to the day. A completed base item reopens the day's details
+  // rather than restarting; Redo explicitly begins again.
+  function startBaseItem(daily,item,opts){
+    opts=opts||{};
+    if(item.state==='completed'&&!opts.redo){ openDayDetail(todayDayId()); return; }
+    item.state='in_progress'; daily.activeExId=item.exId; daily.status='in_progress';
+    persistDaily(daily);
+    if(item.baseType==='climbing'){ startClimbing(Data.templates[item.templateId],{dailyLinked:true}); }
+    else { openDayDetail(todayDayId()); }
   }
   // Record a finished daily exercise and show the exercise-completion screen.
   function finishDailyExercise(){
@@ -1296,7 +1339,14 @@
   // The dominant scheduled-session card (Part 8 hierarchy).
   function scheduledCard(res,dominant){
     var day=res.day;
-    if(day.type==='rest'){
+    var hasBase=(day.type==='climbing'&&res.templateId)||day.type==='group';
+    var hasExec=!!(res.executable&&res.executable.length);
+    // A day resolves into ONE Daily Workout Queue: its base session (climbing/
+    // group), if any, plus every exercise the user has assigned to it —
+    // climbing/group/rest are never mutually-exclusive execution modes that
+    // gate out assigned exercises. Only a true rest day with nothing assigned
+    // keeps the minimal recovery card.
+    if(day.type==='rest'&&!hasExec){
       return '<div class="rec sched">'+
         '<div class="kick">Scheduled today</div><div class="name">Rest &amp; Recovery</div>'+
         '<div class="why">Saturday is a rest day by default — recovery is part of the plan.</div>'+
@@ -1312,27 +1362,24 @@
       '<div class="adapt-banner"><b>Adapted from your weekly plan</b>'+
       res.adaptations.map(function(a){return '<div class="adapt-cause">'+esc(a.cause)+'</div>';}).join('')+'</div>'
       :'<div class="asplanned">&#10003; As planned</div>';
-    // Group day → log form; climbing day → session start; strength day → the
-    // exercise QUEUE (daily workout); other → view details.
     var body, mainBtn;
-    if(day.type==='group'){
-      var logged=res.status==='completed';
-      body='<div class="preview">'+planItemsHtml(res)+'</div>';
-      mainBtn='<button class="btn primary" data-groupday="'+day.id+'">'+(logged?'Edit Group Workout Log':'Log Group Workout')+'</button>';
-    } else if(day.type==='climbing'&&res.templateId){
-      body='<div class="preview">'+planItemsHtml(res)+'</div>';
-      // data-start keeps the resolved template id for compatibility; data-day
-      // routes through startDaySession so plan adaptations apply.
-      mainBtn='<button class="btn primary" data-start="'+esc(res.templateId)+'" data-day="'+day.id+'">Start Climbing Session</button>';
-    } else if(res.executable&&res.executable.length){
+    if(hasBase||hasExec){
       var daily=dailyForToday(res);
       var pg=Daily.progress(daily);
-      body='<div class="queue">'+queueHtml(daily)+'</div>'+execPreviewHtml(res);
+      var restNote=daily.restWarning?'<div class="caution">'+esc(daily.restWarning)+'</div>':'';
+      body=restNote+'<div class="queue">'+queueHtml(daily)+'</div>'+(!hasBase?execPreviewHtml(res):'');
       var started=daily.exercises.some(function(e){return e.state==='completed'||e.state==='in_progress'||e.state==='skipped';});
       var allReqDone=Daily.isDayComplete(daily);
       var label=allReqDone?'Review Today\'s Workout':(started?'Continue Daily Workout':'Start Daily Workout');
+      // Keep the day's own quick action available too (unchanged handlers) —
+      // both it and "Start/Continue Daily Workout" reach the same queue, since
+      // the base session is simply the queue's first required item.
+      var quickBtn=day.type==='group'
+        ?'<button class="btn ghost sm" data-groupday="'+day.id+'">'+(res.status==='completed'?'Edit Group Workout Log':'Log Group Workout')+'</button>'
+        :(day.type==='climbing'&&res.templateId?'<button class="btn ghost sm" data-start="'+esc(res.templateId)+'" data-day="'+day.id+'">Start Climbing Session</button>':'');
       mainBtn='<button class="btn primary" data-startday="'+day.id+'">'+label+'</button>'+
-        (pg.requiredTotal?'<div class="muted small" style="text-align:center;margin-top:6px">'+pg.requiredDone+' of '+pg.requiredTotal+' required done'+(pg.total>pg.requiredTotal?' &middot; '+pg.done+'/'+pg.total+' total':'')+'</div>':'');
+        (pg.requiredTotal?'<div class="muted small" style="text-align:center;margin-top:6px">'+pg.requiredDone+' of '+pg.requiredTotal+' required done'+(pg.total>pg.requiredTotal?' &middot; '+pg.done+'/'+pg.total+' total':'')+'</div>':'')+
+        quickBtn;
     } else {
       body='<div class="preview">'+planItemsHtml(res)+'</div>';
       mainBtn='<button class="btn" data-daydetail="'+day.id+'">View Session</button>';
@@ -1355,28 +1402,34 @@
   function queueHtml(daily){
     var n=0;
     return daily.exercises.map(function(e){
+      var isBase=e.kind==='base';
       var runnable=e.included&&e.runner!=='none'&&!e.removed&&!e.replaced;
       if(runnable&&e.state!=='skipped') n++;
-      var num=(runnable&&e.state!=='skipped')?n:'&ndash;';
+      var num=(runnable&&e.state!=='skipped')?(isBase?'&#9733;':n):'&ndash;';
       var chip=e.state==='completed'?'<span class="status-chip sc-required">Completed</span>'
         :e.state==='in_progress'?'<span class="status-chip sc-conditional">In Progress</span>'
         :e.state==='skipped'?'<span class="status-chip sc-skipped">Skipped</span>'
         :statusChip(e.statusLabel);
-      var presc=runnable?exPrescriptionText(e.exId):'';
+      var presc=isBase?(e.baseType==='climbing'?'Climbing session':'Log actual movements performed')
+        :(runnable?exPrescriptionText(e.exId):'');
       var actions='';
       if(!runnable){ actions='<div class="q-sub muted small">'+esc(e.reason||e.note||'Not today')+'</div>'; }
       else if(e.state==='completed'){
-        actions='<div class="q-actions"><button class="link" data-exview="'+esc(e.exId)+'">View</button>'+
-          '<button class="link" data-exredo="'+esc(e.exId)+'">Redo</button></div>';
+        var viewLabel=isBase?'View':'View', redoLabel=isBase?(e.baseType==='climbing'?'Start Another Session':'Edit Log'):'Redo';
+        actions='<div class="q-actions"><button class="link" data-exview="'+esc(e.exId)+'">'+viewLabel+'</button>'+
+          '<button class="link" data-exredo="'+esc(e.exId)+'">'+redoLabel+'</button></div>';
       } else if(e.state==='in_progress'){
-        actions='<div class="q-actions"><button class="btn sm primary" data-exstart="'+esc(e.exId)+'">Resume</button></div>';
+        var resumeLabel=isBase?(e.baseType==='climbing'?'Resume Climbing':'Continue Log'):'Resume';
+        actions='<div class="q-actions"><button class="btn sm primary" data-exstart="'+esc(e.exId)+'">'+resumeLabel+'</button></div>';
       } else {
-        actions='<div class="q-actions"><button class="btn sm" data-exstart="'+esc(e.exId)+'">Start This Exercise</button>'+
+        var startLabel=isBase?(e.baseType==='climbing'?'Start Climbing Session':'Log Group Workout'):'Start This Exercise';
+        actions='<div class="q-actions"><button class="btn sm" data-exstart="'+esc(e.exId)+'">'+startLabel+'</button>'+
           (!e.required?'<button class="link" data-exskip="'+esc(e.exId)+'">Skip</button>':'')+'</div>';
       }
-      return '<div class="q-ex'+(runnable?'':' ex-off')+(e.state==='completed'?' q-done':'')+'" >'+
+      var nameHtml=isBase?'<span class="q-name">'+esc(e.name)+'</span>':'<button class="q-name" data-exmeta="'+esc(e.exId)+'">'+esc(e.name)+'</button>';
+      return '<div class="q-ex'+(runnable?'':' ex-off')+(e.state==='completed'?' q-done':'')+(isBase?' q-base':'')+'" >'+
         '<div class="q-head"><span class="wk-ex-n'+(runnable?'':' off')+'">'+num+'</span>'+
-        '<button class="q-name" data-exmeta="'+esc(e.exId)+'">'+esc(e.name)+'</button>'+prioPill(e.priority)+chip+'</div>'+
+        nameHtml+prioPill(e.priority)+chip+'</div>'+
         (presc?'<div class="q-presc muted small">'+esc(presc)+'</div>':'')+
         actions+'</div>';
     }).join('');
@@ -2171,10 +2224,14 @@
   }
 
   // ---- climbing logger ------------------------------------------------------
-  function startClimbing(t){
+  // `opts.dailyLinked` marks a session started from the Today queue's climbing
+  // base item (vs. a freeform Skill Map start) so finishing it can sync that
+  // queue item to completed without assuming every climb belongs to today.
+  function startClimbing(t,opts){
+    opts=opts||{};
     var world=activeWorld(), ws=WS(UI.worldId), cm=contentMap(world);
     var techFocus=[ws.focus.primary,ws.focus.supporting].filter(Boolean).filter(function(id){var n=cm[id];return n&&(n.type==='skill'||n.type==='foundation'||n.type==='strength');});
-    UI.climb={templateId:t.id,worldId:UI.worldId,warm:false,problems:[],rpe:3,finger:2,skin:2,techFocus:techFocus,cur:{grade:'V2',style:null,result:null}};
+    UI.climb={templateId:t.id,worldId:UI.worldId,warm:false,problems:[],rpe:3,finger:2,skin:2,techFocus:techFocus,cur:{grade:'V2',style:null,result:null},dailyLinked:!!opts.dailyLinked};
     saveWorkoutState();
     window.scrollTo(0,0); // the Start button may have been below the fold — open at the top
     renderClimbing();
@@ -2233,6 +2290,10 @@
     ws.nodes=res.states; recomputeFocus(world,ws); saveWS(c.worldId,ws);
     var sessions=Store.getSessions(); sessions.push(session); Store.setSessions(sessions);
     recordClimbLoad(session); // feed the weekly load model (affects Monday etc.)
+    if(c.dailyLinked){
+      completeTodayBaseItem(todayDayId(),'bouldering',{type:'climbing',name:'Climbing Session',
+        plannedText:'Climbing session', actualText:session.problems.length+' problem'+(session.problems.length===1?'':'s')+' logged'});
+    }
     UI.climb=null; saveWorkoutState();
     showSummary(world,res,session);
   }
