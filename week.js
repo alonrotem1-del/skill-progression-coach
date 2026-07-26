@@ -24,7 +24,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var PLAN_VERSION = 4;
+  var PLAN_VERSION = 5;
 
   // ---- goals & skills (approved configuration, Part 4) --------------------
   var GOALS = {
@@ -253,14 +253,48 @@
   ];
   var REQ_ORDER = {}; REQUIREMENTS.forEach(function (r, i) { REQ_ORDER[r.exId] = i; });
   function reqIndex(exId) { return REQ_ORDER[exId] != null ? REQ_ORDER[exId] : 999; }
+
+  // Why an exercise is RECOMMENDED on its default day(s) — shown as guidance when
+  // the user moves it. These are rationales, never prohibitions (Part 6).
+  var REC_RATIONALE = {
+    highpull: 'High Pull is recommended for Monday because the appropriate gym equipment (high bar / rings for explosive pulls) is available then.',
+    transition_drill: 'The Transition Drill is recommended for Monday alongside the gym pulling/pressing work.',
+    pbdips: 'Parallel Bar Dips are recommended for Monday when dip stations are available at the gym.',
+    bouldering: 'Climbing is recommended for Sunday to anchor the week and leave recovery before Monday.',
+    pullup_pyramid: 'The Pull-Up Pyramid is recommended for Tuesday as the mid-week volume session.',
+    pistol: 'Pistol Squat is recommended for Friday, placed first so it precedes pulling fatigue.',
+    pullup_ladder: 'The Pull-Up Ladder is recommended for Friday as the main home pulling-strength session.'
+  };
+  function recRationale(exId) { return REC_RATIONALE[exId] || ''; }
+
+  // Build one user-owned requirement from the approved template. The approved
+  // values are copied into BOTH the editable user fields (target/days/status)
+  // and a frozen `rec*` recommendation snapshot used for guidance + reset. The
+  // recommendation is never a hard limit (Part 2).
+  function reqFromTemplate(r) {
+    return {
+      // user-owned plan values (editable)
+      target: r.target, days: r.days.slice(), status: r.status,
+      // legacy fields kept for back-compat; NOT used as edit limits anymore
+      min: r.min, max: r.max, eligible: r.eligible.slice(),
+      fixed: !!r.fixed, flexible: !!r.flexible, sub: (r.sub || []).slice(),
+      // frozen coaching recommendation (guidance + reset baseline)
+      recTarget: r.target, recDays: r.days.slice(), recMin: r.min, recMax: r.max,
+      recRationale: recRationale(r.exId)
+    };
+  }
   function defaultRequirements() {
     var out = {};
-    REQUIREMENTS.forEach(function (r) {
-      out[r.exId] = { target: r.target, min: r.min, max: r.max, status: r.status,
-        fixed: !!r.fixed, flexible: !!r.flexible, eligible: r.eligible.slice(),
-        days: r.days.slice(), sub: (r.sub || []).slice() };
-    });
+    REQUIREMENTS.forEach(function (r) { out[r.exId] = reqFromTemplate(r); });
     return out;
+  }
+  var REQ_BY_ID = {}; REQUIREMENTS.forEach(function (r) { REQ_BY_ID[r.exId] = r; });
+  // The recommendation snapshot for a single exercise (used by "Reset This
+  // Exercise" and the "Recommended:" line).
+  function recommendationFor(exId) {
+    var r = REQ_BY_ID[exId]; if (!r) return null;
+    return { target: r.target, days: r.days.slice(), status: r.status,
+      min: r.min, max: r.max, rationale: recRationale(exId) };
   }
   // The exercises currently ASSIGNED to a given weekday, in the approved
   // per-day order (DAYS[].exercises defines that order; user-added exercises
@@ -318,11 +352,27 @@
       seededAt: new Date().toISOString()
     };
   }
-  // Additive migration: an older plan (no `requirements`) gains the approved
-  // defaults; existing dayLog / overrides / emphasis are preserved by the app.
+  // Additive migration. An older plan (no `requirements`) gains the approved
+  // defaults. An existing plan KEEPS every user value (target/days/status) and
+  // only gains the frozen recommendation snapshot (rec*) if it predates it, plus
+  // any newly-introduced exercises. The user is NEVER reset to the approved
+  // plan during migration (Part 11).
   function migratePlan(p) {
     if (!p) return seedPlan();
-    if (!p.requirements) p.requirements = defaultRequirements();
+    if (!p.requirements) { p.requirements = defaultRequirements(); p.version = PLAN_VERSION; return p; }
+    var req = p.requirements;
+    REQUIREMENTS.forEach(function (tpl) {
+      var cur = req[tpl.exId];
+      if (!cur) { req[tpl.exId] = reqFromTemplate(tpl); return; } // newly-added exercise
+      // Backfill the recommendation snapshot without disturbing user values.
+      if (cur.recTarget == null) cur.recTarget = tpl.target;
+      if (cur.recDays == null) cur.recDays = tpl.days.slice();
+      if (cur.recMin == null) cur.recMin = tpl.min;
+      if (cur.recMax == null) cur.recMax = tpl.max;
+      if (cur.recRationale == null) cur.recRationale = recRationale(tpl.exId);
+      if (cur.days == null) cur.days = tpl.days.slice();
+      if (cur.target == null) cur.target = tpl.target;
+    });
     p.version = PLAN_VERSION;
     return p;
   }
@@ -625,6 +675,7 @@
     GOALS: GOALS, SKILLS: SKILLS, ROLE: ROLE, PRIORITY_ORDER: PRIORITY_ORDER,
     EX: EX, DAYS: DAYS, DAYS_BY_ID: DAYS_BY_ID, GROUP_MOVES: GROUP_MOVES,
     REQUIREMENTS: REQUIREMENTS, defaultRequirements: defaultRequirements,
+    recommendationFor: recommendationFor, recRationale: recRationale,
     reqIndex: reqIndex, assignmentsForDay: assignmentsForDay, weeklyCounts: weeklyCounts,
     seedPlan: seedPlan, migratePlan: migratePlan, executablePrescription: executablePrescription,
     weeklyLoad: weeklyLoad, resolveDay: resolveDay,

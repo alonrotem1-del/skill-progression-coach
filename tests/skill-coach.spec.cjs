@@ -709,6 +709,7 @@ test.describe('app UI', () => {
 
   test('map reflects stored benchmarks even when node state was never seeded', async ({ page }) => {
     // Only benchmarks + an onboarded profile exist — no spc_c_state written.
+    await page.addInitScript(() => { window.__spcTodayId = 5; }); // pin a muscle-up day (not Sunday climbing)
     await page.goto('index.html');
     await page.evaluate(() => {
       const S = window.CoachStore.makeStore();

@@ -96,13 +96,17 @@ test.describe('daily.js — queue model', () => {
 
 test.describe('daily.js — aggregation', () => {
   const now = Date.now();
+  // Anchor sessions inside THIS week (from Sunday 00:00) so the aggregation is
+  // deterministic regardless of which weekday the suite runs on.
+  const ws = Daily.weekStart(now);
+  const inWeek = k => new Date(ws + k * 864e5 + 12 * 3600e3).toISOString();
   const sessions = () => ([
-    { id: 'dw1', kind: 'daily', status: 'completed', date: new Date(now - 2 * 864e5).toISOString(), weekday: 5, session: 'Home Pull Session',
+    { id: 'dw1', kind: 'daily', status: 'completed', date: inWeek(1), weekday: 5, session: 'Home Pull Session',
       exercises: [
         { exId: 'pullup_ladder', type: 'ladder', name: 'Pull-Up Ladder', actualReps: 30, actualRounds: 5, bestReps: 3, actualText: '1–2–3 × 5 rounds', state: 'completed' },
         { exId: 'pistol', type: 'pistol', name: 'Pistol Squat', actualReps: 15, state: 'completed' } ] },
-    { id: 'old1', kind: 'strength', templateId: 'mu_strength', date: new Date(now - 1 * 864e5).toISOString(), exResults: { pullup: { bestReps: 8 } } },
-    { id: 'clm', kind: 'climbing', date: new Date(now - 3 * 864e5).toISOString(), problems: [{ grade: 'V2', result: 'send' }] }
+    { id: 'old1', kind: 'strength', templateId: 'mu_strength', date: inWeek(2), exResults: { pullup: { bestReps: 8 } } },
+    { id: 'clm', kind: 'climbing', date: inWeek(0), problems: [{ grade: 'V2', result: 'send' }] }
   ]);
 
   test('13 — weeklySummary counts sessions by exercise type', () => {

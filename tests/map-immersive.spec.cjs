@@ -127,11 +127,12 @@ test.describe('Edit Plan', () => {
     await expect(page.locator('[data-editplan]')).toBeVisible();   // 11
     await page.locator('[data-editplan]').click();
     await expect(page.locator('.ep-tabs')).toBeVisible();
-    // 12/13: Toes-to-Bar shows a 2×/week target.
+    // 12/13: Toes-to-Bar shows a 2×/week target and its recommendation.
     const t2b = page.locator('.ep-row', { hasText: 'Toes-to-Bar' });
-    await expect(t2b).toContainText('2×');
-    await expect(t2b).toContainText('/ 2 days');
-    // 14: Ring Support is optional with a 0–2 range (target 1).
+    await expect(t2b).toContainText('Your plan: 2×');
+    await expect(t2b).toContainText('2 of 2 assigned');
+    await expect(t2b).toContainText('Recommended: 2× — Tue, Fri');
+    // 14: Ring Support is optional.
     const ring = page.locator('.ep-row', { hasText: 'Ring Support Hold' });
     await expect(ring).toContainText('Optional');
     // 15: Pistol + Ladder assigned Friday (Fri chip is on).
@@ -148,11 +149,11 @@ test.describe('Edit Plan', () => {
     await page.locator('.nav [data-s="week"]').click();
     await page.locator('[data-editplan]').click();
     const ring = page.locator('.ep-row', { hasText: 'Ring Support Hold' });
-    // Ring Support is assigned Tue+Fri by default → 2 days.
-    await expect(ring).toContainText('2 / 1 days');
-    // 16/17: tap the Friday chip to unassign → counter updates to 1.
+    // Ring Support is assigned Tue+Fri by default (target 1) → over-assigned.
+    await expect(ring).toContainText('2 assigned days for a target of 1');
+    // 16/17: tap the Friday chip to unassign → counter updates.
     await ring.locator('[data-epday="5"]').click();
-    await expect(ring).toContainText('1 / 1 days');
+    await expect(page.locator('.ep-row', { hasText: 'Ring Support Hold' })).toContainText('1 of 1 assigned');
     // 18: Save persists.
     await page.locator('[data-epsave]').click();
     let days = await page.evaluate(() => window.CoachStore.makeStore().getPlan().requirements.ringsupport.days);
@@ -172,7 +173,9 @@ test.describe('Edit Plan', () => {
     await page.reload();
     await page.locator('.nav [data-s="week"]').click();
     await page.locator('[data-editplan]').click();
+    page.once('dialog', d => d.accept());       // reset now confirms
     await page.locator('[data-epreset]').click();
+    await page.locator('[data-epsave]').click(); // and applies only on Save
     const pistolDays = await page.evaluate(() => window.CoachStore.makeStore().getPlan().requirements.pistol.days);
     expect(pistolDays).toEqual([5]); // approved default restored
   });

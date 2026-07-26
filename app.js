@@ -487,15 +487,16 @@
 
   // ---- Edit Plan: Weekly Requirements + Week Assignment Board (Part 5) ------
   var DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  function openEditPlan(){ UI.planEdit=clone(getPlan().requirements); UI.planEditView='requirements'; UI.screen='editplan'; window.scrollTo(0,0); renderEditPlan(); }
+  function openEditPlan(){ UI.planEdit=clone(getPlan().requirements); UI.planEditView='requirements'; UI.planAck={}; UI.screen='editplan'; window.scrollTo(0,0); renderEditPlan(); }
+  // Group rows by (user-owned) status so the section title never contradicts an
+  // edited frequency.
   function planGroupOf(req){
     if(req.flexible) return 'flex';
     if(req.status==='optional') return 'optional';
     if(req.status==='conditional') return 'conditional';
-    if(req.target>=2) return 'two';
-    return 'one';
+    return 'required';
   }
-  var PLAN_GROUP_TITLES={two:'2× per week',one:'1× per week',optional:'Optional',conditional:'Conditional',flex:'Flexible group-workout targets'};
+  var PLAN_GROUP_TITLES={required:'Required',optional:'Optional',conditional:'Conditional',flex:'Flexible group-workout targets'};
   function renderEditPlan(){
     var req=UI.planEdit;
     var ids=Object.keys(req).sort(function(a,b){return Week.reqIndex(a)-Week.reqIndex(b);});
@@ -514,36 +515,72 @@
     on('[data-epday]','click',function(e){ togglePlanDay(e.currentTarget.dataset.ex,+e.currentTarget.dataset.epday); },wrap);
     on('[data-eptarget]','click',function(e){ bumpPlanTarget(e.currentTarget.dataset.ex,+e.currentTarget.dataset.eptarget); },wrap);
     on('[data-epoptional]','click',function(e){ togglePlanOptional(e.currentTarget.dataset.ex); },wrap);
+    on('[data-epstatus]','click',function(e){ togglePlanStatus(e.currentTarget.dataset.epstatus); },wrap);
+    on('[data-epkeep]','click',function(e){ keepSelection(e.currentTarget.dataset.epkeep); },wrap);
+    on('[data-epreset1]','click',function(e){ resetOneExercise(e.currentTarget.dataset.epreset1); },wrap);
     on('[data-epmeta]','click',function(e){ openExMetaSheet(e.currentTarget.dataset.epmeta); },wrap);
     on('[data-epsave]','click',savePlanEdit,wrap);
-    on('[data-epcancel]','click',function(){ UI.planEdit=null; setScreen('week'); },wrap);
+    on('[data-epcancel]','click',function(){ UI.planEdit=null; UI.planAck={}; setScreen('week'); },wrap);
     on('[data-epreset]','click',resetPlanEdit,wrap);
   }
   function editRequirementsHtml(req,ids){
-    var groups={two:[],one:[],optional:[],conditional:[],flex:[]};
+    var groups={required:[],optional:[],conditional:[],flex:[]};
     ids.forEach(function(id){ groups[planGroupOf(req[id])].push(id); });
-    return ['two','one','optional','conditional','flex'].map(function(g){
+    return ['required','optional','conditional','flex'].map(function(g){
       if(!groups[g].length) return '';
       return '<div class="section">'+esc(PLAN_GROUP_TITLES[g])+'</div>'+groups[g].map(function(id){return reqRowHtml(id,req[id]);}).join('');
     }).join('');
   }
+  // Human day list: 'unassigned' / 'every day' / 'Tue, Fri'.
+  function daysText(arr){ arr=arr||[]; if(!arr.length) return 'unassigned'; if(arr.length===7) return 'every day';
+    return arr.slice().sort(function(a,b){return a-b;}).map(function(d){return DOW[d];}).join(', '); }
+  // Non-blocking assigned-vs-target status (Part 5).
+  function assignedStatus(assigned,target){
+    if(assigned===target) return assigned+' of '+target+' assigned';
+    if(assigned<target) return assigned+' of '+target+' occurrences assigned';
+    return assigned+' assigned days for a target of '+target;
+  }
+  // Which exercises load grip/hang/pulling — used for consecutive-day guidance.
+  var HANG_PULL={t2b:1,deadhang:1,pullup_ladder:1,pullup_pyramid:1,highpull:1,light_pullups:1,ringsupport:1,wristroller:1};
+  function hasConsecutive(days){ var s=(days||[]).slice().sort(function(a,b){return a-b;}); for(var i=1;i<s.length;i++){ if(s[i]-s[i-1]===1) return true; } return false; }
+  // Coaching warnings — explanations, never prohibitions (Part 6).
+  function planWarnings(exId,r){
+    var out=[]; var recT=r.recTarget!=null?r.recTarget:r.target, recMax=r.recMax!=null?r.recMax:recT;
+    if(r.target>recT&&r.target>recMax) out.push('This is above the recommended frequency of '+recT+'× per week and may increase hanging, grip, shoulder or recovery load.');
+    else if(r.target>recT) out.push('This is above the recommended frequency of '+recT+'× per week — build up gradually.');
+    if(r.status==='required'&&r.target<recT) out.push('This is below the recommended frequency for the current Active Skill and may slow progression.');
+    var recDays=r.recDays||[];
+    var moved=(r.days||[]).some(function(d){return recDays.indexOf(d)<0;})||recDays.some(function(d){return (r.days||[]).indexOf(d)<0;});
+    if(r.recRationale&&moved) out.push(r.recRationale);
+    if(HANG_PULL[exId]&&hasConsecutive(r.days)) out.push('This assignment creates several consecutive hanging or pulling days — watch grip and elbow recovery.');
+    return out;
+  }
   function reqRowHtml(exId,r){
     var meta=Week.EX[exId]||{}, assigned=(r.days||[]).length, target=r.target;
-    var warn='';
-    if(assigned<target) warn='<span class="ep-warn">assigned '+assigned+' of '+target+'</span>';
-    else if(assigned===0&&target>0) warn='<span class="ep-warn">not assigned</span>';
+    var recT=r.recTarget!=null?r.recTarget:target, recDays=r.recDays||[];
+    var warns=planWarnings(exId,r), acked=(UI.planAck||{})[exId];
     var chips=DOW.map(function(lbl,d){
-      var elig=(r.eligible||[]).indexOf(d)>=0, on=(r.days||[]).indexOf(d)>=0;
-      return '<button class="ep-chip'+(on?' on':'')+(elig?'':' dim')+'" '+(elig?'':'disabled ')+'data-ex="'+esc(exId)+'" data-epday="'+d+'">'+lbl.charAt(0)+'</button>';
+      var on=(r.days||[]).indexOf(d)>=0, rec=recDays.indexOf(d)>=0;
+      return '<button class="ep-chip'+(on?' on':'')+(rec?' rec':'')+'" data-ex="'+esc(exId)+'" data-epday="'+d+'" title="'+(rec?'Recommended':'')+'">'+lbl.charAt(0)+'</button>';
     }).join('');
+    var warnHtml='';
+    if(warns.length&&!acked){
+      warnHtml='<div class="ep-warns">'+warns.map(function(w){return '<div class="ep-warnline">'+esc(w)+'</div>';}).join('')+
+        '<button class="link" data-epkeep="'+esc(exId)+'">Keep My Selection</button></div>';
+    } else if(warns.length&&acked){
+      warnHtml='<div class="ep-warns acked"><span class="muted tiny">&#10003; Your selection is kept ('+warns.length+' coaching note'+(warns.length>1?'s':'')+' acknowledged)</span></div>';
+    }
     return '<div class="ep-row">'+
       '<div class="ep-row-h"><button class="ep-name" data-epmeta="'+esc(exId)+'">'+esc(meta.name||exId)+'</button>'+
-        prioPill(meta.priority||'D')+'<span class="ep-status">'+esc(cap(r.status))+'</span>'+
-        (r.fixed?'<span class="ep-fixed" title="Recommended on a specific day">fixed</span>':'')+'</div>'+
-      '<div class="ep-sub muted small">'+esc(meta.role||'')+' &middot; '+assigned+' / '+target+' days '+warn+'</div>'+
+        prioPill(meta.priority||'D')+'<button class="ep-status link" data-epstatus="'+esc(exId)+'">'+esc(cap(r.status))+'</button>'+
+        (r.fixed?'<span class="ep-fixed" title="Context-dependent placement">context</span>':'')+'</div>'+
+      '<div class="ep-rec muted small">Recommended: '+recT+'× — '+esc(daysText(recDays))+'</div>'+
+      '<div class="ep-your small">Your plan: <b>'+target+'×</b> — '+esc(daysText(r.days))+'</div>'+
       '<div class="ep-controls"><div class="ep-days">'+chips+'</div>'+
-        '<div class="ep-target"><button data-ex="'+esc(exId)+'" data-eptarget="-1">&minus;</button><span>'+target+'×</span><button data-ex="'+esc(exId)+'" data-eptarget="1">+</button></div></div>'+
-      (r.fixed&&(r.days||[]).indexOf((r.eligible||[])[0])<0?'<div class="ep-note tiny">Moved off its recommended day — the original placement suits available equipment and recovery.</div>':'')+
+        '<div class="ep-target"><button data-ex="'+esc(exId)+'" data-eptarget="-1" aria-label="Fewer">&minus;</button><span>'+target+'×</span><button data-ex="'+esc(exId)+'" data-eptarget="1" aria-label="More">+</button></div></div>'+
+      '<div class="ep-count muted small">'+esc(assignedStatus(assigned,target))+'</div>'+
+      warnHtml+
+      '<button class="link ep-reset1" data-epreset1="'+esc(exId)+'">Reset This Exercise to Recommendation</button>'+
       '</div>';
   }
   function editBoardHtml(req,ids){
@@ -568,27 +605,49 @@
   }
   function togglePlanDay(exId,dayId){
     var r=UI.planEdit[exId]; if(!r) return;
-    if((r.eligible||[]).indexOf(dayId)<0) return; // only eligible days
+    // Any weekday is assignable — recommended days are guidance, not a lock (Part 4).
     r.days=r.days||[]; var i=r.days.indexOf(dayId);
     if(i>=0) r.days.splice(i,1); else r.days.push(dayId);
-    r.days.sort(function(a,b){return a-b;}); renderEditPlan();
+    r.days.sort(function(a,b){return a-b;});
+    delete (UI.planAck||{})[exId]; renderEditPlan();
   }
   function bumpPlanTarget(exId,delta){
     var r=UI.planEdit[exId]; if(!r) return;
-    r.target=Math.max(r.min||0,Math.min(r.max!=null?r.max:7,(r.target||0)+delta)); renderEditPlan();
+    // The user owns weekly frequency: 0–7, never clamped to the recommendation (Part 3).
+    r.target=Math.max(0,Math.min(7,(r.target||0)+delta));
+    delete (UI.planAck||{})[exId]; renderEditPlan();
   }
   function togglePlanOptional(exId){
     var r=UI.planEdit[exId]; if(!r) return;
     r.status=(r.status==='optional')?'required':'optional'; renderEditPlan();
   }
+  // Cycle the user-owned status: required → optional → conditional → required.
+  function togglePlanStatus(exId){
+    var r=UI.planEdit[exId]; if(!r) return;
+    r.status=r.status==='required'?'optional':r.status==='optional'?'conditional':'required';
+    delete (UI.planAck||{})[exId]; renderEditPlan();
+  }
+  function keepSelection(exId){ UI.planAck=UI.planAck||{}; UI.planAck[exId]=true; renderEditPlan(); }
+  // Reset ONE exercise to its coaching recommendation (target + days + status).
+  function resetOneExercise(exId){
+    var rec=Week.recommendationFor(exId), r=UI.planEdit[exId]; if(!rec||!r) return;
+    if(!confirm('Reset '+(Week.EX[exId]?Week.EX[exId].name:exId)+' to the recommended '+rec.target+'× on '+daysText(rec.days)+'?')) return;
+    r.target=rec.target; r.days=rec.days.slice(); r.status=rec.status;
+    delete (UI.planAck||{})[exId]; renderEditPlan();
+  }
+  // Persist EXACTLY what the user selected — only on Save (Part 8).
   function savePlanEdit(){
-    var p=getPlan(); p.requirements=UI.planEdit; savePlan(p); UI.planEdit=null;
+    var p=getPlan(); p.requirements=clone(UI.planEdit); savePlan(p); UI.planEdit=null; UI.planAck={};
+    clearDaily(); // rebuild Today's queue from the saved plan
     toast('Plan saved — Today, Week and the Map now use your updated plan.');
     setScreen('week');
   }
+  // Reset the ENTIRE plan to the approved recommendation (confirm; edits stay
+  // pending until Save).
   function resetPlanEdit(){
-    var p=getPlan(); p.requirements=Week.defaultRequirements(); savePlan(p);
-    UI.planEdit=clone(p.requirements); toast('Reset to the approved plan.'); renderEditPlan();
+    if(!confirm('Reset your whole weekly plan to the approved recommendation? Your current frequencies and day assignments will be replaced.')) return;
+    UI.planEdit=clone(Week.defaultRequirements()); UI.planAck={};
+    toast('Reset to the approved plan — press Save Plan to keep it.'); renderEditPlan();
   }
   function weekStatusBadge(res){
     var st=res.status, label, cls;
@@ -1216,7 +1275,8 @@
       (m.detail?'<p class="muted small" style="margin-bottom:8px">'+esc(m.detail)+'</p>':'')+
       (goals.length?'<div class="dd-kv"><span>Goals</span><b>'+esc(goals.join(', '))+'</b></div>':'')+
       (skills.length?'<div class="dd-kv"><span>Skills</span><b>'+esc(skills.join(', '))+'</b></div>':'')+
-      '<div class="dd-kv"><span>Weekly target</span><b>'+(req.target!=null?req.target:1)+'× / week'+(req.max&&req.max!==req.target?' (max '+req.max+')':'')+'</b></div>'+
+      '<div class="dd-kv"><span>Weekly target</span><b>'+(req.target!=null?req.target:1)+'× / week</b></div>'+
+      (req.recTarget!=null?'<div class="dd-kv"><span>Recommended</span><b>'+req.recTarget+'× — '+esc((req.recDays||[]).map(function(d){return DOW[d];}).join(', ')||'—')+'</b></div>':'')+
       (m.variations&&m.variations.length?'<div class="section">Variations</div><p class="muted small">'+m.variations.map(esc).join(' &middot; ')+'<br><span class="tiny">Choose the variation that matches your equipment.</span></p>':'')+
       '<div class="section">In your weekly plan</div>'+
       (assignedDays.length?assignedDays.map(function(d){var why=m.why&&m.why[d.key]?m.why[d.key]:'';return '<div class="dd-ex"><div class="dd-ex-h"><b>'+esc(d.label)+'</b><span class="muted small">'+esc(d.session)+'</span></div>'+(why?'<div class="muted small">'+esc(why)+'</div>':'')+'</div>';}).join(''):'<p class="muted small">Not currently assigned to a day.</p>')+
