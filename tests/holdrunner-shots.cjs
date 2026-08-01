@@ -53,13 +53,13 @@ test('capture manual-validation screenshots', async ({ page }) => {
   expect(bl0.restSecs).toBe(60);
   await shot(page, '03-configured-3x30-rest60');
 
-  // 3: start the first hold, confirm the 3-sec prep countdown.
+  // 3: start the first hold, confirm the 5-sec prep countdown.
   await page.locator('[data-holdstart]').click();
   await expect(page.locator('.hold-card.hold-prep')).toBeVisible();
   await shot(page, '04-prep-countdown');
 
   // 4: confirm the timer counts 30 -> 0.
-  await page.clock.runFor(3200);
+  await page.clock.runFor(5200);
   await expect(page.locator('.hold-big')).toHaveText('30');
   await shot(page, '05-running-30');
   await page.clock.runFor(15000);
@@ -78,7 +78,7 @@ test('capture manual-validation screenshots', async ({ page }) => {
   // 6: start hold 2, stop after ~20 sec (of the 30 sec target).
   await page.locator('[data-tskip]').click();
   await page.locator('[data-holdstart]').click();
-  await page.clock.runFor(3200);
+  await page.clock.runFor(5200);
   await page.clock.runFor(20000);
   await page.locator('[data-holdstop]').click();
   await shot(page, '09-hold2-stop-early');
@@ -90,7 +90,7 @@ test('capture manual-validation screenshots', async ({ page }) => {
   // 7: complete hold 3.
   await page.locator('[data-tskip]').click();
   await page.locator('[data-holdstart]').click();
-  await page.clock.runFor(3200);
+  await page.clock.runFor(5200);
   await page.clock.runFor(30200);
   await page.locator('[data-holdconfirm]').click();
   if (await page.locator('[data-diff="appropriate"]').count()) await page.locator('[data-diff="appropriate"]').click();
@@ -112,7 +112,7 @@ test('capture manual-validation screenshots', async ({ page }) => {
   await page.locator('[data-pick="deadhang"]').click();
   if (await page.locator('text=How should this workout count?').count()) await page.locator('[data-cl="extra"]').click();
   await page.locator('[data-holdstart]').click();
-  await page.clock.runFor(3200);
+  await page.clock.runFor(5200);
   await page.clock.runFor(12000); // 12s into a 30s hold
   await page.reload();
   await expect(page.locator('.hold-card')).toBeVisible();

@@ -78,7 +78,7 @@ test.describe('Timed Hold runner', () => {
     await expect(page.locator('.hold-card.hold-prep')).toBeVisible();
     let hd = await hold(page);
     expect(hd.phase).toBe('prep');
-    await page.clock.runFor(3200);
+    await page.clock.runFor(5200);
     hd = await hold(page);
     expect(hd.phase).toBe('running');
     await expect(page.locator('.hold-card.hold-prep')).toHaveCount(0);
@@ -89,7 +89,7 @@ test.describe('Timed Hold runner', () => {
     await seed(page);
     await startHoldExercise(page, 'deadhang');
     await page.locator('[data-holdstart]').click();
-    await page.clock.runFor(3200); // clear prep
+    await page.clock.runFor(5200); // clear prep
     await expect(page.locator('.hold-big')).toHaveText('30');
     await page.clock.runFor(30200); // run the full hold
     const hd = await hold(page);
@@ -102,7 +102,7 @@ test.describe('Timed Hold runner', () => {
     await seed(page);
     await startHoldExercise(page, 'deadhang');
     await page.locator('[data-holdstart]').click();
-    await page.clock.runFor(3200);
+    await page.clock.runFor(5200);
     const before = await page.evaluate(() => window.__osc);
     await page.clock.runFor(30200);
     const after = await page.evaluate(() => window.__osc);
@@ -114,7 +114,7 @@ test.describe('Timed Hold runner', () => {
     await seed(page);
     await startHoldExercise(page, 'deadhang');
     await page.locator('[data-holdstart]').click();
-    await page.clock.runFor(3200);
+    await page.clock.runFor(5200);
     await page.clock.runFor(30200);
     const calls = await page.evaluate(() => window.__vibrate);
     expect(calls.some(c => Array.isArray(c))).toBe(true); // completion cue is a vibration pattern array
@@ -126,7 +126,7 @@ test.describe('Timed Hold runner', () => {
     await settingsPatch(page, { sound: false, countdown: false });
     await startHoldExercise(page, 'deadhang');
     await page.locator('[data-holdstart]').click();
-    await page.clock.runFor(3200);
+    await page.clock.runFor(5200);
     await page.clock.runFor(30200);
     const oscCount = await page.evaluate(() => window.__osc);
     expect(oscCount).toBe(0);
@@ -138,7 +138,7 @@ test.describe('Timed Hold runner', () => {
     await settingsPatch(page, { vibrate: false });
     await startHoldExercise(page, 'deadhang');
     await page.locator('[data-holdstart]').click();
-    await page.clock.runFor(3200);
+    await page.clock.runFor(5200);
     await page.clock.runFor(30200);
     const calls = await page.evaluate(() => window.__vibrate);
     expect(calls.length).toBe(0);
@@ -152,7 +152,7 @@ test.describe('Timed Hold runner', () => {
     await seed(page);
     await startHoldExercise(page, 'deadhang');
     await page.locator('[data-holdstart]').click();
-    await page.clock.runFor(3200); // clear prep
+    await page.clock.runFor(5200); // clear prep
     await page.clock.runFor(10000); // 10s into a 30s hold
     await page.locator('[data-holdstop]').click();
     const hd = await hold(page);
@@ -171,7 +171,7 @@ test.describe('Timed Hold runner', () => {
     await seed(page);
     await startHoldExercise(page, 'deadhang');
     await page.locator('[data-holdstart]').click();
-    await page.clock.runFor(3200);
+    await page.clock.runFor(5200);
     await page.clock.runFor(5000);
     await page.locator('[data-holdpause]').click();
     let hd = await hold(page);
@@ -197,7 +197,7 @@ test.describe('Timed Hold runner', () => {
     // fastForward fires the interval callback AT MOST ONCE, simulating a
     // backgrounded tab whose JS was fully suspended for the jump — the phase
     // must still land correctly because it's derived from real timestamps.
-    await page.clock.fastForward(3200 + 30200);
+    await page.clock.fastForward(5200 + 30200);
     const hd = await hold(page);
     expect(hd.phase).toBe('complete');
     expect(hd.resultSec).toBe(30);
@@ -208,7 +208,7 @@ test.describe('Timed Hold runner', () => {
     await seed(page);
     await startHoldExercise(page, 'deadhang');
     await page.locator('[data-holdstart]').click();
-    await page.clock.runFor(3200);
+    await page.clock.runFor(5200);
     await page.clock.runFor(12000); // 12s into 30s
     await page.reload();
     await expect(page.locator('.hold-card')).toBeVisible();
@@ -230,7 +230,7 @@ test.describe('Timed Hold runner', () => {
     await startHoldExercise(page, 'deadhang');
     // hold 1: complete fully
     await page.locator('[data-holdstart]').click();
-    await page.clock.runFor(3200);
+    await page.clock.runFor(5200);
     await page.clock.runFor(30200);
     await page.locator('[data-holdconfirm]').click(); // "Completed Full Hold" -> finishStraightSet
     // difficulty rating may be prompted before rest starts
@@ -253,20 +253,20 @@ test.describe('Timed Hold runner', () => {
     await startHoldExercise(page, 'deadhang');
     // hold 1: full 30s
     await page.locator('[data-holdstart]').click();
-    await page.clock.runFor(3200); await page.clock.runFor(30200);
+    await page.clock.runFor(5200); await page.clock.runFor(30200);
     await page.locator('[data-holdconfirm]').click();
     if (await page.locator('[data-diff="appropriate"]').count()) await page.locator('[data-diff="appropriate"]').click();
     await page.locator('[data-tskip]').click();
     // hold 2: stop early at ~20s
     await page.locator('[data-holdstart]').click();
-    await page.clock.runFor(3200); await page.clock.runFor(20000);
+    await page.clock.runFor(5200); await page.clock.runFor(20000);
     await page.locator('[data-holdstop]').click();
     await page.locator('[data-holdconfirm]').click();
     if (await page.locator('[data-diff="appropriate"]').count()) await page.locator('[data-diff="appropriate"]').click();
     await page.locator('[data-tskip]').click();
     // hold 3: stop early at ~24s
     await page.locator('[data-holdstart]').click();
-    await page.clock.runFor(3200); await page.clock.runFor(24000);
+    await page.clock.runFor(5200); await page.clock.runFor(24000);
     await page.locator('[data-holdstop]').click();
     await page.locator('[data-holdconfirm]').click(); // last hold -> "Save Result"
     if (await page.locator('[data-diff="appropriate"]').count()) await page.locator('[data-diff="appropriate"]').click();
@@ -310,7 +310,7 @@ test.describe('Timed Hold runner', () => {
     await expect(page.locator('.hold-card')).toBeVisible();
     for (let i = 0; i < 3; i++) {
       await page.locator('[data-holdstart]').click();
-      await page.clock.runFor(3200); await page.clock.runFor(30200);
+      await page.clock.runFor(5200); await page.clock.runFor(30200);
       await page.locator('[data-holdconfirm]').click();
       if (await page.locator('[data-diff="appropriate"]').count()) await page.locator('[data-diff="appropriate"]').click();
       if (await page.locator('[data-tskip]').count()) await page.locator('[data-tskip]').click();

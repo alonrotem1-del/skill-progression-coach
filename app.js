@@ -1909,6 +1909,10 @@
     // While a round/set rating is pending, the difficulty prompt takes over — the
     // next action card is hidden so the athlete answers before moving on.
     var ratingPending=(w.lastRound&&!w.lastRound.rated)||(w.lastSet&&!w.lastSet.rated);
+    // While the pre-round rest for a user-added ladder round is running, that
+    // round's first step must stay hidden — the rest gates it, it doesn't just
+    // advise around it (unlike the normal inter-step/inter-round rests).
+    var roundRestPending=!!(w.ladderRest&&cur&&cur.kind==='ladder'&&cur.ri===w.ladderRest.ri);
 
     // Each block renders into its own wrapper. In landscape, the CURRENT
     // block's "what to do now" (label, cues, target/stepper/done) goes into
@@ -1928,10 +1932,11 @@
       var overview=(bl.kind==='ladder')?ladderOverview(bl,isCur?cur.ri:-1):straightOverview(bl,isCur?cur.si:-1);
       if(isCur){
         var chunk=label;
-        if(!ratingPending&&ex.cues) chunk+='<p class="wk-cues muted small" style="margin:-4px 2px 8px">'+esc(ex.cues)+'</p>';
-        if(!ratingPending) chunk+=renderCurCard(w,cur,bl);
+        if(!ratingPending&&!roundRestPending&&ex.cues) chunk+='<p class="wk-cues muted small" style="margin:-4px 2px 8px">'+esc(ex.cues)+'</p>';
+        if(roundRestPending) chunk+=renderLadderRestPendingCard(cur);
+        else if(!ratingPending) chunk+=renderCurCard(w,cur,bl);
         body+='<div class="wk-block-wrap wk-block-current">'+chunk+'</div>';
-        side+='<div class="wk-block-wrap wk-block-current">'+(ratingPending?'':curNextHtml(bl,cur))+overview+'</div>';
+        side+='<div class="wk-block-wrap wk-block-current">'+(ratingPending||roundRestPending?'':curNextHtml(bl,cur))+overview+'</div>';
       } else {
         side+='<div class="wk-block-wrap">'+label+overview+'</div>';
       }
@@ -1948,6 +1953,17 @@
       '</div>';
     app.innerHTML=''; app.appendChild(h('<div class="scr wk-runner">'+html+'</div>'));
     wireStrength(w);
+    maybeResumeLadderRoundRest(w);
+  }
+  // A tiny placeholder for the gated left-column slot while a user-added
+  // round's pre-round rest is running — the round's own step/stepper stays
+  // hidden until the rest ends or is skipped (see maybeResumeLadderRoundRest).
+  function renderLadderRestPendingCard(cur){
+    return '<div class="cur-card ladder-rest-pending">'+
+      '<div class="cur-meta">Resting before Round '+(cur.ri+1)+'</div>'+
+      '<p class="muted small sp">Round '+(cur.ri+1)+' will begin automatically when the rest finishes, or you can skip the rest.</p>'+
+      '<button class="link" data-endladderrest>End Workout Now</button>'+
+    '</div>';
   }
   // The finish / flexible-extension panel shown when all work is done. A single
   // Ladder or Pyramid block offers Add Round / Add Set so the workout can be
@@ -1976,12 +1992,75 @@
   function ladderReps(bl){ var n=0; bl.rounds.forEach(function(rd){rd.steps.forEach(function(s){n+=s.actual;});}); return n; }
   function onFinishWorkout(){ if(UI.workout&&UI.workout.dailyExId) finishDailyExercise(); else finishStrength(); }
   // Append another full 1–2–3 round to the SAME ladder session (Part 6).
+  // Append another full round to the SAME ladder session (Part 6). The new
+  // round is appended immediately (so its state — and the completed rounds
+  // before it — persist right away), but it stays GATED behind the normal
+  // inter-round rest: w.ladderRest is a persisted, timestamp-based pending
+  // marker (mirrors w.hold) that keeps the round's first step hidden until
+  // that rest ends or is skipped — see maybeResumeLadderRoundRest.
   function addLadderRound(){
     var w=UI.workout, bl=w.blocks[0]; if(!bl||bl.kind!=='ladder') return;
     var steps=(bl.origSteps||[1,2,3]).map(function(t){return {target:t,actual:t,doneFlag:false};});
     bl.rounds.push({steps:steps,rated:false,difficulty:null,adaptedNote:'',reduced:false});
+    var newRi=bl.rounds.length-1;
     w.extraRounds=(w.extraRounds||0)+1;
+    w.ladderRest={bi:0,ri:newRi,restSecs:bl.restRoundSec,startTs:Date.now(),elapsedMs:0,paused:false};
     saveWorkoutState(); window.scrollTo(0,0); renderStrength();
+  }
+  function ladderRestElapsedMs(lr){
+    if(!lr) return 0;
+    if(lr.paused) return lr.elapsedMs||0;
+    return (lr.elapsedMs||0)+(Date.now()-lr.startTs);
+  }
+  function ladderRestRemainingSec(lr){
+    return Math.max(0,Math.ceil((lr.restSecs*1000-ladderRestElapsedMs(lr))/1000));
+  }
+  // Kicks off (or resumes, on refresh/reopen) the visual countdown for a
+  // pending added-round rest, reusing the existing rest-timer UNCHANGED —
+  // only a label and completion/toggle/extend hooks are threaded through.
+  // Guarded on `!UI.timer` so unrelated re-renders (pain-flag toggle, a
+  // sibling block's stepper, etc.) never restart — and so never silently
+  // un-pause — a rest that's already ticking.
+  function maybeResumeLadderRoundRest(w){
+    var lr=w.ladderRest; if(!lr) return;
+    var bl=w.blocks[lr.bi];
+    if(!bl||bl.kind!=='ladder'){ w.ladderRest=null; saveWorkoutState(); return; }
+    if(UI.timer) return;
+    var remaining=ladderRestRemainingSec(lr);
+    if(remaining<=0){ finishLadderRoundRest(w); return; }
+    startRest(remaining,{
+      label:'Rest before Round '+(lr.ri+1),
+      onDone:function(){ finishLadderRoundRest(w); },
+      onToggle:function(paused){ ladderRestToggle(w,paused); },
+      onAdd30:function(){ if(w.ladderRest){ w.ladderRest.restSecs+=30; saveWorkoutState(); } }
+    });
+  }
+  function ladderRestToggle(w,paused){
+    var lr=w.ladderRest; if(!lr) return;
+    if(paused){ lr.elapsedMs=ladderRestElapsedMs(lr); lr.paused=true; }
+    else { lr.startTs=Date.now(); lr.paused=false; }
+    saveWorkoutState();
+  }
+  // Rest ended (naturally or via Skip Rest): clear the gate so the next
+  // render opens the added round's first step normally.
+  function finishLadderRoundRest(w){
+    w.ladderRest=null;
+    saveWorkoutState();
+    renderStrength();
+  }
+  // "End Workout Now" pressed while the pre-round rest is still running: the
+  // gated round was never started, so it is removed cleanly rather than left
+  // as a phantom "completed" round with its untouched target reps — the
+  // existing completed rounds are unaffected and finish normally.
+  function endLadderRestEarly(w){
+    var lr=w.ladderRest; if(!lr) return;
+    var bl=w.blocks[lr.bi];
+    bl.rounds.splice(lr.ri,1);
+    w.extraRounds=Math.max(0,(w.extraRounds||0)-1);
+    w.ladderRest=null;
+    stopTimer();
+    saveWorkoutState();
+    if(w.dailyExId) finishDailyExercise(); else finishStrength();
   }
   // Append one more set to the SAME pyramid session (Part 7).
   function addPyramidSet(){
@@ -2034,7 +2113,7 @@
   // startTs) plus accumulated elapsedMs, never by decrementing a counter — so a
   // backgrounded tab, a delayed setInterval callback, or a full page refresh all
   // recover the true elapsed time instead of drifting.
-  var HOLD_PREP_MS=3000;
+  var HOLD_PREP_MS=5000;
   function holdElapsedMs(hd){
     if(!hd) return 0;
     if(hd.phase==='running') return (hd.elapsedMs||0)+(Date.now()-hd.startTs);
@@ -2314,6 +2393,10 @@
     on('[data-addset]','click',addPyramidSet);
     on('[data-savedefault]','click',function(e){ saveLadderDefault(+e.currentTarget.dataset.savedefault); });
     on('[data-enddaily]','click',function(){ if(UI.workout&&UI.workout.dailyExId){ finishDailyExercise(); } });
+    on('[data-endladderrest]','click',function(){
+      var lr=w.ladderRest; if(!lr) return;
+      if(confirm('End the workout now? Round '+(lr.ri+1)+' hasn\'t started and will be removed; your '+lr.ri+' completed round'+(lr.ri===1?'':'s')+' will be saved.')) endLadderRestEarly(w);
+    });
     wireHoldCard();
   }
   function stepTargetRef(w,set){
@@ -2406,7 +2489,14 @@
   function renderStrengthKeepScroll(){var y=window.scrollY;renderStrength();window.scrollTo(0,y);}
 
   // ---- rest timer with audio, countdown, pause, +30s ------------------------
-  function startRest(secs){
+  // `opts` is optional and purely additive — every existing call site passes
+  // none and gets EXACTLY the previous behavior (label "Rest", no hooks).
+  // `opts.label` overrides the timer's caption; `opts.onDone` fires once when
+  // the rest completes naturally OR is skipped; `opts.onToggle`/`opts.onAdd30`
+  // let a caller mirror Pause/Resume/+30s into its own persisted state
+  // without this shared timer having to know who's using it.
+  function startRest(secs,opts){
+    opts=opts||{};
     stopTimer();
     var el=document.getElementById('rest'); if(!el)return;
     UI.timerPaused=false; UI.timerLeft=secs;
@@ -2420,32 +2510,36 @@
         if(settings().timer.sound) playBeep();
         if(settings().timer.vibrate) vibrate([100,50,100,50,200]);
         el.innerHTML='<div class="timer"><div class="muted small">Rest complete!</div><div class="t ready-pulse">GO</div></div>';
+        if(opts.onDone) opts.onDone();
         return;
       }
       render();
     },1000);
     function render(){
-      el.innerHTML='<div class="timer"><div class="muted small">Rest</div><div class="t">'+fmt(UI.timerLeft)+'</div>'+
+      el.innerHTML='<div class="timer"><div class="muted small">'+esc(opts.label||'Rest')+'</div><div class="t">'+fmt(UI.timerLeft)+'</div>'+
         '<div class="timer-btns">'+
         '<button class="link" data-tpause>'+(UI.timerPaused?'Resume':'Pause')+'</button>'+
         '<button class="link" data-t30>+30s</button>'+
         '<button class="link" data-tskip>Skip</button></div></div>';
-      wireTimerBtns(el);
+      wireTimerBtns(el,opts);
     }
   }
-  function wireTimerBtns(el){
+  function wireTimerBtns(el,opts){
+    opts=opts||{};
     var pauseBtn=el.querySelector('[data-tpause]');
     var addBtn=el.querySelector('[data-t30]');
     var skipBtn=el.querySelector('[data-tskip]');
     if(pauseBtn) pauseBtn.onclick=function(){
       UI.timerPaused=!UI.timerPaused;
       pauseBtn.textContent=UI.timerPaused?'Resume':'Pause';
+      if(opts.onToggle) opts.onToggle(UI.timerPaused);
     };
     if(addBtn) addBtn.onclick=function(){
       UI.timerLeft+=30;
       var t=el.querySelector('.t'); if(t) t.textContent=fmt(UI.timerLeft);
+      if(opts.onAdd30) opts.onAdd30();
     };
-    if(skipBtn) skipBtn.onclick=function(){stopTimer();el.innerHTML='';};
+    if(skipBtn) skipBtn.onclick=function(){stopTimer();el.innerHTML='';if(opts.onDone) opts.onDone();};
   }
   function stopTimer(){ if(UI.timer){clearInterval(UI.timer);UI.timer=null;} }
   function fmt(s){if(s<0)s=0;var m=Math.floor(s/60),ss=s%60;return m+':'+(ss<10?'0':'')+ss;}
