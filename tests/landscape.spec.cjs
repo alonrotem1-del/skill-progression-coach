@@ -1,8 +1,10 @@
-// Skill Progression Coach — landscape-first mobile layout. Verifies the PWA
-// orientation, the phone-landscape CSS override (gated on
-// `orientation:landscape and max-height:620px` so desktop-viewport tests never
-// see it), the portrait rotate-device fallback, and that portrait behavior is
-// otherwise completely unaffected.
+// Skill Progression Coach — landscape is now a secondary, responsive-only
+// fallback (portrait is the product's primary orientation; see
+// tests/portrait.spec.cjs). This file verifies the phone-landscape CSS
+// override still activates correctly if the phone is physically rotated
+// (gated on `orientation:landscape and max-height:620px` so desktop-viewport
+// tests never see it), and that portrait behavior is otherwise completely
+// unaffected. The app never requests, locks, or promotes landscape.
 const { test, expect } = require('@playwright/test');
 
 // The three required phone-landscape sizes (wide, short) vs the portrait
@@ -54,9 +56,9 @@ async function noHorizontalOverflow(page) {
 }
 
 test.describe('manifest orientation', () => {
-  test('orientation is landscape-primary', async ({ request }) => {
+  test('orientation is portrait-primary', async ({ request }) => {
     const m = await (await request.get('manifest.webmanifest')).json();
-    expect(m.orientation).toBe('landscape-primary');
+    expect(m.orientation).toBe('portrait-primary');
   });
 });
 
@@ -204,35 +206,15 @@ function defineLandscapeTests(viewport) {
 
 LANDSCAPE_SIZES.forEach(defineLandscapeTests);
 
-test.describe('portrait fallback (rotate-device suggestion)', () => {
+test.describe('no landscape promotion in portrait', () => {
   test.use({ viewport: PORTRAIT });
 
-  test('shows a concise, non-blocking rotate suggestion and preserves the main flow', async ({ page }) => {
+  test('no rotate-device suggestion exists, and the main flow is immediately usable', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    const hint = page.locator('.rotate-hint');
-    await expect(hint).toBeVisible();
-    const text = (await hint.innerText()).trim();
-    expect(text.length).toBeLessThan(80); // concise, not a wall of text
-    // Non-blocking: it sits in normal flow (not covering the app), and the
-    // main flow (start the recommended workout) stays fully reachable.
-    const hintBox = await hint.boundingBox();
-    const startBox = await page.locator('[data-startday]').first().boundingBox();
-    expect(startBox.y).toBeGreaterThanOrEqual(hintBox.y + hintBox.height - 2);
+    expect(await page.locator('.rotate-hint').count()).toBe(0);
+    expect(await page.locator('#rotateHint').count()).toBe(0);
     await page.locator('[data-startday]').first().click();
     await expect(page.locator('.wk-block-wrap').first()).toBeVisible();
-  });
-
-  test('rotate suggestion can be dismissed', async ({ page }) => {
-    await page.goto('index.html'); await seed(page);
-    await expect(page.locator('.rotate-hint')).toBeVisible();
-    await page.locator('#rotateHintClose').click();
-    await expect(page.locator('.rotate-hint')).toBeHidden();
-  });
-
-  test('does not appear on a tablet/desktop-sized portrait window', async ({ page }) => {
-    await page.setViewportSize({ width: 1024, height: 1366 });
-    await page.goto('index.html'); await seed(page);
-    await expect(page.locator('.rotate-hint')).toBeHidden();
   });
 });
 

@@ -1,21 +1,21 @@
-// Skill Progression Coach — REAL landscape support (Part 1 / Part 15 tests 1–8).
-// Verifies the Screen Orientation API flow (standalone auto-lock + a user-safe
-// "Enter Landscape" action), honest success/failure reporting, that a failed
-// lock never breaks the app, and that the actual responsive layout switches on
-// a physical landscape viewport while portrait stays usable.
+// Skill Progression Coach — portrait is the primary, intended orientation.
+// Verifies the manifest requests portrait-primary, that no code attempts a
+// landscape lock (auto or user-initiated — that promotional feature was
+// removed), and that a physical landscape viewport still degrades gracefully
+// via the (unpromoted, secondary) responsive CSS fallback in landscape.spec.cjs.
 const { test, expect } = require('@playwright/test');
 
 const LANDSCAPE = { width: 844, height: 390 };
 const PORTRAIT = { width: 390, height: 844 };
 
-// Install a stub Screen Orientation API before any page script runs. `mode`
-// controls whether lock() resolves or rejects; calls are recorded on window.
-function stubOrientation(page, { resolve = true, standalone = false } = {}) {
-  return page.addInitScript(({ resolve, standalone }) => {
+// Install a stub Screen Orientation API before any page script runs, and
+// record every lock() call so we can assert the app never makes one.
+function stubOrientation(page, { standalone = false } = {}) {
+  return page.addInitScript(({ standalone }) => {
     window.__lockCalls = [];
     const orient = {
       type: 'portrait-primary',
-      lock(o) { window.__lockCalls.push(o); return resolve ? Promise.resolve() : Promise.reject(new Error('not allowed in this context')); },
+      lock(o) { window.__lockCalls.push(o); return Promise.resolve(); },
       unlock() {}
     };
     try { Object.defineProperty(window.screen, 'orientation', { configurable: true, get: () => orient }); }
@@ -24,9 +24,7 @@ function stubOrientation(page, { resolve = true, standalone = false } = {}) {
       try { Object.defineProperty(window.navigator, 'standalone', { configurable: true, get: () => true }); }
       catch (e) { /* ignore */ }
     }
-    // Neutralise fullscreen so the flow doesn't actually go fullscreen in CI.
-    document.documentElement.requestFullscreen = () => Promise.resolve();
-  }, { resolve, standalone });
+  }, { standalone });
 }
 
 async function seed(page, active = 'muscleup') {
@@ -45,99 +43,62 @@ async function seed(page, active = 'muscleup') {
   await page.reload();
 }
 
-test('1 — manifest requests landscape-primary', async ({ request }) => {
+test('1 — manifest requests portrait-primary', async ({ request }) => {
   const m = await (await request.get('manifest.webmanifest')).json();
-  expect(m.orientation).toBe('landscape-primary');
+  expect(m.orientation).toBe('portrait-primary');
 });
 
-test('2 — installed/standalone launch attempts a landscape lock via a safe flow', async ({ page }) => {
-  await stubOrientation(page, { resolve: true, standalone: true });
-  await page.goto('index.html');
-  const attempted = await page.evaluate(() => window.SPC_landscape.attemptedStandaloneLock);
-  const calls = await page.evaluate(() => window.__lockCalls);
-  expect(attempted).toBe(true);
-  expect(calls).toContain('landscape-primary');
-});
-
-test('3 — a rejected orientation lock does not break the app', async ({ page }) => {
-  await stubOrientation(page, { resolve: false, standalone: true });
+test('2 — no code attempts a landscape lock, even on an installed/standalone launch', async ({ page }) => {
+  await stubOrientation(page, { standalone: true });
   await page.goto('index.html'); await seed(page);
-  // App still boots and Today renders despite the standalone lock rejection.
-  await expect(page.locator('.rec.sched .name').first()).toBeVisible();
   const calls = await page.evaluate(() => window.__lockCalls);
-  expect(calls.length).toBeGreaterThan(0); // it did try
+  expect(calls.length).toBe(0);
+  expect(await page.evaluate(() => typeof window.SPC_landscape)).toBe('undefined');
 });
 
-test.describe('4 — Enter Landscape reports success or failure honestly', () => {
+test('3 — Settings has no "Enter Landscape" action', async ({ page }) => {
+  await stubOrientation(page);
+  await page.goto('index.html'); await seed(page);
+  await page.locator('.nav [data-s="profile"]').click();
+  expect(await page.locator('[data-enter-landscape]').count()).toBe(0);
+  expect(await page.locator('#landscapeCard').count()).toBe(0);
+});
+
+test.describe('4 — portrait is fully usable without any rotation prompt', () => {
   test.use({ viewport: PORTRAIT });
 
-  test('success path confirms landscape is active', async ({ page }) => {
-    await stubOrientation(page, { resolve: true });
+  test('Today renders immediately, no rotate hint, bottom nav is a full bar', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="profile"]').click();
-    await page.locator('[data-enter-landscape]').click();
-    await expect(page.locator('#landscapeNote')).toContainText(/locked/i);
-  });
-
-  test('failure path does not pretend the device rotated', async ({ page }) => {
-    await stubOrientation(page, { resolve: false });
-    await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="profile"]').click();
-    await page.locator('[data-enter-landscape]').click();
-    const note = await page.locator('#landscapeNote').textContent();
-    expect(note).toMatch(/wouldn.t lock|turn your phone/i);
-    expect(note).not.toMatch(/locked\./i);
+    await expect(page.locator('.hero h1').first()).toBeVisible();
+    expect(await page.locator('.rotate-hint, #rotateHint').count()).toBe(0);
+    const nav = await page.locator('.nav').boundingBox();
+    expect(nav.width).toBeGreaterThan(300);
+    expect(nav.height).toBeLessThan(120);
   });
 });
 
-test.describe('5/6 — physical landscape viewport activates the real layout', () => {
+test.describe('5/6 — a physical landscape viewport remains usable (secondary, unpromoted)', () => {
   test.use({ viewport: LANDSCAPE });
 
-  test('nav becomes a side rail and Today is two-column', async ({ page }) => {
+  test('nav becomes a side rail and Today is two-column — but this is never suggested to the user', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
     const nav = await page.locator('.nav').boundingBox();
     expect(nav.width).toBeLessThan(100);   // compact rail
     expect(nav.height).toBeGreaterThan(300);
     const cols = await page.locator('.today-grid').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length);
     expect(cols).toBeGreaterThan(1);
+    expect(await page.locator('[data-enter-landscape], .rotate-hint').count()).toBe(0);
   });
 
-  test('Week uses the width (multi-column) and Map/workout render in landscape', async ({ page }) => {
+  test('Week uses the width (multi-column) and Map/workout still render', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
     await page.locator('.nav [data-s="week"]').click();
     const wkCols = await page.locator('.week-grid').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length);
     expect(wkCols).toBeGreaterThan(1);
-    // Map
     await page.locator('.nav [data-s="map"]').click();
     await expect(page.locator('.map-frame')).toBeVisible();
-    // Active workout keeps target + timer side by side (two runner columns).
     await page.locator('.nav [data-s="today"]').click();
     await page.locator('.rec.sched [data-startday]').first().click();
     await expect(page.locator('.wk-runner-body')).toBeVisible();
-    const runnerCols = await page.locator('.wk-runner-body').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length);
-    expect(runnerCols).toBe(2);
-  });
-});
-
-test.describe('7/8 — portrait stays usable and the rotation hint is dismissible', () => {
-  test.use({ viewport: PORTRAIT });
-
-  test('portrait renders Today with a bottom nav bar (not a rail)', async ({ page }) => {
-    await page.goto('index.html'); await seed(page);
-    await expect(page.locator('.rec.sched .name').first()).toBeVisible();
-    const nav = await page.locator('.nav').boundingBox();
-    expect(nav.width).toBeGreaterThan(300); // full-width bottom bar
-    expect(nav.height).toBeLessThan(120);
-  });
-
-  test('the rotation hint can be dismissed and stays dismissed', async ({ page }) => {
-    await page.goto('index.html'); await seed(page);
-    const hint = page.locator('#rotateHint');
-    await expect(hint).toBeVisible();
-    await page.locator('#rotateHintClose').click();
-    await expect(hint).toBeHidden();
-    // Navigating around does not bring it back within the session.
-    await page.locator('.nav [data-s="week"]').click();
-    await expect(hint).toBeHidden();
   });
 });

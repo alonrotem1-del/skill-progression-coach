@@ -2864,7 +2864,6 @@
   }
   function renderSettingsHome(){
     var html='<h1>Profile &amp; Settings</h1>'+
-      landscapeCard()+
       '<div class="settings-list">'+
       settingsRow('goals','Active Goals','Goal world, training days, session length')+
       settingsRow('workoutDefaults','Workout Defaults','Rounds, reps and rests per workout')+
@@ -2874,27 +2873,6 @@
       '</div>';
     var wrap=shell(html,'profile');
     on('[data-sview]','click',function(e){ settingsView=e.currentTarget.dataset.sview; renderProfile(); },wrap);
-    on('[data-enter-landscape]','click',function(e){ enterLandscapeUI(e.currentTarget); },wrap);
-  }
-  // Real user-initiated landscape action (Part 1B). Reports success/failure
-  // honestly — never claims the device rotated when the API request failed.
-  function landscapeCard(){
-    var L=window.SPC_landscape||{};
-    var note=L.supported
-      ? 'This app is designed for landscape. Tap to lock landscape orientation.'
-      : 'Your browser can’t lock orientation here — turn your phone sideways for the landscape layout.';
-    return '<div class="card tight" id="landscapeCard"><div class="section" style="margin-top:0">Display</div>'+
-      '<div class="muted small" id="landscapeNote">'+esc(note)+'</div>'+
-      (L.supported?'<button class="btn primary sp" data-enter-landscape>Enter Landscape Mode</button>':'')+'</div>';
-  }
-  function enterLandscapeUI(btn){
-    var L=window.SPC_landscape; if(!L){ return; }
-    btn.disabled=true;
-    L.enter({fullscreen:true}).then(function(res){
-      var note=document.getElementById('landscapeNote');
-      if(res.locked){ if(note) note.textContent='Landscape locked. Rotate back anytime by leaving fullscreen.'; btn.textContent='Landscape Active'; }
-      else { if(note) note.textContent='Your browser wouldn’t lock orientation ('+(res.reason||'unsupported')+'). Turn your phone sideways instead.'; btn.disabled=false; }
-    });
   }
   function wireSettingsBack(wrap){ on('[data-sback]','click',function(){ settingsView='home'; renderProfile(); },wrap); }
 

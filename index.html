@@ -124,8 +124,12 @@
     .legend-pop .sw{width:12px;height:12px;border-radius:4px;border:1.5px solid}
     /* frame is LTR so the world rail sits on the LEFT of the blue canvas
        (matching the references), while node text stays RTL. */
+    /* Portrait is the primary experience now, so the map canvas gets a
+       viewport-scaled height (was a fixed 500px) — more of the screen on a
+       tall phone, still bounded on a short one. The map never forces page
+       scroll: panning stays INSIDE this fixed-height frame (.canvas-scroll). */
     .map-frame{position:relative;direction:ltr;background:var(--frame);border-radius:20px;padding:10px 0 10px 10px;
-      box-shadow:0 10px 30px rgba(0,0,0,.35);display:flex;overflow:hidden;height:500px}
+      box-shadow:0 10px 30px rgba(0,0,0,.35);display:flex;overflow:hidden;height:min(62vh,620px)}
     /* external world rail — OUTSIDE the blue canvas, overlapping the frame edge */
     .rail{position:relative;z-index:5;display:flex;flex-direction:column;gap:16px;padding:14px 6px;
       align-items:center;justify-content:flex-start}
@@ -516,14 +520,17 @@
     .ed-actions{margin-top:16px}
 
     /* ==========================================================================
-       LANDSCAPE-FIRST PHONE LAYOUT
-       Targets a real phone held sideways (wide, short viewport). The trigger is
-       deliberately NOT a single fixed breakpoint — it fires when the viewport is
-       landscape AND either short (≤680px, covering every common Samsung landscape
-       height ~360–412) OR a touch device up to a tall foldable (≤900px, coarse
-       pointer). `orientation: landscape` already implies width > height. Desktop
-       windows (tall, fine pointer) are excluded, so portrait behavior/tests are
-       unaffected. Everything above this block is the untouched portrait layout.
+       LANDSCAPE RESPONSIVE FALLBACK (secondary — portrait is the product's
+       primary, intended orientation; see the manifest and the app boot script).
+       This block ONLY adapts the layout if the phone happens to be physically
+       rotated — the app never requests, locks, or promotes landscape. Trigger
+       is deliberately NOT a single fixed breakpoint — it fires when the
+       viewport is landscape AND either short (≤680px, covering every common
+       Samsung landscape height ~360–412) OR a touch device up to a tall
+       foldable (≤900px, coarse pointer). `orientation: landscape` already
+       implies width > height. Desktop windows (tall, fine pointer) are
+       excluded, so portrait behavior/tests are unaffected. Everything above
+       this block is the primary portrait layout.
        ========================================================================== */
     @media (orientation: landscape) and (max-height: 680px),
            (orientation: landscape) and (pointer: coarse) and (max-height: 900px) {
@@ -628,31 +635,9 @@
       .settings-list .section{break-after:avoid-column;break-inside:avoid-column}
     }
 
-    /* ---- Portrait fallback (Part 1D): one concise, non-blocking rotation
-       option with a real "Enter Landscape" action. It sits in normal flow
-       above the app (pushing it down, never covering it), is scoped to
-       phone-sized portrait viewports only, and is fully dismissible — once
-       dismissed it consumes no space. It never blocks the app. */
-    .rotate-hint{display:none}
-    @media (orientation: portrait) and (max-width: 820px) {
-      .rotate-hint:not(.dismissed){display:flex;align-items:center;gap:10px;
-        background:var(--accent);color:#04202f;font-size:13px;font-weight:700;
-        padding:calc(env(safe-area-inset-top) + 8px) 12px 8px}
-      .rotate-hint .rh-msg{flex:1;min-width:0}
-      .rotate-hint .rh-go{flex:none;background:#04202f;color:#fff;border:none;border-radius:8px;
-        font:inherit;font-weight:700;padding:7px 12px;cursor:pointer}
-      .rotate-hint .rh-x{flex:none;background:none;border:none;color:inherit;font-size:18px;
-        line-height:1;padding:2px 6px;cursor:pointer}
-    }
-    .rotate-hint.dismissed{display:none}
   </style>
 </head>
 <body>
-  <div id="rotateHint" class="rotate-hint" role="status">
-    <span class="rh-msg" id="rotateHintMsg">&#8635; This app is designed for landscape.</span>
-    <button type="button" class="rh-go" id="rotateHintGo">Enter Landscape</button>
-    <button type="button" class="rh-x" id="rotateHintClose" aria-label="Dismiss">&times;</button>
-  </div>
   <div id="app" class="app"><div class="scr"><p class="muted">Loading…</p></div></div>
   <script>
     // Register this app's OWN service worker, scoped to this project site
@@ -673,79 +658,16 @@
       window.__spcInstallPrompt = null;
       window.dispatchEvent(new Event('spc-installed'));
     });
-    // ---- Real landscape support (Part 1) --------------------------------
-    // The manifest already requests orientation "landscape-primary". This adds
-    // the Screen Orientation API flow. It is honest: it only reports success
-    // when the browser actually accepted the lock, and it never leaves the UI
-    // broken when the request is rejected (common in a normal browser tab).
-    (function () {
-      var api = (typeof screen !== 'undefined' && screen.orientation) ? screen.orientation : null;
-      function isStandalone() {
-        return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
-          window.navigator.standalone === true;
-      }
-      // Attempt a lock, requesting fullscreen first only where it's needed to
-      // make the lock succeed (a plain tab usually can't lock without it).
-      function enterLandscape(opts) {
-        opts = opts || {};
-        return new Promise(function (resolve) {
-          function tryLock() {
-            // Re-read the lock function each call so tests can stub it.
-            var lock = api && api.lock;
-            if (!lock) { resolve({ locked: false, reason: 'unsupported' }); return; }
-            var p;
-            try { p = api.lock('landscape-primary'); }
-            catch (e) { resolve({ locked: false, reason: (e && e.message) || 'rejected' }); return; }
-            Promise.resolve(p).then(
-              function () { resolve({ locked: true }); },
-              function (err) { resolve({ locked: false, reason: (err && err.message) || 'rejected' }); }
-            );
-          }
-          if (opts.fullscreen && document.documentElement.requestFullscreen && !document.fullscreenElement) {
-            document.documentElement.requestFullscreen().then(tryLock, tryLock);
-          } else { tryLock(); }
-        });
-      }
-      window.SPC_landscape = {
-        isStandalone: isStandalone,
-        supported: !!(api && api.lock),
-        attemptedStandaloneLock: false,
-        enter: enterLandscape
-      };
-      // On an installed (standalone) launch, attempt a silent lock. Safe: any
-      // rejection is swallowed and the app continues normally.
-      if (isStandalone() && api && api.lock) {
-        window.SPC_landscape.attemptedStandaloneLock = true;
-        try { Promise.resolve(api.lock('landscape-primary')).catch(function () {}); } catch (e) { /* ignore */ }
-      }
-      // Portrait fallback control — a real user-initiated action, reported honestly.
-      var hint = document.getElementById('rotateHint');
-      var go = document.getElementById('rotateHintGo');
-      var msg = document.getElementById('rotateHintMsg');
-      var close = document.getElementById('rotateHintClose');
-      if (close) close.addEventListener('click', function () { hint.classList.add('dismissed'); });
-      if (go) go.addEventListener('click', function () {
-        go.disabled = true;
-        enterLandscape({ fullscreen: true }).then(function (res) {
-          if (res.locked) { hint.classList.add('dismissed'); }
-          else {
-            // Do NOT pretend the device rotated — give concise manual guidance.
-            msg.textContent = '↻ Your browser can’t auto-rotate here — turn your phone sideways.';
-            go.style.display = 'none';
-          }
-        });
-      });
-    })();
   </script>
-  <script src="data.js?v=20260801a"></script>
-  <script src="week.js?v=20260801a"></script>
-  <script src="daily.js?v=20260801a"></script>
-  <script src="engine.js?v=20260801a"></script>
-  <script src="progress.js?v=20260801a"></script>
-  <script src="store.js?v=20260801a"></script>
-  <script src="duration.js?v=20260801a"></script>
-  <script src="adapt.js?v=20260801a"></script>
-  <script src="settings.js?v=20260801a"></script>
-  <script src="app.js?v=20260801a"></script>
+  <script src="data.js?v=20260801b"></script>
+  <script src="week.js?v=20260801b"></script>
+  <script src="daily.js?v=20260801b"></script>
+  <script src="engine.js?v=20260801b"></script>
+  <script src="progress.js?v=20260801b"></script>
+  <script src="store.js?v=20260801b"></script>
+  <script src="duration.js?v=20260801b"></script>
+  <script src="adapt.js?v=20260801b"></script>
+  <script src="settings.js?v=20260801b"></script>
+  <script src="app.js?v=20260801b"></script>
 </body>
 </html>
