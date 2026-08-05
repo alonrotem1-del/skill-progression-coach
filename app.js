@@ -922,7 +922,11 @@
         startReps:(bl.sets[0]?bl.sets[0].actual:bl.startReps)||null,
         plannedSequence:plannedSeq, plannedSetCount:plannedCount, plannedTotalReps:plannedTotalReps,
         actualSequence:actualSeq, plannedActualReps:plannedActualReps,
-        extraBackoffSets:(bl.extraBackoff||0), extraPyramidSets:(bl.extraPyramids||0), extraReps:extraReps,
+        // Use the counts of COMPLETED extra sets (from the loop above), never
+        // the raw bl.extraBackoff/extraPyramids counters — those increment as
+        // soon as a set is ADDED, so a pending/never-performed extra set must
+        // not be reported as completed extra work.
+        extraBackoffSets:extraBackoffSets, extraPyramidSets:extraPyramidSets, extraReps:extraReps,
         pyramidDifficulty:bl.pyramidDifficulty||null, restSecs:bl.restSecs,
         actualReps:totalActualReps, bestReps:maxSetRep(bl), difficulty:bl.pyramidDifficulty||difficulty, state:'completed',
         plannedText:(plannedCount?plannedSeq.join('–'):'Pyramid'),
@@ -1993,7 +1997,7 @@
         var chunk=label;
         if(!ratingPending&&!roundRestPending&&!setRestPending&&ex.cues) chunk+='<p class="wk-cues muted small" style="margin:-4px 2px 8px">'+esc(ex.cues)+'</p>';
         if(roundRestPending) chunk+=renderLadderRestPendingCard(cur);
-        else if(setRestPending) chunk+=renderSetRestPendingCard();
+        else if(setRestPending) chunk+=renderSetRestPendingCard(w);
         else if(!ratingPending) chunk+=renderCurCard(w,cur,bl);
         body+='<div class="wk-block-wrap wk-block-current">'+chunk+'</div>';
         side+='<div class="wk-block-wrap wk-block-current">'+(ratingPending||roundRestPending||setRestPending?'':curNextHtml(bl,cur))+overview+pyramidProgressHtml(bl)+'</div>';
@@ -2026,12 +2030,16 @@
       '<button class="link" data-endladderrest>End Workout Now</button>'+
     '</div>';
   }
-  // The analogous gated placeholder while the pre-pyramid rest for a
-  // user-added "Another Pyramid" is running (see addAnotherPyramid).
-  function renderSetRestPendingCard(){
+  // The analogous gated placeholder while the pre-extra-set rest for a
+  // user-added Back-Off Set or Another Pyramid is running (see
+  // addPyramidBackoff / addAnotherPyramid) — driven by the rest's own label
+  // so both flows share this one card.
+  function renderSetRestPendingCard(w){
+    var label=(w.setRest&&w.setRest.label)||'Resting';
     return '<div class="cur-card ladder-rest-pending">'+
-      '<div class="cur-meta">Resting before the next Pyramid</div>'+
-      '<p class="muted small sp">The next Pyramid will begin automatically when the rest finishes, or you can skip the rest.</p>'+
+      '<div class="cur-meta">'+esc(label)+'</div>'+
+      '<p class="muted small sp">The extra set will begin automatically when the rest finishes, or you can skip the rest.</p>'+
+      '<button class="link" data-endsetrest>End Workout Now</button>'+
     '</div>';
   }
   // The finish / flexible-extension panel shown when all work is done. A single
@@ -2199,14 +2207,37 @@
     saveWorkoutState();
     renderStrength();
   }
+  // "End Workout Now" pressed while a gated pre-extra-set rest (Back-Off Set
+  // or Another Pyramid) is still running: the gated set(s) were never
+  // started, so they're removed cleanly rather than left as phantom
+  // "completed" work — the already-completed planned Pyramid (and any prior
+  // extras) is preserved and finishes normally.
+  function endSetRestEarly(w){
+    var sr=w.setRest; if(!sr||sr.gateSi==null) return;
+    var bl=w.blocks[sr.bi];
+    var removed=bl.sets.splice(sr.gateSi);
+    var removedExtra=removed.length&&removed[0].extra;
+    if(removedExtra==='backoff') bl.extraBackoff=Math.max(0,(bl.extraBackoff||0)-1);
+    else if(removedExtra==='pyramid2') bl.extraPyramids=Math.max(0,(bl.extraPyramids||0)-1);
+    w.setRest=null;
+    stopTimer();
+    saveWorkoutState();
+    if(w.dailyExId) finishDailyExercise(); else finishStrength();
+  }
 
   // ---- Pyramid completion options (Section 4) --------------------------------
   // Replaces the old "Add One Set" (which reused the pyramid's HIGHEST value,
-  // silently turning a finished 6-5-4-3-2-1 into another 6-rep set).
+  // silently turning a finished 6-5-4-3-2-1 into another 6-rep set, and opened
+  // it immediately with no rest). The new back-off set defaults to 1 rep and
+  // is gated behind the FULL configured Pyramid rest — same gating pattern as
+  // Add Another Pyramid / Ladder's Add Full Round — so it never becomes the
+  // active set until that rest ends or is skipped.
   function addPyramidBackoff(){
     var w=UI.workout, bl=w.blocks[0]; if(!bl||bl.scheme!=='pyramid'||!bl.frozen) return;
+    var startIdx=bl.sets.length;
     bl.sets.push({target:1,actual:1,unit:'reps',doneFlag:false,extra:'backoff'});
     bl.extraBackoff=(bl.extraBackoff||0)+1;
+    startSetRest(w,0,bl.restSecs,'Rest before the extra set',startIdx);
     saveWorkoutState(); window.scrollTo(0,0); renderStrength();
   }
   // Appends a full fresh copy of the SAME frozen descending sequence, gated
@@ -2572,6 +2603,10 @@
     on('[data-endladderrest]','click',function(){
       var lr=w.ladderRest; if(!lr) return;
       if(confirm('End the workout now? Round '+(lr.ri+1)+' hasn\'t started and will be removed; your '+lr.ri+' completed round'+(lr.ri===1?'':'s')+' will be saved.')) endLadderRestEarly(w);
+    });
+    on('[data-endsetrest]','click',function(){
+      if(!w.setRest) return;
+      if(confirm('End the workout now? The extra set hasn\'t started and will be removed; your completed Pyramid will be saved.')) endSetRestEarly(w);
     });
     wireHoldCard();
   }

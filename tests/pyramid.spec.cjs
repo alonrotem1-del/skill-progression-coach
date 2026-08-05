@@ -309,6 +309,10 @@ test.describe('Pull-Up Pyramid — completion options', () => {
     expect(extra.target).toBe(1);
     expect(extra.actual).toBe(1);
     expect(extra.doneFlag).toBe(false);
+    // gated behind the configured Pyramid rest until it becomes active
+    await expect(page.locator('.cur-card [data-done]')).toHaveCount(0);
+    await skipRestIfAny(page);
+    await expect(page.locator('.cur-card [data-done]')).toBeVisible();
     // editable via the stepper
     await stepReps(page, 2);
     const bl2 = await block(page);
@@ -387,6 +391,7 @@ test.describe('Pull-Up Pyramid — display and history', () => {
     await skipRestIfAny(page); await clickDone(page);
     await rateOverall(page, 'appropriate');
     await page.locator('[data-addbackoff]').click();
+    await skipRestIfAny(page); // gated behind the configured Pyramid rest
     await clickDone(page);
     await page.locator('[data-finishex]').click();
     const result = await adhocPyramidResult(page);
@@ -431,5 +436,149 @@ test.describe('Pull-Up Pyramid — backward compatibility', () => {
       return window.CoachDuration.pyramidStartReps(b);
     });
     expect(start).toBe(3);
+  });
+});
+
+// Regression suite: Add Back-Off Set previously (1) defaulted the new set to
+// 3 reps instead of 1, and (2) opened it immediately with no rest at all,
+// skipping the configured Pyramid rest entirely. It must now behave exactly
+// like Add Another Pyramid's gating — append pending, start the full
+// configured rest, and only activate the set once that rest ends or is
+// skipped — using the durable w.setRest mechanism (Section 3) so editing
+// reps/pausing/refreshing during that rest behaves identically.
+test.describe('Add Back-Off Set — pre-extra-set rest gating (regression)', () => {
+  async function finishPlanned(page, startVal) {
+    await seed(page);
+    await startPyramid(page);
+    const before = await block(page);
+    await stepReps(page, startVal - before.sets[0].actual);
+    await clickDone(page);
+    for (let i = 1; i < startVal; i++) { await skipRestIfAny(page); await clickDone(page); }
+    await rateOverall(page, 'appropriate');
+  }
+
+  test('1 — Add One Set (Back-Off Set) defaults to 1 rep, not the Pyramid peak or previous maximum', async ({ page }) => {
+    await finishPlanned(page, 6); // peak/previous max would be 6 if the old bug were present
+    await page.locator('[data-addbackoff]').click();
+    const bl = await block(page);
+    const extra = bl.sets[bl.sets.length - 1];
+    expect(extra.target).toBe(1);
+    expect(extra.actual).toBe(1);
+  });
+
+  test('2 — pressing it starts the configured Pyramid rest (not a hard-coded value)', async ({ page }) => {
+    await page.clock.install();
+    await finishPlanned(page, 4);
+    const restSecs = await page.evaluate(() => window.CoachApp._UI.workout.blocks[0].restSecs);
+    await page.locator('[data-addbackoff]').click();
+    const sr = await page.evaluate(() => window.CoachApp._UI.workout.setRest);
+    expect(sr.restSecs).toBe(restSecs);
+    await expect(page.locator('#rest .t')).toBeVisible();
+  });
+
+  test('3 — the extra set does not become active before rest completion or Skip', async ({ page }) => {
+    await page.clock.install();
+    await finishPlanned(page, 4);
+    await page.locator('[data-addbackoff]').click();
+    await expect(page.locator('.cur-card [data-done]')).toHaveCount(0); // gated, no active set
+    await expect(page.locator('#rest .timer')).toBeVisible();
+    await page.clock.runFor(5000);
+    await expect(page.locator('.cur-card [data-done]')).toHaveCount(0); // still gated mid-rest
+  });
+
+  test('4 — editing the extra set reps during rest preserves timer continuity', async ({ page }) => {
+    await page.clock.install();
+    await finishPlanned(page, 4);
+    await page.locator('[data-addbackoff]').click();
+    await page.clock.runFor(10000);
+    const remainingBefore = await page.evaluate(() => window.CoachApp._UI.timerLeft);
+    // The pending extra set isn't active/editable while gated (by design —
+    // it's not the current set yet), but ANY re-render during this rest
+    // (e.g. the Pain toggle) must not hide/restart/complete/skip the timer.
+    await page.locator('[data-painflag]').click();
+    await expect(page.locator('#rest .timer')).toBeVisible();
+    const remainingAfter = await page.evaluate(() => window.CoachApp._UI.timerLeft);
+    expect(remainingAfter).toBeLessThanOrEqual(remainingBefore);
+    expect(remainingAfter).toBeGreaterThanOrEqual(remainingBefore - 2);
+    const bl = await block(page);
+    expect(bl.sets[bl.sets.length - 1].doneFlag).toBe(false); // not completed
+    expect(bl.sets[bl.sets.length - 1].actual).toBe(1); // not skipped
+  });
+
+  test('5 — refresh during this rest restores the correct remaining time', async ({ page }) => {
+    await page.clock.install();
+    await finishPlanned(page, 4);
+    const restSecs = await page.evaluate(() => window.CoachApp._UI.workout.blocks[0].restSecs);
+    await page.locator('[data-addbackoff]').click();
+    await page.clock.runFor(20000);
+    await page.reload();
+    await expect(page.locator('#rest .timer')).toBeVisible();
+    const remaining = await page.evaluate(() => window.CoachApp._UI.timerLeft);
+    expect(remaining).toBeLessThanOrEqual(restSecs - 18);
+    expect(remaining).toBeGreaterThanOrEqual(restSecs - 22);
+    await expect(page.locator('.cur-card [data-done]')).toHaveCount(0); // still gated after reload
+    const bl = await block(page);
+    expect(bl.sets.length).toBe(5); // 4 planned + 1 pending extra, not duplicated
+  });
+
+  test('6 — Skip activates the extra set immediately', async ({ page }) => {
+    await finishPlanned(page, 4);
+    await page.locator('[data-addbackoff]').click();
+    await page.locator('[data-tskip]').click();
+    await expect(page.locator('.cur-card [data-done]')).toBeVisible();
+    await expect(page.locator('.cur-card .num')).toHaveText('1');
+  });
+
+  test('sound/vibration on natural rest completion fire only once', async ({ page }) => {
+    await page.clock.install();
+    await finishPlanned(page, 4);
+    const restSecs = await page.evaluate(() => window.CoachApp._UI.workout.blocks[0].restSecs);
+    await page.locator('[data-addbackoff]').click();
+    await page.clock.runFor((restSecs - 1) * 1000);
+    const oscBefore = await page.evaluate(() => window.__osc);
+    await page.clock.runFor(3000); // crosses completion
+    await page.clock.runFor(5000); // idle time after — must not re-fire
+    const oscAfter = await page.evaluate(() => window.__osc);
+    expect(oscAfter).toBeGreaterThan(oscBefore);
+    const vibeCount = await page.evaluate(() => window.__vibrate.length);
+    await page.clock.runFor(5000);
+    const vibeCountLater = await page.evaluate(() => window.__vibrate.length);
+    expect(vibeCountLater).toBe(vibeCount);
+    await expect(page.locator('.cur-card [data-done]')).toBeVisible(); // rest ending activates it
+  });
+
+  test('7 — ending the workout during this rest does not record the pending set as completed or add its reps to actual volume', async ({ page }) => {
+    await finishPlanned(page, 4); // planned total = 4+3+2+1 = 10
+    await page.locator('[data-addbackoff]').click();
+    page.once('dialog', d => d.accept());
+    await page.locator('[data-endsetrest]').click();
+    const result = await page.evaluate(() => {
+      const d = window.CoachStore.makeStore().getAdhoc();
+      const e = d && d.exercises.find(x => x.exId === 'pullup_pyramid');
+      return e && e.result;
+    });
+    expect(result.plannedActualReps).toBe(10);
+    expect(result.actualReps).toBe(10); // the pending 1 rep never counted
+    expect(result.extraBackoffSets).toBe(0);
+    expect(result.extraReps).toBe(0);
+    // the completed planned Pyramid itself is preserved intact
+    expect(result.actualSequence).toEqual([4, 3, 2, 1]);
+  });
+
+  test('8 — a COMPLETED extra set IS stored separately from planned Pyramid volume', async ({ page }) => {
+    await finishPlanned(page, 4); // planned total = 10
+    await page.locator('[data-addbackoff]').click();
+    await page.locator('[data-tskip]').click();
+    await clickDone(page); // complete the extra set (1 rep)
+    await page.locator('[data-finishex]').click();
+    const result = await page.evaluate(() => {
+      const d = window.CoachStore.makeStore().getAdhoc();
+      const e = d && d.exercises.find(x => x.exId === 'pullup_pyramid');
+      return e && e.result;
+    });
+    expect(result.plannedActualReps).toBe(10); // unaffected by the extra set
+    expect(result.extraBackoffSets).toBe(1);
+    expect(result.extraReps).toBe(1);
+    expect(result.actualReps).toBe(11); // 10 planned + 1 extra
   });
 });
