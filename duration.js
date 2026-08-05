@@ -28,6 +28,22 @@
   var LADDER_STEP_REST = 25;
   var LADDER_ROUND_REST = 150;
 
+  var PYRAMID_START_DEFAULT = 5;
+  var PYRAMID_START_MAX = 50;
+  // The single source of truth for "how many reps does this pyramid start
+  // at" — reads the new `startReps` field, migrates an old symmetric `steps`
+  // array (e.g. [1,2,3,2,1]) by taking its peak value, or falls back to a
+  // sane default. Clamped to a reasonable range (never 0, negative, NaN, or
+  // absurdly large).
+  function pyramidStartReps(block) {
+    var v = block.startReps;
+    if (v == null && block.steps && block.steps.length) v = Math.max.apply(null, block.steps);
+    if (v == null) v = PYRAMID_START_DEFAULT;
+    v = Math.round(v);
+    if (!(v >= 1)) v = PYRAMID_START_DEFAULT; // catches NaN, 0, negatives
+    return Math.min(PYRAMID_START_MAX, v);
+  }
+
   function ladderSteps(block) { return block.steps || [1, 2, 3]; }
   function ladderRounds(block) { return block.rounds || 1; }
   function stepRest(block) { return block.restBetweenStepsSec != null ? block.restBetweenStepsSec : LADDER_STEP_REST; }
@@ -56,8 +72,12 @@
         }
       }
     } else if (block.scheme === 'pyramid') {
-      var p = block.steps || [1, 2, 3, 2, 1];
-      for (i = 0; i < p.length; i++) out.push({ target: p[i], unit: 'reps', actual: p[i] });
+      // Descending pyramid inferred from the starting reps: N, N-1, ..., 1.
+      // (Legacy blocks carrying an old symmetric `steps` array, e.g.
+      // [1,2,3,2,1], are read via pyramidStartReps — its peak value becomes
+      // the new startReps so old prescriptions still produce a sane estimate.)
+      var start = pyramidStartReps(block);
+      for (i = start; i >= 1; i--) out.push({ target: i, unit: 'reps', actual: i });
     } else if (block.scheme === 'amrap') {
       out.push({ target: null, unit: 'reps', actual: 0, amrap: true });
     } else {
@@ -136,6 +156,9 @@
     restsBetween: restsBetween,
     calcDuration: calcDuration,
     calcDurationRange: calcDurationRange,
+    pyramidStartReps: pyramidStartReps,
+    PYRAMID_START_DEFAULT: PYRAMID_START_DEFAULT,
+    PYRAMID_START_MAX: PYRAMID_START_MAX,
     SEC_PER_REP_MIN: SEC_PER_REP_MIN,
     SEC_PER_REP_MAX: SEC_PER_REP_MAX,
     AMRAP_ESTIMATE_SECS: AMRAP_ESTIMATE_SECS,

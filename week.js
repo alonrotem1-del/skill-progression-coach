@@ -162,7 +162,7 @@
     biceps: { exId: 'biceps', label: 'Biceps', scheme: 'sets', sets: 3, reps: 12 },
     triceps: { exId: 'triceps', label: 'Triceps', scheme: 'sets', sets: 3, reps: 12 },
     hip_abduction: { exId: 'hip_abduction', label: 'Hip Abduction', scheme: 'sets', sets: 3, reps: 15 },
-    pullup_pyramid: { exId: 'pullup', label: 'Pull-Up Pyramid', scheme: 'pyramid', rounds: 1 },
+    pullup_pyramid: { exId: 'pullup', label: 'Pull-Up Pyramid', scheme: 'pyramid', startReps: 6, restSecs: 90 },
     tophold: { exId: 'support', label: 'Top Hold', scheme: 'hold', sets: 3, seconds: 15 },
     t2b: { exId: 't2b', label: 'Toes-to-Bar', scheme: 'sets', sets: 3, reps: 8 },
     deadhang: { exId: 'deadhang', label: 'Dead Hang', scheme: 'hold', sets: 3, seconds: 30 },

@@ -244,7 +244,7 @@
       ] },
     mu_volume: { id: 'mu_volume', worldId: 'muscleup', kind: 'strength', name: 'Pulling Volume', type: 'volume',
       difficulty: 'Medium',
-      blocks: [{ exId: 'pullup', label: 'Pull-Ups — Pyramid', scheme: 'pyramid', rounds: 5 }] },
+      blocks: [{ exId: 'pullup', label: 'Pull-Ups — Pyramid', scheme: 'pyramid', startReps: 6, restSecs: 90 }] },
     mu_highpull: { id: 'mu_highpull', worldId: 'muscleup', kind: 'strength', name: 'High Pull', type: 'power',
       difficulty: 'High',
       blocks: [

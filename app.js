@@ -853,8 +853,7 @@
     UI.workout=buildWorkout(rt);
     UI.workout.dailyExId=exId; UI.workout.dailyId=daily.id; UI.workout.adhoc=!!daily.adhoc;
     UI.workout.plannedRounds=(UI.workout.blocks[0]&&UI.workout.blocks[0].kind==='ladder')?UI.workout.blocks[0].rounds.length:null;
-    UI.workout.plannedSets=(UI.workout.blocks[0]&&UI.workout.blocks[0].scheme==='pyramid')?UI.workout.blocks[0].sets.length:null;
-    UI.workout.extraRounds=0; UI.workout.extraSets=0; UI.workout.redo=!!opts.redo;
+    UI.workout.extraRounds=0; UI.workout.redo=!!opts.redo;
     if(e){ e.state='in_progress'; }
     daily.activeExId=exId; daily.status='in_progress'; persistDaily(daily);
     delete todayEdits.mu_strength;
@@ -906,10 +905,28 @@
         plannedText:'1–2–3 × '+w.plannedRounds+' rounds', actualText:'1–2–3 × '+rounds+' rounds', state:'completed'};
     }
     if(bl.scheme==='pyramid'){
-      var preps=0; bl.sets.forEach(function(s){preps+=s.actual;});
-      return {type:'pyramid', exId:w.dailyExId, name:meta.name, plannedSets:w.plannedSets, actualSets:bl.sets.length,
-        addedSets:(w.extraSets||0), actualReps:preps, bestReps:maxSetRep(bl), difficulty:difficulty, state:'completed',
-        plannedText:'Pyramid × '+(w.plannedSets||bl.sets.length), actualText:'Pyramid × '+bl.sets.length+(w.extraSets?' (+'+w.extraSets+')':'')};
+      // History reads ONLY the frozen planned sequence + actual results —
+      // never a hard-coded shape. Extra back-off sets / extra pyramids are
+      // tracked separately so they never inflate the ORIGINAL planned volume.
+      var plannedCount=bl.plannedSetCount||0, plannedSeq=[];
+      for(var pi=0;pi<plannedCount;pi++) plannedSeq.push(plannedCount-pi);
+      var actualSeq=[], plannedActualReps=0, extraReps=0, extraBackoffSets=0, extraPyramidSets=0;
+      bl.sets.forEach(function(s){
+        if(!s.doneFlag) return;
+        if(s.extra){ extraReps+=s.actual; if(s.extra==='backoff') extraBackoffSets++; else extraPyramidSets++; }
+        else { actualSeq.push(s.actual); plannedActualReps+=s.actual; }
+      });
+      var totalActualReps=plannedActualReps+extraReps;
+      var plannedTotalReps=bl.plannedTotalReps||0;
+      return {type:'pyramid', exId:w.dailyExId, name:meta.name,
+        startReps:(bl.sets[0]?bl.sets[0].actual:bl.startReps)||null,
+        plannedSequence:plannedSeq, plannedSetCount:plannedCount, plannedTotalReps:plannedTotalReps,
+        actualSequence:actualSeq, plannedActualReps:plannedActualReps,
+        extraBackoffSets:(bl.extraBackoff||0), extraPyramidSets:(bl.extraPyramids||0), extraReps:extraReps,
+        pyramidDifficulty:bl.pyramidDifficulty||null, restSecs:bl.restSecs,
+        actualReps:totalActualReps, bestReps:maxSetRep(bl), difficulty:bl.pyramidDifficulty||difficulty, state:'completed',
+        plannedText:(plannedCount?plannedSeq.join('–'):'Pyramid'),
+        actualText:actualSeq.join(', ')+(extraReps?' (+'+extraReps+' extra)':'')};
     }
     // sets / hold / unilateral
     var isHold=bl.sets[0]&&bl.sets[0].unit==='sec';
@@ -960,6 +977,10 @@
         '<div class="dd-kv"><span>Best hold</span><b>'+result.bestSeconds+' sec</b></div>'+
         '<div class="dd-kv"><span>Total hold time</span><b>'+result.totalHoldSec+' sec</b></div>'+
         '<div class="dd-kv"><span>Completed</span><b>'+result.completedHolds+' of '+result.plannedHolds+' holds</b></div>'
+        :result.plannedSequence?
+        '<div class="dd-kv"><span>Planned reps</span><b>'+result.plannedActualReps+' of '+result.plannedTotalReps+'</b></div>'+
+        (result.extraBackoffSets?'<div class="dd-kv"><span>Extra</span><b>'+result.extraBackoffSets+' back-off set'+(result.extraBackoffSets>1?'s':'')+'</b></div>':'')+
+        (result.extraPyramidSets?'<div class="dd-kv"><span>Extra</span><b>+'+result.extraPyramidSets+' set'+(result.extraPyramidSets>1?'s':'')+' from an additional pyramid</b></div>':'')
         :(result.bestReps?'<div class="dd-kv"><span>Best set</span><b>'+result.bestReps+' reps</b></div>':''))+
       '</div>'+
       '<div class="card tight"><div class="between"><div class="section" style="margin:0">'+esc(title)+'</div>'+
@@ -1314,7 +1335,7 @@
   }
   function blockText(b){ if(!b) return '';
     if(b.scheme==='ladder') return Settings.stepsText(b.steps||[1,2,3])+' × '+b.rounds+' rounds';
-    if(b.scheme==='pyramid') return 'Pyramid';
+    if(b.scheme==='pyramid') return 'Pyramid '+Duration.pyramidStartReps(b)+'→1';
     if(b.scheme==='hold') return b.sets+' × '+b.seconds+'s hold';
     if(b.scheme==='amrap') return 'Max reps';
     return b.sets+' × '+b.reps+(Week.EX[b.exId]&&Week.EX[b.exId].unilateral?' each side':' reps');
@@ -1323,11 +1344,12 @@
   function editBuilderBlock(i){
     var it=builder.items[i]; if(!it) return; var b=it.block;
     if(b.scheme==='hold'&&b.restSecs==null) b.restSecs=60; // sensible default so the field is editable
+    if(b.scheme==='pyramid'){ if(b.startReps==null) b.startReps=Duration.pyramidStartReps(b); if(b.restSecs==null) b.restSecs=90; }
     function step(field,label,min,max,unit){ if(b[field]==null) return '';
       return '<div class="ed-line"><span>'+label+'</span><div class="ep-target"><button data-dec="'+field+'">&minus;</button><b class="edv" data-f="'+field+'">'+b[field]+(unit||'')+'</b><button data-inc="'+field+'">+</button></div></div>'; }
     var fields=b.scheme==='ladder'?[['rounds','Rounds',1,10,'']]
       :b.scheme==='hold'?[['sets','Sets',1,8,''],['seconds','Seconds',5,120,'s'],['restSecs','Rest',10,300,'s']]
-      :b.scheme==='pyramid'?[]
+      :b.scheme==='pyramid'?[['startReps','Starting reps',1,20,''],['restSecs','Rest',10,300,'s']]
       :b.scheme==='amrap'?[]
       :[['sets','Sets',1,10,''],['reps','Reps',1,30,'']];
     var body='<div class="grip"></div><h2>'+esc(Week.EX[it.exId].name)+'</h2>'+
@@ -1475,7 +1497,7 @@
   function exPrescriptionText(exId){
     var m=Week.EX[exId], b=m&&m.block; if(!b) return '';
     if(b.scheme==='ladder'){ var lad=prescriptionFor(Data.templates.mu_strength); var lb=(lad.blocks||[]).filter(function(x){return x.scheme==='ladder';})[0]; var r=lb?lb.rounds:b.rounds; return '1–2–3 × '+r+' rounds'; }
-    if(b.scheme==='pyramid') return 'Pyramid 1-2-3-2-1';
+    if(b.scheme==='pyramid') return 'Pyramid from '+Duration.pyramidStartReps(b)+' reps (descending to 1)';
     if(b.scheme==='hold') return b.sets+' × '+b.seconds+'s hold';
     if(b.scheme==='amrap') return 'Max reps';
     return b.sets+' × '+b.reps+(m.unilateral?' each side':' reps');
@@ -1599,7 +1621,7 @@
   }
   function blockStructureText(b){
     if(b.scheme==='ladder') return Settings.stepsText(b.steps)+' × '+b.rounds+' complete rounds';
-    if(b.scheme==='pyramid') return 'Pyramid '+(b.steps||[]).join('-')+(b.rounds>1?' × '+b.rounds+' rounds':'');
+    if(b.scheme==='pyramid') return 'Pyramid from '+Duration.pyramidStartReps(b)+' reps down to 1';
     if(b.scheme==='amrap') return 'Max reps (1 set)';
     if(b.scheme==='hold') return b.sets+' × '+b.seconds+' sec hold';
     return b.sets+' × '+b.reps+' reps';
@@ -1857,13 +1879,46 @@
           adaptEnabled:b.adaptEnabled!==false,
           origSteps:(b.steps||[1,2,3]).slice(), rounds:rounds};
       }
+      if(b.scheme==='pyramid'){
+        // A Pyramid opens with exactly ONE editable set — its descending
+        // sequence isn't generated until that first set is completed (see
+        // finishPyramidFirstSet). Default value: the last successfully
+        // completed Pyramid's starting reps, else the prescribed startReps,
+        // else Duration's own default.
+        var lastStart=pyramidLastCompletedStart(b.exId);
+        var initReps=Duration.pyramidStartReps({startReps:(lastStart!=null?lastStart:b.startReps)});
+        return {kind:'straight',scheme:'pyramid',label:b.label,exId:b.exId,note:b.note||'',
+          restSecs:(b.restSecs!=null?b.restSecs:Duration.restForType(rt.type)),
+          adaptEnabled:false, // a Pyramid's descending structure is frozen — never per-set adapted
+          frozen:false, plannedSetCount:null, plannedTotalReps:null,
+          extraBackoff:0, extraPyramids:0, pyramidDifficulty:null, pyramidRated:false,
+          sets:[{target:initReps,actual:initReps,unit:'reps',doneFlag:false}]};
+      }
       return {kind:'straight',scheme:b.scheme,label:b.label,exId:b.exId,note:b.note||'',
         restSecs:(b.restSecs!=null?b.restSecs:Duration.restForType(rt.type)),
         adaptEnabled:b.adaptEnabled!==false,
         sets:sets.map(function(s){return {target:s.target,actual:s.actual,unit:s.unit,amrap:!!s.amrap,doneFlag:false,adapted:''};})};
     });
     return {templateId:rt.id,worldId:UI.worldId,name:rt.name,blocks:blocks,started:Date.now(),pain:false,
-      adaptations:[],lastRound:null,lastSet:null,pendingOverride:null};
+      adaptations:[],lastRound:null,lastSet:null,lastPyramid:null,pendingOverride:null};
+  }
+  // "Last successfully completed Pyramid starting value" (Section 1, default
+  // priority #1) — scans History for the most recent completed result of
+  // this exercise carrying a startReps field. Only new-model results (built
+  // by exerciseResult's rewritten pyramid branch) have this field, so old
+  // pre-redesign history entries are silently skipped, never misread.
+  function pyramidLastCompletedStart(exId){
+    var sessions=Store.getSessions()||[];
+    var sorted=sessions.slice().sort(function(a,b){return new Date(a.date)-new Date(b.date);});
+    for(var i=sorted.length-1;i>=0;i--){
+      if(sorted[i].excluded) continue;
+      var exs=Daily.sessionExercises(sorted[i]);
+      for(var j=exs.length-1;j>=0;j--){
+        var e=exs[j];
+        if(e.exId===exId&&e.state!=='skipped'&&e.startReps!=null) return e.startReps;
+      }
+    }
+    return null;
   }
   function startStrength(t){
     UI.workout=buildWorkout(prescriptionFor(t));   // resolve defaults + today edit into a snapshot
@@ -1908,11 +1963,15 @@
     var allDone=!cur;
     // While a round/set rating is pending, the difficulty prompt takes over — the
     // next action card is hidden so the athlete answers before moving on.
-    var ratingPending=(w.lastRound&&!w.lastRound.rated)||(w.lastSet&&!w.lastSet.rated);
+    var ratingPending=(w.lastRound&&!w.lastRound.rated)||(w.lastSet&&!w.lastSet.rated)||(w.lastPyramid&&!w.lastPyramid.rated);
     // While the pre-round rest for a user-added ladder round is running, that
     // round's first step must stay hidden — the rest gates it, it doesn't just
     // advise around it (unlike the normal inter-step/inter-round rests).
     var roundRestPending=!!(w.ladderRest&&cur&&cur.kind==='ladder'&&cur.ri===w.ladderRest.ri);
+    // While the pre-pyramid rest for a user-added "Another Pyramid" is running,
+    // that pyramid's first set must stay hidden the same way (see
+    // maybeResumeSetRest / addAnotherPyramid).
+    var setRestPending=!!(w.setRest&&w.setRest.gateSi!=null&&cur&&cur.kind==='straight'&&cur.bi===w.setRest.bi&&cur.si===w.setRest.gateSi);
 
     // Each block renders into its own wrapper. In landscape, the CURRENT
     // block's "what to do now" (label, cues, target/stepper/done) goes into
@@ -1932,11 +1991,12 @@
       var overview=(bl.kind==='ladder')?ladderOverview(bl,isCur?cur.ri:-1):straightOverview(bl,isCur?cur.si:-1);
       if(isCur){
         var chunk=label;
-        if(!ratingPending&&!roundRestPending&&ex.cues) chunk+='<p class="wk-cues muted small" style="margin:-4px 2px 8px">'+esc(ex.cues)+'</p>';
+        if(!ratingPending&&!roundRestPending&&!setRestPending&&ex.cues) chunk+='<p class="wk-cues muted small" style="margin:-4px 2px 8px">'+esc(ex.cues)+'</p>';
         if(roundRestPending) chunk+=renderLadderRestPendingCard(cur);
+        else if(setRestPending) chunk+=renderSetRestPendingCard();
         else if(!ratingPending) chunk+=renderCurCard(w,cur,bl);
         body+='<div class="wk-block-wrap wk-block-current">'+chunk+'</div>';
-        side+='<div class="wk-block-wrap wk-block-current">'+(ratingPending||roundRestPending?'':curNextHtml(bl,cur))+overview+'</div>';
+        side+='<div class="wk-block-wrap wk-block-current">'+(ratingPending||roundRestPending||setRestPending?'':curNextHtml(bl,cur))+overview+pyramidProgressHtml(bl)+'</div>';
       } else {
         side+='<div class="wk-block-wrap">'+label+overview+'</div>';
       }
@@ -1954,6 +2014,7 @@
     app.innerHTML=''; app.appendChild(h('<div class="scr wk-runner">'+html+'</div>'));
     wireStrength(w);
     maybeResumeLadderRoundRest(w);
+    maybeResumeSetRest(w);
   }
   // A tiny placeholder for the gated left-column slot while a user-added
   // round's pre-round rest is running — the round's own step/stepper stays
@@ -1963,6 +2024,14 @@
       '<div class="cur-meta">Resting before Round '+(cur.ri+1)+'</div>'+
       '<p class="muted small sp">Round '+(cur.ri+1)+' will begin automatically when the rest finishes, or you can skip the rest.</p>'+
       '<button class="link" data-endladderrest>End Workout Now</button>'+
+    '</div>';
+  }
+  // The analogous gated placeholder while the pre-pyramid rest for a
+  // user-added "Another Pyramid" is running (see addAnotherPyramid).
+  function renderSetRestPendingCard(){
+    return '<div class="cur-card ladder-rest-pending">'+
+      '<div class="cur-meta">Resting before the next Pyramid</div>'+
+      '<p class="muted small sp">The next Pyramid will begin automatically when the rest finishes, or you can skip the rest.</p>'+
     '</div>';
   }
   // The finish / flexible-extension panel shown when all work is done. A single
@@ -1982,9 +2051,24 @@
         (isDaily?'<button class="link" data-enddaily>End Daily Workout</button>':'')+'</div>';
     }
     if(single&&single.scheme==='pyramid'){
+      var plannedCount=single.plannedSetCount||single.sets.length, plannedTotal=single.plannedTotalReps||0;
+      var plannedActual=0, extraActual=0, extraBackoff=single.extraBackoff||0, extraPyramids=single.extraPyramids||0;
+      single.sets.forEach(function(s){
+        if(!s.doneFlag) return;
+        if(s.extra) extraActual+=s.actual; else plannedActual+=s.actual;
+      });
+      var extraLine=(extraBackoff||extraPyramids)?
+        '<div class="dd-kv"><span>Extra work</span><b>'+
+          (extraBackoff?extraBackoff+' back-off set'+(extraBackoff>1?'s':''):'')+
+          (extraBackoff&&extraPyramids?' + ':'')+
+          (extraPyramids?extraPyramids+' extra pyramid'+(extraPyramids>1?'s':''):'')+
+          ' ('+extraActual+' extra reps)</b></div>':'';
       return '<div class="ladder-done card sp"><div class="section" style="margin-top:0">Planned pyramid completed</div>'+
-        '<div class="dd-kv"><span>Sets</span><b>'+single.sets.length+(w.extraSets?' (+'+w.extraSets+' added)':'')+'</b></div>'+
-        '<button class="btn primary" data-addset>Add One Set</button>'+
+        '<div class="dd-kv"><span>Sets</span><b>'+plannedCount+' of '+plannedCount+' planned</b></div>'+
+        '<div class="dd-kv"><span>Reps</span><b>'+plannedActual+' of '+plannedTotal+' planned reps</b></div>'+
+        extraLine+
+        '<button class="btn primary" data-addbackoff>Add Back-Off Set</button>'+
+        '<button class="btn primary" data-addpyramid>Add Another Pyramid</button>'+
         '<button class="btn ghost" data-finishex>Finish '+(isDaily?'Pyramid':'&amp; Save Workout')+'</button></div>';
     }
     return '<button class="btn primary sp" data-finish>Finish '+(isDaily?'Exercise':'&amp; Save Workout')+'</button>';
@@ -2062,12 +2146,78 @@
     saveWorkoutState();
     if(w.dailyExId) finishDailyExercise(); else finishStrength();
   }
-  // Append one more set to the SAME pyramid session (Part 7).
-  function addPyramidSet(){
-    var w=UI.workout, bl=w.blocks[0]; if(!bl||bl.scheme!=='pyramid') return;
-    var top=bl.sets.reduce(function(m,s){return Math.max(m,s.target||0);},1);
-    bl.sets.push({target:top,actual:top,unit:'reps',amrap:false,doneFlag:false,adapted:''});
-    w.extraSets=(w.extraSets||0)+1;
+  // ---- durable, timestamp-based "normal set rest" (Section 3) ---------------
+  // Fixes the rest timer disappearing when the reps stepper (or any other
+  // unrelated state change — Pain flag, a future set's actual, etc.) triggers
+  // a re-render: the OLD code called startRest() once and let the interval's
+  // closure hold a reference to that DOM node, so the very next
+  // renderStrength() replaced #rest with a fresh empty node the interval
+  // never touched again. Instead of a DOM patch, the rest is now persisted
+  // workout state (mirrors w.hold / w.ladderRest) that every renderStrength()
+  // reconciles the DOM against — never restarting, stopping, un-pausing,
+  // adding, or skipping time; only ever re-deriving the correct remaining
+  // value from real timestamps.
+  function startSetRest(w,bi,secs,label,gateSi){
+    w.setRest={bi:bi,restSecs:secs,label:label||'Rest',startTs:Date.now(),elapsedMs:0,paused:false,
+      gateSi:(gateSi==null?null:gateSi)};
+  }
+  function setRestElapsedMs(sr){
+    if(!sr) return 0;
+    if(sr.paused) return sr.elapsedMs||0;
+    return (sr.elapsedMs||0)+(Date.now()-sr.startTs);
+  }
+  function setRestRemainingSec(sr){
+    return Math.max(0,Math.ceil((sr.restSecs*1000-setRestElapsedMs(sr))/1000));
+  }
+  // Called at the end of EVERY renderStrength() (like maybeResumeLadderRoundRest).
+  // Reconciles the #rest DOM to match persisted state: recomputes the correct
+  // remaining time from timestamps and (re)renders via the UNCHANGED startRest,
+  // passing the current paused flag through so a paused rest never silently
+  // resumes just because something else on screen re-rendered.
+  function maybeResumeSetRest(w){
+    var sr=w.setRest; if(!sr) return;
+    var bl=w.blocks[sr.bi]; if(!bl){ w.setRest=null; saveWorkoutState(); return; }
+    var remaining=setRestRemainingSec(sr);
+    if(remaining<=0&&!sr.paused){ finishSetRest(w); return; }
+    startRest(remaining,{
+      label:sr.label,
+      paused:sr.paused,
+      onDone:function(){ finishSetRest(w); },
+      onToggle:function(paused){ setRestToggle(w,paused); },
+      onAdd30:function(){ if(w.setRest){ w.setRest.restSecs+=30; saveWorkoutState(); } }
+    });
+  }
+  function setRestToggle(w,paused){
+    var sr=w.setRest; if(!sr) return;
+    if(paused){ sr.elapsedMs=setRestElapsedMs(sr); sr.paused=true; }
+    else { sr.startTs=Date.now(); sr.paused=false; }
+    saveWorkoutState();
+  }
+  function finishSetRest(w){
+    w.setRest=null;
+    stopTimer();
+    saveWorkoutState();
+    renderStrength();
+  }
+
+  // ---- Pyramid completion options (Section 4) --------------------------------
+  // Replaces the old "Add One Set" (which reused the pyramid's HIGHEST value,
+  // silently turning a finished 6-5-4-3-2-1 into another 6-rep set).
+  function addPyramidBackoff(){
+    var w=UI.workout, bl=w.blocks[0]; if(!bl||bl.scheme!=='pyramid'||!bl.frozen) return;
+    bl.sets.push({target:1,actual:1,unit:'reps',doneFlag:false,extra:'backoff'});
+    bl.extraBackoff=(bl.extraBackoff||0)+1;
+    saveWorkoutState(); window.scrollTo(0,0); renderStrength();
+  }
+  // Appends a full fresh copy of the SAME frozen descending sequence, gated
+  // behind the prescribed rest — same gating pattern as Ladder's Add Full
+  // Round, reusing the identical durable rest state (just with gateSi set).
+  function addAnotherPyramid(){
+    var w=UI.workout, bl=w.blocks[0]; if(!bl||bl.scheme!=='pyramid'||!bl.frozen) return;
+    var n=bl.plannedSetCount||1, startIdx=bl.sets.length;
+    for(var r=n;r>=1;r--){ bl.sets.push({target:r,actual:r,unit:'reps',doneFlag:false,extra:'pyramid2'}); }
+    bl.extraPyramids=(bl.extraPyramids||0)+1;
+    startSetRest(w,0,bl.restSecs,'Rest before the next Pyramid',startIdx);
     saveWorkoutState(); window.scrollTo(0,0); renderStrength();
   }
   function saveLadderDefault(rounds){
@@ -2096,9 +2246,13 @@
       '</div>';
     }
     var s=bl.sets[cur.si], unit=s.unit==='sec'?'sec':'reps';
+    var pyramidUnfrozen=bl.scheme==='pyramid'&&!bl.frozen;
+    var setTotal=(bl.scheme==='pyramid'&&bl.plannedSetCount)?bl.plannedSetCount:bl.sets.length;
+    var meta=pyramidUnfrozen?'Starting Set &middot; choose your reps':
+      (s.extra==='backoff'?'Back-Off Set':s.extra==='pyramid2'?'Extra Pyramid &middot; Set '+(cur.si+1):'Set '+(cur.si+1)+' of '+setTotal);
     return '<div class="cur-card" data-cur-set="'+(cur.si+1)+'">'+
-      '<div class="cur-meta">Set '+(cur.si+1)+' of '+bl.sets.length+'</div>'+
-      '<div class="cur-target">'+(s.amrap?'Max reps':'Target <b>'+(s.target==null?'—':s.target)+'</b> '+unit)+'</div>'+
+      '<div class="cur-meta">'+meta+'</div>'+
+      '<div class="cur-target">'+(s.amrap?'Max reps':pyramidUnfrozen?'Adjust your starting reps below':'Target <b>'+(s.target==null?'—':s.target)+'</b> '+unit)+'</div>'+
       '<div class="set" data-bi="'+cur.bi+'" data-kind="straight" data-si="'+cur.si+'">'+
         '<div class="stepper big"><button data-step="-1">&minus;</button><span class="num">'+s.actual+'</span><button data-step="1">+</button></div>'+
         '<button class="btn primary cur-done" data-done>Done</button>'+
@@ -2348,14 +2502,23 @@
   }
   function straightOverview(bl,curSi){
     var chips=bl.sets.map(function(s,si){
-      if(s.skipped) return '<div class="round-chip skipped"><span class="rc-lbl">Set '+(si+1)+'</span><span class="rc-steps">Skipped</span></div>';
+      var lbl=s.extra==='backoff'?'Back-off':s.extra==='pyramid2'?'Extra':'Set '+(si+1);
+      if(s.skipped) return '<div class="round-chip skipped"><span class="rc-lbl">'+lbl+'</span><span class="rc-steps">Skipped</span></div>';
       var done=s.doneFlag, unit=s.unit==='sec'?'s':'', val=s.amrap?'Max':(s.target==null?'—':s.target+unit);
       var displayVal=(done&&s.unit==='sec')?s.actual+unit:val;
-      var cls=done?'done':(si===curSi?'current':'upcoming');
+      var cls=(done?'done':(si===curSi?'current':'upcoming'))+(s.extra?' extra':'');
       var mark=done?'&#10003; ':(si===curSi?'&#9679; ':'');
-      return '<div class="round-chip '+cls+'"><span class="rc-lbl">Set '+(si+1)+'</span><span class="rc-steps">'+mark+displayVal+'</span></div>';
+      return '<div class="round-chip '+cls+'"><span class="rc-lbl">'+lbl+'</span><span class="rc-steps">'+mark+displayVal+'</span></div>';
     }).join('');
     return '<div class="round-overview">'+chips+'</div>';
+  }
+  // "X of Y planned reps completed" for the current pyramid block — computed
+  // from the frozen sequence, never hard-coded, and excludes extra work.
+  function pyramidProgressHtml(bl){
+    if(bl.scheme!=='pyramid'||!bl.frozen) return '';
+    var done=0;
+    bl.sets.forEach(function(s){ if(s.doneFlag&&!s.extra) done+=s.actual; });
+    return '<div class="muted small sp">'+done+' of '+(bl.plannedTotalReps||0)+' planned reps completed</div>';
   }
 
   function renderAdaptPrompt(w){
@@ -2368,6 +2531,17 @@
         '<button class="pill" data-diff="appropriate">Right</button>'+
         '<button class="pill" data-diff="hard">Hard</button>'+
         '<button class="pill" data-diff="failed">Failed</button></div></div>';
+    }
+    // ONE overall rating after the whole (planned) Pyramid — never per-set,
+    // and it never changes the frozen sequence or any saved default; it is
+    // stored purely for History/coaching to read later.
+    if(w.lastPyramid&&!w.lastPyramid.rated){
+      out+='<div class="adapt-card"><div class="section" style="margin-top:0">How did the full pyramid feel?</div>'+
+        '<div class="opts adapt-opts">'+
+        '<button class="pill" data-pyrdiff="easy">Easy</button>'+
+        '<button class="pill" data-pyrdiff="appropriate">Right</button>'+
+        '<button class="pill" data-pyrdiff="hard">Hard</button>'+
+        '<button class="pill" data-pyrdiff="failed">Failed</button></div></div>';
     }
     if(w.pendingOverride){
       var full=w.pendingOverride.full.join('–');
@@ -2385,12 +2559,14 @@
     });
     on('.set [data-done]','click',function(e){ markDone(w,e.currentTarget.closest('.set')); });
     on('[data-diff]','click',function(e){ rateCurrent(w,e.currentTarget.dataset.diff); });
+    on('[data-pyrdiff]','click',function(e){ ratePyramid(w,e.currentTarget.dataset.pyrdiff); });
     on('[data-keepfull]','click',function(){ overrideKeepFull(w); });
     on('[data-painflag]','click',function(){ w.pain=!w.pain; saveWorkoutState(); renderStrengthKeepScroll(); });
     on('[data-finish]','click',onFinishWorkout);
     on('[data-finishex]','click',onFinishWorkout);
     on('[data-addround]','click',addLadderRound);
-    on('[data-addset]','click',addPyramidSet);
+    on('[data-addbackoff]','click',addPyramidBackoff);
+    on('[data-addpyramid]','click',addAnotherPyramid);
     on('[data-savedefault]','click',function(e){ saveLadderDefault(+e.currentTarget.dataset.savedefault); });
     on('[data-enddaily]','click',function(){ if(UI.workout&&UI.workout.dailyExId){ finishDailyExercise(); } });
     on('[data-endladderrest]','click',function(){
@@ -2426,11 +2602,46 @@
   // Complete one straight-block set (reps or timed hold) and route into the
   // shared difficulty-rating + rest flow — the single path every straight set
   // finishes through, whether logged via the reps stepper or the hold timer.
+  // A Pyramid's FIRST set is a special case (see finishPyramidFirstSet): it
+  // doesn't complete a set from an existing sequence, it CREATES one.
   function finishStraightSet(w,bi,si){
     var bl=w.blocks[bi];
+    if(bl.scheme==='pyramid'&&!bl.frozen){ finishPyramidFirstSet(w,bi,si); return; }
     bl.sets[si].doneFlag=true;
+    if(bl.scheme==='pyramid'){
+      // Never per-set adapted (bl.adaptEnabled is always false — see
+      // buildWorkout) — the descending sequence is frozen for the session.
+      // The ORIGINAL planned sequence's last set asks ONE overall-difficulty
+      // question instead of starting a rest (there's nothing left to rest
+      // before); extra back-off/additional-pyramid sets never re-ask it.
+      var isLastPlanned=bl.plannedSetCount&&si===bl.plannedSetCount-1&&!bl.sets[si].extra;
+      if(isLastPlanned&&!bl.pyramidRated){
+        w.lastPyramid={bi:bi,rated:false};
+        saveWorkoutState(); renderStrength();
+        return;
+      }
+      if(locateCurrent(w)) startSetRest(w,bi,bl.restSecs);
+      saveWorkoutState(); renderStrength();
+      return;
+    }
     if(bl.adaptEnabled){ w.lastSet={bi:bi,si:si,rated:false}; saveWorkoutState(); renderStrength(); }  // ask, then rest
-    else { saveWorkoutState(); renderStrength(); if(locateCurrent(w)) startRest(bl.restSecs); }
+    else {
+      if(locateCurrent(w)) startSetRest(w,bi,bl.restSecs);
+      saveWorkoutState(); renderStrength();
+    }
+  }
+  // The Pyramid's first set is completed: freeze the actual entered reps as
+  // the starting value and generate the full descending sequence down to 1
+  // in one shot. Validated so a zero/negative/NaN/absurd stepper value can
+  // never produce a broken or runaway sequence.
+  function finishPyramidFirstSet(w,bi,si){
+    var bl=w.blocks[bi], first=bl.sets[si];
+    var n=Duration.pyramidStartReps({startReps:first.actual});
+    first.target=n; first.actual=n; first.doneFlag=true;
+    for(var r=n-1;r>=1;r--){ bl.sets.push({target:r,actual:r,unit:'reps',doneFlag:false}); }
+    bl.frozen=true; bl.plannedSetCount=bl.sets.length; bl.plannedTotalReps=n*(n+1)/2;
+    if(locateCurrent(w)) startSetRest(w,bi,bl.restSecs);
+    saveWorkoutState(); renderStrength();
   }
   function firstFailedStep(rd){
     for(var i=0;i<rd.steps.length;i++){ if(rd.steps[i].actual<rd.steps[i].target) return i+1; }
@@ -2474,6 +2685,16 @@
       if(locateCurrent(w)) startRest(bl2.restSecs);       // rest AFTER the rating
     }
   }
+  // The ONE overall Pyramid-session rating (Section 2). Stored on the block
+  // purely as data for History/coaching — it never mutates the completed
+  // sequence, any set's target/actual, or a saved default.
+  function ratePyramid(w,diff){
+    var lp=w.lastPyramid; if(!lp||lp.rated) return;
+    var bl=w.blocks[lp.bi];
+    bl.pyramidDifficulty=diff; bl.pyramidRated=true; lp.rated=true;
+    w.lastPyramid=null;
+    saveWorkoutState(); renderStrength();
+  }
   function overrideKeepFull(w){
     if(!w.pendingOverride) return;
     var bl=w.blocks[w.pendingOverride.bi], rd=bl.rounds[w.pendingOverride.ri];
@@ -2499,7 +2720,7 @@
     opts=opts||{};
     stopTimer();
     var el=document.getElementById('rest'); if(!el)return;
-    UI.timerPaused=false; UI.timerLeft=secs;
+    UI.timerPaused=!!opts.paused; UI.timerLeft=secs;
     render();
     UI.timer=setInterval(function(){
       if(UI.timerPaused) return;
@@ -3084,10 +3305,9 @@
         editorField('Max target (optional)','maxTarget',bi,b.maxTarget==null?'':b.maxTarget)+
         adaptToggle(b,bi);
     } else if(b.scheme==='pyramid'){
-      fields=editorField('Rep sequence','steps',bi,Settings.stepsText(b.steps),true)+
-        editorField('Rounds','rounds',bi,b.rounds)+
+      fields=editorField('Starting reps','startReps',bi,Duration.pyramidStartReps(b))+
         editorField('Rest between sets','rest',bi,fmt(b.restSecs))+
-        adaptToggle(b,bi);
+        '<p class="muted small">Descends by one rep each set, e.g. '+Duration.pyramidStartReps(b)+'→1.</p>';
     } else if(b.scheme==='hold'){
       fields=editorField('Sets','sets',bi,b.sets)+
         editorField('Hold duration (sec)','seconds',bi,b.seconds)+
@@ -3120,6 +3340,7 @@
       else if(f==='restRound') b.restBetweenRoundsSec=Math.max(0,Settings.parseSecs(val));
       else if(f==='rest') b.restSecs=Math.max(0,Settings.parseSecs(val));
       else if(f==='maxTarget') b.maxTarget=(val===''?null:Math.max(1,parseInt(val,10)||1));
+      else if(f==='startReps') b.startReps=Duration.pyramidStartReps({startReps:parseInt(val,10)});
       renderWorkoutEditor();
     });
     on('[data-edadapt]','click',function(e){var bi=+e.currentTarget.dataset.edadapt;ed.blocks[bi].adaptEnabled=!(ed.blocks[bi].adaptEnabled!==false);renderWorkoutEditor();});

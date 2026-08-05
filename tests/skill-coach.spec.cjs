@@ -104,12 +104,13 @@ test.describe('calcDurationRange', () => {
     expect(r.maxMin).toBe(22);
   });
 
-  test('pyramid (1-2-3-2-1): about 8 min', () => {
+  test('pyramid (descending from 6: 6-5-4-3-2-1): about 8 min', () => {
     const r = Duration.calcDurationRange(Data.templates.mu_volume);
-    // 9 reps × (2–3 s) = 18–27 s exec; 4 straight rests × 120 = 480 s.
-    expect(r.minSec).toBe(498);
-    expect(r.maxSec).toBe(507);
-    expect(r.maxMin).toBe(8);
+    // 21 reps (6+5+4+3+2+1) × (2–3 s) = 42–63 s exec; 5 straight rests × 90 = 450 s.
+    expect(r.minSec).toBe(492);
+    expect(r.maxSec).toBe(513);
+    expect(r.minMin).toBe(8);
+    expect(r.maxMin).toBe(9);
   });
 
   test('hold + reps blocks (support + dips): about 15 min', () => {
@@ -150,9 +151,19 @@ test.describe('genSets', () => {
     expect(sets[3]).toMatchObject({ round: 2, step: 1, target: 1, firstInRound: true });
   });
 
-  test('pyramid produces 1-2-3-2-1', () => {
+  test('pyramid descends from startReps to 1', () => {
+    const sets = Duration.genSets({ scheme: 'pyramid', startReps: 6 });
+    expect(sets.map(s => s.target)).toEqual([6, 5, 4, 3, 2, 1]);
+  });
+
+  test('pyramid with no startReps falls back to the default (5-4-3-2-1)', () => {
     const sets = Duration.genSets({ scheme: 'pyramid' });
-    expect(sets.map(s => s.target)).toEqual([1, 2, 3, 2, 1]);
+    expect(sets.map(s => s.target)).toEqual([5, 4, 3, 2, 1]);
+  });
+
+  test('a legacy symmetric steps array migrates via its peak value', () => {
+    const sets = Duration.genSets({ scheme: 'pyramid', steps: [1, 2, 3, 2, 1] });
+    expect(sets.map(s => s.target)).toEqual([3, 2, 1]);
   });
 
   test('sets scheme produces correct count', () => {

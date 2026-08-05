@@ -36,10 +36,14 @@
       out.maxTarget = b.maxTarget != null ? b.maxTarget : null;
       out.adaptEnabled = b.adaptEnabled !== false;
     } else if (b.scheme === 'pyramid') {
-      out.steps = (b.steps || [1, 2, 3, 2, 1]).slice();
-      out.rounds = b.rounds != null ? b.rounds : 1;
+      // Descending pyramid: startReps is the ONLY shape knob (N, N-1, ..., 1).
+      // A legacy symmetric `steps` array (e.g. [1,2,3,2,1]) is migrated via
+      // its peak value — see Duration.pyramidStartReps — never re-read as-is.
+      out.startReps = Duration.pyramidStartReps(b);
       out.restSecs = b.restSecs != null ? b.restSecs : restForType(type);
-      out.adaptEnabled = b.adaptEnabled !== false;
+      // Per-set difficulty adaptation is never used for a Pyramid — its
+      // descending structure is frozen from the first set for the whole
+      // session; adaptation would silently rewrite that structure.
     } else if (b.scheme === 'hold') {
       out.sets = b.sets != null ? b.sets : 3;
       out.seconds = b.seconds != null ? b.seconds : 30;

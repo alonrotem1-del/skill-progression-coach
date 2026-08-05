@@ -190,6 +190,7 @@ async function runToFinishPanel(page) {
   for (let i = 0; i < 120; i++) {
     if (await page.locator('[data-finish],[data-finishex]').count()) return;
     if (await page.locator('[data-diff="appropriate"]').count()) { await page.locator('[data-diff="appropriate"]').first().click(); continue; }
+    if (await page.locator('[data-pyrdiff="appropriate"]').count()) { await page.locator('[data-pyrdiff="appropriate"]').first().click(); continue; }
     if (await page.locator('[data-tskip]').count()) { await page.locator('[data-tskip]').first().click(); continue; }
     if (await page.locator('.cur-card [data-done]').count()) { await page.locator('.cur-card [data-done]').first().click(); continue; }
     await page.waitForTimeout(40);
@@ -330,15 +331,24 @@ test.describe('flexible ladder — extend in the same session, never an auto max
 });
 
 test.describe('flexible pyramid', () => {
-  test('32 — Add One Set extends the pyramid in the same session', async ({ page }) => {
+  test('32 — Add Back-Off Set and Add Another Pyramid extend the pyramid in the same session', async ({ page }) => {
     await seed(page, 2);                          // Tuesday: Home Skill Session (pyramid)
     await page.locator('.q-ex', { hasText: 'Pull-Up Pyramid' }).locator('[data-exstart]').click();
     await runToFinishPanel(page);
-    const before = await page.locator('.ladder-done .dd-kv b').first().textContent();
-    await page.locator('[data-addset]').click();
+    const plannedCount = await page.evaluate(() => window.CoachApp._UI.workout.blocks[0].plannedSetCount);
+    await expect(page.locator('[data-addbackoff]')).toBeVisible();
+    await page.locator('[data-addbackoff]').click();
     await expect(page.locator('.cur-card')).toBeVisible();
     await runToFinishPanel(page);
-    await expect(page.locator('.ladder-done')).toContainText('added');
+    let bl = await page.evaluate(() => window.CoachApp._UI.workout.blocks[0]);
+    expect(bl.sets.length).toBe(plannedCount + 1);
+    expect(bl.extraBackoff).toBe(1);
+    await page.locator('[data-addpyramid]').click();
+    if (await page.locator('[data-tskip]').count()) await page.locator('[data-tskip]').click(); // pre-pyramid rest
+    await runToFinishPanel(page);
+    bl = await page.evaluate(() => window.CoachApp._UI.workout.blocks[0]);
+    expect(bl.sets.length).toBe(plannedCount + 1 + plannedCount);
+    expect(bl.extraPyramids).toBe(1);
   });
 });
 

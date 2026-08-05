@@ -66,6 +66,7 @@ async function runToFinishPanel(page) {
   for (let i = 0; i < 120; i++) {
     if (await page.locator('[data-finish],[data-finishex]').count()) return;
     if (await page.locator('[data-diff="appropriate"]').count()) { await page.locator('[data-diff="appropriate"]').first().click(); continue; }
+    if (await page.locator('[data-pyrdiff="appropriate"]').count()) { await page.locator('[data-pyrdiff="appropriate"]').first().click(); continue; }
     if (await page.locator('[data-tskip]').count()) { await page.locator('[data-tskip]').first().click(); continue; }
     if (await page.locator('.cur-card [data-done]').count()) { await page.locator('.cur-card [data-done]').first().click(); continue; }
     await page.waitForTimeout(40);
