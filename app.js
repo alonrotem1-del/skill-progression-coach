@@ -3170,6 +3170,12 @@
   function renderDataSettings(){
     var html=settingsBackHeader('Data & History')+
       installSection()+
+      '<div class="section">Backup</div>'+
+      '<div class="card tight"><p class="small">Save a complete backup file of everything this app has stored on this device — your own coach data and the Pull-Up Coach history it reads. Keep it somewhere safe before switching devices, reinstalling, or trying something risky.</p></div>'+
+      '<button class="btn ghost" data-backup-export>Export Backup</button>'+
+      '<button class="btn ghost" data-backup-restore>Restore Backup&hellip;</button>'+
+      '<input type="file" accept="application/json,.json" data-backup-file style="display:none">'+
+      '<p class="footnote muted tiny" data-backup-status></p>'+
       '<div class="section">About</div>'+
       '<div class="card tight"><p class="small">This app reads <b>Pull-Up Coach</b> history read-only and writes only its own <code>spc_c_*</code> keys. It never modifies the Pull-Up Coach app. Its own service worker is scoped to <code>/skill-progression-coach/</code> and does not affect Pull-Up Coach.</p></div>'+
       '<button class="btn ghost" data-redo>Re-run Onboarding</button>'+
@@ -3182,6 +3188,62 @@
     },wrap);
     on('[data-redo]','click',function(){OB=null;renderOnboarding(0);},wrap);
     on('[data-reset]','click',function(){if(confirm('Reset all coach data? Pull-Up Coach data is untouched.')){Store.reset();_settings=null;todayEdits={};UI.readiness=null;UI.worldId=null;settingsView='home';boot();}},wrap);
+    on('[data-backup-export]','click',function(){ exportBackup(wrap); },wrap);
+    on('[data-backup-restore]','click',function(){ var inp=wrap.querySelector('[data-backup-file]'); if(inp) inp.click(); },wrap);
+    on('[data-backup-file]','change',function(e){ importBackupFile(e.currentTarget.files&&e.currentTarget.files[0],wrap); e.currentTarget.value=''; },wrap);
+  }
+
+  // ---- raw backup storage access ---------------------------------------
+  // Deliberately bypasses Store (which refuses to read/write puc_* and
+  // non-spc_ keys) — a backup restore must be able to write EXACT raw
+  // values back under puc_* and every spc_c_* key, unmodified.
+  function backupGetRaw(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+  function backupSetRaw(k,v){ localStorage.setItem(k,v); }
+  function backupRemoveRaw(k){ localStorage.removeItem(k); }
+
+  function backupStatus(wrap,msg){ var el=wrap.querySelector('[data-backup-status]'); if(el) el.textContent=msg||''; }
+
+  function exportBackup(wrap){
+    var env=window.CoachBackup.exportAll(backupGetRaw,{appVersion:(Data&&Data.contentVersion)||null});
+    var blob=new Blob([JSON.stringify(env,null,2)],{type:'application/json'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    var stamp=new Date().toISOString().replace(/[:.]/g,'-');
+    a.href=url; a.download='skill-progression-coach-backup-'+stamp+'.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url);},1000);
+    backupStatus(wrap,'Backup exported.');
+    toast('Backup file downloaded.');
+  }
+
+  function importBackupFile(file,wrap){
+    if(!file){ return; }
+    backupStatus(wrap,'Reading backup…');
+    var reader=new FileReader();
+    reader.onerror=function(){ backupStatus(wrap,'Could not read that file.'); };
+    reader.onload=function(){
+      var env;
+      try{ env=JSON.parse(String(reader.result)); }
+      catch(e){ backupStatus(wrap,'That file is not valid JSON — nothing was changed.'); return; }
+      var v=window.CoachBackup.validateEnvelope(env);
+      if(!v.ok){ backupStatus(wrap,'Not a valid Skill Progression Coach backup ('+v.reason+') — nothing was changed.'); return; }
+      var inProgress=window.CoachBackup.hasInProgressState(backupGetRaw);
+      var msg='Restore this backup from '+(env.exportedAt||'an earlier export')+'? '+
+        'This REPLACES your current coach data and Pull-Up Coach history on this device with the backup’s contents.'+
+        (inProgress?' Your in-progress workout will be replaced.':'');
+      if(!confirm(msg)) { backupStatus(wrap,'Restore cancelled — nothing was changed.'); return; }
+      try{
+        window.CoachBackup.restoreAll(env,backupGetRaw,backupSetRaw,backupRemoveRaw);
+      }catch(err){
+        backupStatus(wrap,(err&&err.message)?err.message:'Restore failed.');
+        toast('Restore failed — see the message below.');
+        return;
+      }
+      backupStatus(wrap,'Backup restored. Reloading…');
+      toast('Backup restored.');
+      setTimeout(function(){ location.reload(); },400);
+    };
+    reader.readAsText(file);
   }
 
   // ---- Exercise Library -----------------------------------------------------
