@@ -44,12 +44,23 @@ function memRaw(seed) {
   };
 }
 
+// Backup v2 carries the durable IndexedDB stores alongside the localStorage
+// keys. These pure tests exercise the localStorage half, so they pass an
+// EMPTY-but-complete durable snapshot: exportAll deliberately refuses to build
+// a partial envelope, which is itself asserted below.
+function emptyStorage() {
+  var stores = {};
+  Backup.DURABLE_STORES.forEach(function (n) { stores[n] = []; });
+  return { schemaVersion: Backup.STORAGE_SCHEMA_VERSION, stores: stores };
+}
+
 function validBackup(overrides) {
   var keys = {};
   EXPECTED_KEYS.forEach(function (k) { keys[k] = { present: false }; });
   var env = {
     format: Backup.FORMAT, formatVersion: Backup.FORMAT_VERSION, app: Backup.APP_ID,
-    appVersion: '2026-07-22', exportedAt: '2026-09-14T00:00:00.000Z', keys: keys
+    appVersion: '2026-07-22', exportedAt: '2026-09-14T00:00:00.000Z', keys: keys,
+    storage: emptyStorage()
   };
   return Object.assign(env, overrides || {});
 }
@@ -99,7 +110,7 @@ test.describe('backup.js — key inventory', () => {
 test.describe('backup.js — export', () => {
   test('2 — export includes every protected existing key', () => {
     var r = memRaw({ spc_c_profile: '{"onboarded":true}', puc_log: '[1,2,3]' });
-    var env = Backup.exportAll(r.getRaw);
+    var env = Backup.exportAll(r.getRaw, { storage: emptyStorage() });
     EXPECTED_KEYS.forEach(function (k) { expect(env.keys[k], k).toBeTruthy(); });
     expect(env.keys.spc_c_profile).toEqual({ present: true, value: '{"onboarded":true}' });
     expect(env.keys.puc_log).toEqual({ present: true, value: '[1,2,3]' });
@@ -109,13 +120,13 @@ test.describe('backup.js — export', () => {
   test('3 — export preserves exact raw values (whitespace, unicode, odd JSON)', () => {
     var raw = '{"a":1,  "b":"  spaced  ","emoji":"💪","nested":[1,2,{"x":null}]}';
     var r = memRaw({ spc_c_sessions: raw });
-    var env = Backup.exportAll(r.getRaw);
+    var env = Backup.exportAll(r.getRaw, { storage: emptyStorage() });
     expect(env.keys.spc_c_sessions.value).toBe(raw);
   });
 
   test('4 — export distinguishes a missing key from a key whose value is the string "null"', () => {
     var r = memRaw({ spc_c_state: 'null' }); // value IS the 4-char string "null"
-    var env = Backup.exportAll(r.getRaw);
+    var env = Backup.exportAll(r.getRaw, { storage: emptyStorage() });
     expect(env.keys.spc_c_state).toEqual({ present: true, value: 'null' });
     expect(env.keys.spc_c_bench).toEqual({ present: false }); // truly absent
   });
@@ -124,15 +135,15 @@ test.describe('backup.js — export', () => {
     var seed = { spc_c_profile: 'x', spc_c_plan: 'y' };
     var r = memRaw(seed);
     var before = Object.assign({}, r.map);
-    Backup.exportAll(r.getRaw);
+    Backup.exportAll(r.getRaw, { storage: emptyStorage() });
     expect(r.map).toEqual(before);
   });
 
   test('envelope carries format identifier, version, app id, and timestamp', () => {
     var r = memRaw({});
-    var env = Backup.exportAll(r.getRaw, { appVersion: '2026-07-22', exportedAt: '2026-01-01T00:00:00.000Z' });
+    var env = Backup.exportAll(r.getRaw, { appVersion: '2026-07-22', exportedAt: '2026-01-01T00:00:00.000Z', storage: emptyStorage() });
     expect(env.format).toBe('spc-backup');
-    expect(env.formatVersion).toBe(1);
+    expect(env.formatVersion).toBe(2);
     expect(env.app).toBe('skill-progression-coach');
     expect(env.appVersion).toBe('2026-07-22');
     expect(env.exportedAt).toBe('2026-01-01T00:00:00.000Z');

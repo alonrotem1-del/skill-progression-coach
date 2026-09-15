@@ -693,7 +693,7 @@ test.describe('idb.js — PWA / offline', () => {
       const cache = await window.caches.open(cacheName);
       return { cacheName, hasIdb: !!(await cache.match('./idb.js', { ignoreSearch: true })) };
     });
-    expect(cached.cacheName).toMatch(/skill-progression-coach-v15/);
+    expect(cached.cacheName).toMatch(/skill-progression-coach-v16/);
     expect(cached.hasIdb).toBe(true);
   });
 
@@ -716,20 +716,20 @@ test.describe('idb.js — PWA / offline', () => {
     await context.setOffline(false);
   });
 
-  test('34 — a v14→v15 update leaves no stale cache and the new module is live', async ({ page }) => {
+  test('34 — a v15→v16 update leaves no stale cache and the new module is live', async ({ page }) => {
     await seed(page, 2);
     await page.evaluate(async () => {
       const reg = await navigator.serviceWorker.getRegistration();
       if (reg) await reg.unregister();
-      const stale = await window.caches.open('skill-progression-coach-v14');
+      const stale = await window.caches.open('skill-progression-coach-v15');
       await stale.put('./index.html', new Response('<html>stale shell</html>', { headers: { 'Content-Type': 'text/html' } }));
     });
     await page.reload(); // re-registers the SW → fresh install/activate
     await page.evaluate(async () => { await navigator.serviceWorker.ready; });
     await page.waitForTimeout(800); // let activate() prune obsolete caches
     const keys = await page.evaluate(() => window.caches.keys());
-    expect(keys).not.toContain('skill-progression-coach-v14');
-    expect(keys).toContain('skill-progression-coach-v15');
+    expect(keys).not.toContain('skill-progression-coach-v15');
+    expect(keys).toContain('skill-progression-coach-v16');
     // The live activation has idb.js, and the database still opens.
     const ok = await page.evaluate(async () => (await window.CoachIDB.init()).ok);
     expect(ok).toBe(true);

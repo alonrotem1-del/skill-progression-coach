@@ -3219,17 +3219,35 @@
 
   function backupStatus(wrap,msg){ var el=wrap.querySelector('[data-backup-status]'); if(el) el.textContent=msg||''; }
 
+  // The storage-metadata row a clean device holds. Used only when restoring an
+  // older backup that carries no durable data of its own.
+  function backupBaselineAthleteRow(){
+    var I=window.CoachIDB;
+    return I?{id:I.ATHLETE_ID,storageSchemaVersion:I.SCHEMA_VERSION}:null;
+  }
+
+  // A backup must cover everything or nothing: if the durable half cannot be
+  // read, no file is written at all, because a file that silently omits part of
+  // the athlete's data is worse than no file.
   function exportBackup(wrap){
-    var env=window.CoachBackup.exportAll(backupGetRaw,{appVersion:(Data&&Data.contentVersion)||null});
-    var blob=new Blob([JSON.stringify(env,null,2)],{type:'application/json'});
-    var url=URL.createObjectURL(blob);
-    var a=document.createElement('a');
-    var stamp=new Date().toISOString().replace(/[:.]/g,'-');
-    a.href=url; a.download='skill-progression-coach-backup-'+stamp+'.json';
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(function(){URL.revokeObjectURL(url);},1000);
-    backupStatus(wrap,'Backup exported.');
-    toast('Backup file downloaded.');
+    var I=window.CoachIDB;
+    if(!I){ backupStatus(wrap,'This device could not open its storage, so no backup file was created. Nothing was changed.'); return; }
+    backupStatus(wrap,'Preparing backup…');
+    I._restore.snapshot().then(function(snapshot){
+      var env=window.CoachBackup.exportAll(backupGetRaw,{appVersion:(Data&&Data.contentVersion)||null,storage:snapshot});
+      var blob=new Blob([JSON.stringify(env,null,2)],{type:'application/json'});
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement('a');
+      var stamp=new Date().toISOString().replace(/[:.]/g,'-');
+      a.href=url; a.download='skill-progression-coach-backup-'+stamp+'.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){URL.revokeObjectURL(url);},1000);
+      backupStatus(wrap,'Backup exported.');
+      toast('Backup file downloaded.');
+    })['catch'](function(err){
+      backupStatus(wrap,'Could not read all of your data, so no backup file was created — a partial backup would not be safe to restore. ('+((err&&err.message)||'unknown error')+')');
+      toast('Backup failed — nothing was exported.');
+    });
   }
 
   function importBackupFile(file,wrap){
@@ -3243,23 +3261,57 @@
       catch(e){ backupStatus(wrap,'That file is not valid JSON — nothing was changed.'); return; }
       var v=window.CoachBackup.validateEnvelope(env);
       if(!v.ok){ backupStatus(wrap,'Not a valid Skill Progression Coach backup ('+v.reason+') — nothing was changed.'); return; }
+      var I=window.CoachIDB;
+      if(!I){ backupStatus(wrap,'This device could not open its storage, so the backup was not restored. Nothing was changed.'); return; }
+
       var inProgress=window.CoachBackup.hasInProgressState(backupGetRaw);
       var msg='Restore this backup from '+(env.exportedAt||'an earlier export')+'? '+
         'This REPLACES your current coach data and Pull-Up Coach history on this device with the backup’s contents.'+
+        (env.formatVersion<2?' This is an older backup, so any training records saved since it was made will be cleared.':'')+
         (inProgress?' Your in-progress workout will be replaced.':'');
       if(!confirm(msg)) { backupStatus(wrap,'Restore cancelled — nothing was changed.'); return; }
-      try{
-        window.CoachBackup.restoreAll(env,backupGetRaw,backupSetRaw,backupRemoveRaw);
-      }catch(err){
+
+      backupStatus(wrap,'Restoring…');
+      runRestore(env,I).then(function(){
+        backupStatus(wrap,'Backup restored. Reloading…');
+        toast('Backup restored.');
+        setTimeout(function(){ location.reload(); },400);
+      })['catch'](function(err){
         backupStatus(wrap,(err&&err.message)?err.message:'Restore failed.');
         toast('Restore failed — see the message below.');
-        return;
-      }
-      backupStatus(wrap,'Backup restored. Reloading…');
-      toast('Backup restored.');
-      setTimeout(function(){ location.reload(); },400);
+      });
     };
     reader.readAsText(file);
+  }
+
+  // Applies a validated backup as one coherent snapshot.
+  //
+  // Durable storage goes FIRST, deliberately: IndexedDB replaces atomically in
+  // a single transaction, so if that fails localStorage has not been touched at
+  // all and there is nothing to undo. Only once the durable side has committed
+  // is localStorage written — and if THAT fails, it rolls itself back and the
+  // durable side is returned to its pre-import snapshot, leaving the app
+  // exactly as it was.
+  function runRestore(env,I){
+    var B=window.CoachBackup;
+    var planned;
+    try{ planned=B.plannedStores(env,{baselineAthleteRow:backupBaselineAthleteRow()}); }
+    catch(e){ return Promise.reject(e); }
+    var preDurable=null;
+    return I._restore.snapshot().then(function(snap){
+      preDurable=snap;
+      return I._restore.replaceAll(planned);
+    }).then(function(){
+      try{
+        B.restoreAll(env,backupGetRaw,backupSetRaw,backupRemoveRaw);
+      }catch(lsErr){
+        return I._restore.replaceAll(preDurable.stores).then(function(){
+          throw lsErr;
+        },function(idbErr){
+          throw new Error((lsErr.message||String(lsErr))+' Your training records could not be returned to their previous state either: '+(idbErr.message||String(idbErr)));
+        });
+      }
+    });
   }
 
   // ---- Exercise Library -----------------------------------------------------

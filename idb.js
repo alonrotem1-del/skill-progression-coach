@@ -241,6 +241,82 @@
 
   function status() { return _status; }
 
+  // ---- backup / restore infrastructure ------------------------------------
+  // PRIVILEGED. This is the only code path that may clear a store or write a
+  // record with a caller-supplied sequence number, and it exists solely so a
+  // backup can be restored as one coherent snapshot. It is deliberately NOT
+  // part of the normal API: append() and put() keep their append-only
+  // restrictions exactly as before, and nothing here is reachable from a
+  // normal write path.
+  var DURABLE = ['ledger', 'events', 'artifacts', 'commitments', 'athlete', 'contextPackages'];
+  var DERIVED = ['cache'];
+
+  // Reads every durable store. Rejects if any store cannot be read, so a
+  // caller can never mistake a partial read for a complete snapshot.
+  function snapshotDurable() {
+    return open().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx, out = {}, pending = DURABLE.length;
+        try { tx = db.transaction(DURABLE, 'readonly'); }
+        catch (e) { reject(e); return; }
+        tx.onabort = function () { reject(tx.error || new Error('snapshot aborted')); };
+        tx.onerror = function () { reject(tx.error || new Error('snapshot failed')); };
+        tx.oncomplete = function () {
+          if (pending !== 0) { reject(new Error('snapshot incomplete')); return; }
+          resolve({ schemaVersion: SCHEMA_VERSION, stores: out });
+        };
+        DURABLE.forEach(function (name) {
+          var r = tx.objectStore(name).getAll();
+          r.onsuccess = function () { out[name] = r.result || []; pending--; };
+        });
+      });
+    });
+  }
+
+  // Replaces every durable store with the given contents and empties the
+  // derived cache, in ONE transaction: either the whole durable side becomes
+  // the snapshot, or nothing changes at all.
+  //
+  // Records are written with add() carrying their own key. For ledger and
+  // events that key is the record's own `seq`, which IndexedDB also uses to
+  // advance the store's key generator — so restored sequences keep their exact
+  // identity and ordering, and the next ordinary append() continues above the
+  // restored maximum.
+  function replaceDurable(stores) {
+    if (!stores || typeof stores !== 'object') {
+      return Promise.reject(new Error('replaceDurable requires a store map'));
+    }
+    for (var i = 0; i < DURABLE.length; i++) {
+      if (!Array.isArray(stores[DURABLE[i]])) {
+        return Promise.reject(new Error('replaceDurable is missing records for ' + DURABLE[i]));
+      }
+    }
+    return open().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx;
+        var names = DURABLE.concat(DERIVED);
+        try { tx = db.transaction(names, 'readwrite'); }
+        catch (e) { reject(e); return; }
+        tx.oncomplete = function () { resolve({ ok: true }); };
+        tx.onabort = function () { reject(tx.error || new Error('restore transaction aborted')); };
+        tx.onerror = function () { reject(tx.error || new Error('restore transaction failed')); };
+        try {
+          // Derived state is never restored — it is rebuilt from durable truth.
+          DERIVED.forEach(function (name) { tx.objectStore(name).clear(); });
+          DURABLE.forEach(function (name) {
+            var store = tx.objectStore(name);
+            store.clear();
+            var rows = stores[name];
+            for (var j = 0; j < rows.length; j++) store.add(rows[j]);
+          });
+        } catch (e) {
+          try { tx.abort(); } catch (e2) {}
+          reject(e);
+        }
+      });
+    });
+  }
+
   // Drops the memoized connection and init result. For tests that delete the
   // database underneath a live page; not used by the app.
   function _reset() {
@@ -265,6 +341,15 @@
     get: get,
     allByIndex: allByIndex,
     count: count,
+
+    // Backup/restore infrastructure only — see the note above replaceDurable.
+    // Never call these from a normal write path.
+    _restore: {
+      DURABLE_STORES: DURABLE.slice(),
+      DERIVED_STORES: DERIVED.slice(),
+      snapshot: snapshotDurable,
+      replaceAll: replaceDurable
+    },
 
     _applySchema: applySchema,
     _reset: _reset
