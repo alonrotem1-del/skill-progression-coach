@@ -407,7 +407,7 @@
     var res=Week.resolveDay(plan,dayId,ctx);
     var r=readiness();
     var greet=greeting();
-    var climbDay=res.day.type==='climbing';
+    var climbDay=res.climbing;
     var rdWorld=climbDay?Data.worldsById.boulder:Data.worldsById.muscleup;
     // Map-focus summary keeps Today and the Map reading from one canonical world
     // state (same skills count + active focus) — see Part 10.
@@ -694,7 +694,7 @@
       '<div class="between"><h2>'+esc(d.label)+'</h2>'+weekStatusBadge(res)+'</div>'+
       '<div class="muted small" style="margin-bottom:6px">'+esc(ddLbl.session)+(ddLbl.sub?' &middot; '+esc(ddLbl.sub):'')+'</div>'+
       (res.goal?'<div class="tag gold" style="margin-bottom:6px">'+ICON.star+' '+esc(res.goal.name)+'</div>':'');
-    if(d.type==='climbing'){ body+=emphasisHtml(plan,dayId); }
+    if(res.climbing){ body+=emphasisHtml(plan,dayId); }
     if(res.adapted){
       body+='<div class="adapt-banner"><b>Adapted from your weekly plan</b>'+
         res.adaptations.map(function(a){return '<div class="adapt-cause">'+esc(a.cause)+'</div>';}).join('')+'</div>';
@@ -717,7 +717,7 @@
     // (climbing/group), if any, plus whatever exercises are assigned to it —
     // so "Start Workout" is available whenever there is a base session OR at
     // least one executable assigned exercise, regardless of day type.
-    if((res.templateId&&d.type!=='group')||d.type==='climbing'||d.type==='group'||(res.executable&&res.executable.length)){
+    if((res.templateId&&d.type!=='group')||res.climbing||d.type==='group'||(res.executable&&res.executable.length)){
       body+='<button class="btn primary" data-startday="'+dayId+'">Start Workout</button>';
     }
     if(d.type!=='rest'){ body+='<button class="btn ghost" data-markdone="'+dayId+'">Mark Completed</button>'; }
@@ -739,9 +739,12 @@
     });
   }
   function emphasisHtml(plan,dayId){
-    var d=Week.DAYS_BY_ID[dayId], sel=(plan.emphasis&&plan.emphasis[dayId])||null;
+    var sel=(plan.emphasis&&plan.emphasis[dayId])||null;
+    // The options belong to climbing, not to one weekday, so this works on
+    // whichever day climbing is assigned to.
+    var opts=Week.CLIMB_EMPHASIS||[];
     return '<div class="section">Session emphasis</div><div class="opts">'+
-      d.emphasis.map(function(e){return '<button class="pill '+(sel===e.v?'on':'')+'" data-emph="'+e.v+'">'+esc(e.label)+'</button>';}).join('')+'</div>';
+      opts.map(function(e){return '<button class="pill '+(sel===e.v?'on':'')+'" data-emph="'+e.v+'">'+esc(e.label)+'</button>';}).join('')+'</div>';
   }
   function groupLogHtml(plan,dayId){
     var log=(plan.dayLog&&plan.dayLog[dayId])||{}, moves=(log.group&&log.group.moves)||[];
@@ -770,7 +773,7 @@
   }
   function markDayDone(dayId){
     var p=getPlan(); p.dayLog=p.dayLog||{}; var log=p.dayLog[dayId]||{}; log.completed=true; p.dayLog[dayId]=log; savePlan(p);
-    var baseId=Week.DAYS_BY_ID[dayId]&&Week.DAYS_BY_ID[dayId].type==='climbing'?'bouldering':(Week.DAYS_BY_ID[dayId]&&Week.DAYS_BY_ID[dayId].type==='group'?'_group':null);
+    var baseId=Week.climbsOn(p,dayId)?'bouldering':(Week.DAYS_BY_ID[dayId]&&Week.DAYS_BY_ID[dayId].type==='group'?'_group':null);
     if(baseId) completeTodayBaseItem(dayId,baseId,{type:baseId==='bouldering'?'climbing':'group', name:baseId==='bouldering'?'Climbing Session':'Group Workout Log', actualText:'Marked completed'});
     closeSheet(); toast('Marked completed.'); if(UI.screen==='week') renderWeek(); else renderToday();
   }
@@ -1409,7 +1412,7 @@
   // The dominant scheduled-session card (Part 8 hierarchy).
   function scheduledCard(res,dominant){
     var day=res.day, schedLbl=dayLabelOf(res);
-    var hasBase=(day.type==='climbing'&&res.templateId)||day.type==='group';
+    var hasBase=(res.climbing&&res.climbTemplateId)||day.type==='group';
     var hasExec=!!(res.executable&&res.executable.length);
     // A day resolves into ONE Daily Workout Queue: its base session (climbing/
     // group), if any, plus every exercise the user has assigned to it —
@@ -1446,7 +1449,7 @@
       // the base session is simply the queue's first required item.
       var quickBtn=day.type==='group'
         ?'<button class="btn ghost sm" data-groupday="'+day.id+'">'+(res.status==='completed'?'Edit Group Workout Log':'Log Group Workout')+'</button>'
-        :(day.type==='climbing'&&res.templateId?'<button class="btn ghost sm" data-start="'+esc(res.templateId)+'" data-day="'+day.id+'">Start Climbing Session</button>':'');
+        :(res.climbing&&res.climbTemplateId?'<button class="btn ghost sm" data-start="'+esc(res.climbTemplateId)+'" data-day="'+day.id+'">Start Climbing Session</button>':'');
       mainBtn='<button class="btn primary" data-startday="'+day.id+'">'+label+'</button>'+
         (pg.requiredTotal?'<div class="muted small" style="text-align:center;margin-top:6px">'+pg.requiredDone+' of '+pg.requiredTotal+' required done'+(pg.total>pg.requiredTotal?' &middot; '+pg.done+'/'+pg.total+' total':'')+'</div>':'')+
         quickBtn;
@@ -1559,16 +1562,20 @@
       var st=res.status;
       var cls='wk-day-chip'+(cur?' today':'')+(st==='completed'?' done':'')+(st==='adapted'?' adapted':'')+(d.type==='rest'?' rest':'');
       return '<button class="'+cls+'" data-daydetail="'+d.id+'"><span class="wdc-d">'+esc(d.label.slice(0,3))+'</span>'+
-        '<span class="wdc-s">'+esc(shortSession(d))+'</span></button>';
+        '<span class="wdc-s">'+esc(shortSession(res))+'</span></button>';
     }).join('');
     return '<div class="card tight"><div class="between"><div class="section" style="margin:0">This Week</div>'+
       '<button class="btn sm" data-goweek>Open Week</button></div><div class="wk-strip">'+chips+'</div></div>';
   }
-  function shortSession(d){
+  function shortSession(res){
+    var d=res.day, lbl=dayLabelOf(res);
+    if(res.climbing) return 'Climb';
     if(d.type==='rest') return 'Rest';
-    if(d.type==='climbing') return 'Climb';
     if(d.type==='group') return 'Group';
-    return d.sub?d.sub.split(' ')[0]:d.session.split(' ')[0];
+    // A day the athlete has emptied is described as open, not by the session
+    // its template used to name.
+    if(lbl.derived&&!res.items.length) return 'Open';
+    return lbl.sub?lbl.sub.split(' ')[0]:lbl.session.split(' ')[0];
   }
   function greeting(){var hh=new Date().getHours();return hh<12?'Good Morning':hh<18?'Good Afternoon':'Good Evening';}
   function readinessCard(r,world){

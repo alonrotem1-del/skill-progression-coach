@@ -191,18 +191,22 @@
 
   // ---- the approved weekly program (Part 5) -------------------------------
   // dayId matches JS Date.getDay(): 0=Sunday … 6=Saturday.
+  // Session-emphasis options for a CLIMBING session. These belong to climbing
+  // itself, not to whichever weekday it is assigned to, so they stay available
+  // when the athlete moves it.
+  var CLIMB_EMPHASIS = [
+    { v: 'projecting', label: 'Projecting' },
+    { v: 'consolidation', label: 'Grade consolidation' },
+    { v: 'technique', label: 'Technique' },
+    { v: 'vocabulary', label: 'Movement vocabulary' }
+  ];
   var DAYS = [
     { id: 0, key: 'sun', label: 'Sunday', session: 'Climbing', sub: 'Bouldering', type: 'climbing',
       // Both the session name and the subtitle name Bouldering, so if Bouldering
       // is assigned elsewhere neither still describes this day.
       describes: ['bouldering'], sessionNamesContent: true,
       goal: 'v5', templateId: 'b_project',
-      emphasis: [
-        { v: 'projecting', label: 'Projecting' },
-        { v: 'consolidation', label: 'Grade consolidation' },
-        { v: 'technique', label: 'Technique' },
-        { v: 'vocabulary', label: 'Movement vocabulary' }
-      ],
+      emphasis: CLIMB_EMPHASIS,
       exercises: ['bouldering'] },
     { id: 1, key: 'mon', label: 'Monday', session: 'Free Gym', sub: 'Push + Explosive Pull', type: 'strength',
       goal: 'muscleup', templateId: 'mu_highpull',
@@ -319,6 +323,21 @@
     });
     return out;
   }
+  // Climbing is one exercise in the plan like any other, so the day it happens
+  // on is decided by its assignment — never by which day the program template
+  // originally called the climbing day. `DAYS[].type === 'climbing'` is a
+  // second static representation of the same fact and cannot follow an edit.
+  var CLIMB_EX = 'bouldering';
+  function climbsOn(plan, dayId) {
+    return assignmentsForDay(plan, dayId).indexOf(CLIMB_EX) >= 0;
+  }
+  // The template that runs a climbing session, taken from the exercise itself
+  // so it is the same wherever the athlete assigns it.
+  function climbTemplateId(dayId) {
+    return (EX[CLIMB_EX] && EX[CLIMB_EX].templateId) ||
+      (DAYS_BY_ID[dayId] && DAYS_BY_ID[dayId].templateId) || null;
+  }
+
   // How a day should DESCRIBE itself, derived from the athlete's assignments.
   //
   // `DAYS[].session` / `.sub` are the PROGRAM TEMPLATE's description of a day
@@ -648,6 +667,10 @@
       // as they are: they are the template's own names and are what the
       // persisted workout/History record carries.
       contentLabel: dayContentLabel(plan, dayId),
+      // Whether THIS day is a climbing day, per the plan, and the template that
+      // runs it. Consumers must use these rather than day.type === 'climbing'.
+      climbing: climbsOn(plan, dayId),
+      climbTemplateId: climbsOn(plan, dayId) ? climbTemplateId(dayId) : null,
       items: items, adaptations: adaptations, selections: selections,
       adapted: adaptations.length > 0, executable: executable,
       alternative: alternative, templateId: templateId, ladderRounds: ladderRounds,
@@ -732,6 +755,7 @@
     REQUIREMENTS: REQUIREMENTS, defaultRequirements: defaultRequirements,
     recommendationFor: recommendationFor, recRationale: recRationale,
     reqIndex: reqIndex, assignmentsForDay: assignmentsForDay, dayContentLabel: dayContentLabel,
+    CLIMB_EX: CLIMB_EX, climbsOn: climbsOn, CLIMB_EMPHASIS: CLIMB_EMPHASIS,
     weeklyCounts: weeklyCounts,
     seedPlan: seedPlan, migratePlan: migratePlan, executablePrescription: executablePrescription,
     weeklyLoad: weeklyLoad, resolveDay: resolveDay,

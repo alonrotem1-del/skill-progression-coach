@@ -50,13 +50,24 @@
   // (climbing/group/rest) gating whether assigned exercises are executable at
   // all. Strength days and rest days with no base action return null; the
   // exercise queue alone is the day's content.
+  function climbExName(res) {
+    for (var i = 0; i < res.items.length; i++) {
+      if (res.items[i].exId === 'bouldering') return (res.items[i].ex && res.items[i].ex.name) || 'Bouldering';
+    }
+    return 'Bouldering';
+  }
   function dayBaseItem(res) {
     var day = res.day;
     var doneAlready = res.status === 'completed';
-    if (day.type === 'climbing' && res.templateId) {
+    // The climbing session belongs to whichever day Bouldering is ASSIGNED to,
+    // never to whichever day the program template originally called the
+    // climbing day. Keying it on the static day type let an emptied day
+    // fabricate a climbing session out of nothing, and left Bouldering
+    // unexecutable on the day the athlete actually moved it to.
+    if (res.climbing && res.climbTemplateId) {
       return {
         exId: 'bouldering', kind: 'base', baseType: 'climbing',
-        name: day.session + (day.sub ? ' · ' + day.sub : ''), templateId: res.templateId,
+        name: 'Climbing · ' + climbExName(res), templateId: res.climbTemplateId,
         priority: 'A', role: 'Main Session', runner: 'climbing', statusLabel: 'Required',
         reason: '', note: '', included: true, replaced: false, removed: false,
         required: true, optional: false, conditional: false, order: 0,
@@ -87,7 +98,7 @@
     // 'bouldering' is the climbing day's requirement PLACEHOLDER (used only for
     // Progress/Week display); the base item above represents its real
     // execution, so it is not duplicated as a dead, non-runnable exercise row.
-    var skipExId = (res.day.type === 'climbing') ? 'bouldering' : null;
+    var skipExId = (base && base.baseType === 'climbing') ? 'bouldering' : null;
     var exItems = res.items.filter(function (it) { return it.exId !== skipExId; }).map(function (it) {
       var meta = it.ex || {};
       var runnable = it.included && meta.block;
@@ -110,7 +121,12 @@
     return {
       version: DAILY_VERSION, id: 'dw_' + (ctx.dateKey || dateKey(new Date())),
       date: (ctx.date || new Date().toISOString()), weekday: res.day.id, dayKey: res.day.key,
-      session: res.day.session, sub: res.day.sub || '', goal: res.day.goal || null,
+      // A NEW record is named by what the day actually holds, so a day the
+      // athlete has emptied is not filed under the session its template used
+      // to name. Records already stored keep whatever name they were saved
+      // with — History is never rewritten.
+      session: (res.contentLabel && res.contentLabel.session) || res.day.session,
+      sub: (res.contentLabel ? res.contentLabel.sub : res.day.sub) || '', goal: res.day.goal || null,
       planVersion: (W && W.PLAN_VERSION) || 0,
       adaptations: (res.adaptations || []).map(function (a) { return a.cause; }),
       restWarning: restWarning,

@@ -473,7 +473,7 @@ test.describe('Phase 1 verification — service worker / offline availability', 
       const match = await cache.match('./backup.js', { ignoreSearch: true });
       return { cacheName, hasBackup: !!match };
     });
-    expect(cached.cacheName).toMatch(/skill-progression-coach-v17/);
+    expect(cached.cacheName).toMatch(/skill-progression-coach-v18/);
     expect(cached.hasBackup).toBe(true);
   });
 
@@ -514,15 +514,15 @@ test.describe('Phase 1 verification — service worker / offline availability', 
     await page.evaluate(async () => {
       const reg = await navigator.serviceWorker.getRegistration();
       if (reg) await reg.unregister();
-      const stale = await window.caches.open('skill-progression-coach-v16');
+      const stale = await window.caches.open('skill-progression-coach-v17');
       await stale.put('./index.html', new Response('<html>stale shell</html>', { headers: { 'Content-Type': 'text/html' } }));
     });
     await page.reload(); // index.html's inline script re-registers the SW → fresh install/activate
     await page.evaluate(async () => { await navigator.serviceWorker.ready; });
     await page.waitForTimeout(800); // let activate() prune obsolete caches
     const keys = await page.evaluate(() => window.caches.keys());
-    expect(keys).not.toContain('skill-progression-coach-v16');
-    expect(keys).toContain('skill-progression-coach-v17');
+    expect(keys).not.toContain('skill-progression-coach-v17');
+    expect(keys).toContain('skill-progression-coach-v18');
     // The live page (this activation) still has the current Backup UI.
     await page.locator('[data-s="profile"]').click();
     await page.locator('[data-sview="data"]').click();
