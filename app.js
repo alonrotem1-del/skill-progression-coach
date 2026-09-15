@@ -3180,8 +3180,10 @@
       '<div class="card tight"><p class="small">This app reads <b>Pull-Up Coach</b> history read-only and writes only its own <code>spc_c_*</code> keys. It never modifies the Pull-Up Coach app. Its own service worker is scoped to <code>/skill-progression-coach/</code> and does not affect Pull-Up Coach.</p></div>'+
       '<button class="btn ghost" data-redo>Re-run Onboarding</button>'+
       '<button class="btn danger" data-reset>Reset Coach Data (spc_c_*)</button>'+
-      '<p class="footnote muted tiny">Reset only deletes coach data. Your Pull-Up Coach history and progress are untouched.</p>';
+      '<p class="footnote muted tiny">Reset only deletes coach data. Your Pull-Up Coach history and progress are untouched.</p>'+
+      '<p class="footnote muted tiny" data-idb-status></p>';
     var wrap=shell(html,'profile'); wireSettingsBack(wrap);
+    idbStatusLine(wrap);
     on('[data-install]','click',function(){
       var p=window.__spcInstallPrompt; if(!p) return;
       p.prompt(); if(p.userChoice) p.userChoice.then(function(){ window.__spcInstallPrompt=null; if(settingsView==='data') renderProfile(); });
@@ -3191,6 +3193,20 @@
     on('[data-backup-export]','click',function(){ exportBackup(wrap); },wrap);
     on('[data-backup-restore]','click',function(){ var inp=wrap.querySelector('[data-backup-file]'); if(inp) inp.click(); },wrap);
     on('[data-backup-file]','change',function(e){ importBackupFile(e.currentTarget.files&&e.currentTarget.files[0],wrap); e.currentTarget.value=''; },wrap);
+  }
+
+  // Durable-store diagnostics. The store holds no athlete data in this phase,
+  // so this line is the only way to see on-device whether it stood up.
+  function idbStatusLine(wrap){
+    var el=wrap.querySelector('[data-idb-status]');
+    if(!el) return;
+    if(!window.CoachIDB){ el.textContent='Durable storage: module not loaded.'; return; }
+    el.textContent='Durable storage: checking…';
+    window.CoachIDB.init().then(function(s){
+      el.textContent=s.ok
+        ? 'Durable storage: ready (schema v'+s.schemaVersion+(s.persisted?', persisted':'')+').'
+        : 'Durable storage: unavailable — '+(s.error||'unknown')+'. Your data is unaffected.';
+    });
   }
 
   // ---- raw backup storage access ---------------------------------------
@@ -3482,4 +3498,9 @@
 
   window.CoachApp={boot:boot,_UI:UI};
   boot();
+
+  // Stand up the durable store so it exists on the device (Technical Schema
+  // §16). Nothing reads or writes athlete data through it yet — localStorage
+  // remains authoritative — so this runs after boot and can never affect it.
+  try{ if(window.CoachIDB) window.CoachIDB.init(); }catch(e){}
 })();
