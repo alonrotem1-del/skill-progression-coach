@@ -193,6 +193,9 @@
   // dayId matches JS Date.getDay(): 0=Sunday … 6=Saturday.
   var DAYS = [
     { id: 0, key: 'sun', label: 'Sunday', session: 'Climbing', sub: 'Bouldering', type: 'climbing',
+      // Both the session name and the subtitle name Bouldering, so if Bouldering
+      // is assigned elsewhere neither still describes this day.
+      describes: ['bouldering'], sessionNamesContent: true,
       goal: 'v5', templateId: 'b_project',
       emphasis: [
         { v: 'projecting', label: 'Projecting' },
@@ -205,6 +208,7 @@
       goal: 'muscleup', templateId: 'mu_highpull',
       exercises: ['highpull', 'transition_drill', 'pbdips', 'incline_press', 'chest_fly', 'biceps', 'triceps', 'hip_abduction'] },
     { id: 2, key: 'tue', label: 'Tuesday', session: 'Home Skill Session', sub: 'Pull-Up Pyramid focus', type: 'strength',
+      describes: ['pullup_pyramid'],
       goal: 'muscleup', templateId: 'mu_volume',
       exercises: ['pullup_pyramid', 'tophold', 't2b', 'deadhang', 'ringsupport'] },
     { id: 3, key: 'wed', label: 'Wednesday', session: 'Group Workout', sub: 'Log what actually appeared', type: 'group',
@@ -214,6 +218,7 @@
       goal: 'v5', templateId: null,
       exercises: ['bulgarian_split', 'hip_thrust', 'deadlift_rdl'] },
     { id: 5, key: 'fri', label: 'Friday', session: 'Home Pull Session', sub: 'Pistol + Pull-Up Ladder', type: 'strength',
+      describes: ['pistol', 'pullup_ladder'],
       goal: 'muscleup', templateId: 'mu_strength',
       exercises: ['pistol', 'pullup_ladder', 't2b', 'deadhang', 'ringsupport', 'wristroller'] },
     { id: 6, key: 'sat', label: 'Saturday', session: 'Rest', sub: 'Recovery', type: 'rest',
@@ -314,6 +319,51 @@
     });
     return out;
   }
+  // How a day should DESCRIBE itself, derived from the athlete's assignments.
+  //
+  // `DAYS[].session` / `.sub` are the PROGRAM TEMPLATE's description of a day
+  // ("Climbing · Bouldering", "Home Skill Session · Pull-Up Pyramid focus").
+  // They are a second, non-authoritative representation of what a day
+  // contains, and the athlete's `plan.requirements[].days` is the only
+  // authority. Reusing the template strings unconditionally makes a day keep
+  // advertising exercises the athlete has moved elsewhere — so they are reused
+  // only while the day still holds some of the content they describe, and
+  // replaced by the live assignments when it does not.
+  //
+  // `DAYS[].describes` lists the exercises a day's own description NAMES (for
+  // example Tuesday's "Pull-Up Pyramid focus"). That list is what makes
+  // staleness decidable: the description holds exactly while every exercise it
+  // names is still assigned to the day. Days whose description is generic
+  // ("Free Gym · Push + Explosive Pull") name nothing and therefore never go
+  // stale, so ordinary days read exactly as they always have.
+  function dayContentLabel(plan, dayId) {
+    var day = DAYS_BY_ID[dayId];
+    if (!day) return null;
+    var assigned = assignmentsForDay(plan, dayId);
+    var describes = day.describes || [];
+    var stale = describes.filter(function (exId) { return assigned.indexOf(exId) < 0; });
+
+    if (!stale.length) return { session: day.session, sub: day.sub || '', derived: false };
+
+    // The description named something that has moved away. Describe the day by
+    // what the athlete actually put in it.
+    if (!assigned.length) {
+      return { session: 'Open day', sub: 'Nothing assigned', derived: true };
+    }
+    var names = assigned.slice(0, 3).map(function (exId) {
+      return (EX[exId] && EX[exId].name) || exId;
+    });
+    if (assigned.length > 3) names.push('+' + (assigned.length - 3) + ' more');
+    // When the SESSION NAME itself is the claim (Sunday's "Climbing"), it is
+    // stale too and must not be reused; a venue name like "Home Skill Session"
+    // stays true whatever is scheduled there.
+    return {
+      session: day.sessionNamesContent ? 'Open day' : day.session,
+      sub: names.join(' · '),
+      derived: true
+    };
+  }
+
   // Weekly frequency counters for the editor: assigned days vs target.
   function weeklyCounts(plan) {
     var req = (plan && plan.requirements) || {};
@@ -593,6 +643,11 @@
 
     return {
       day: day, goal: day.goal ? GOALS[day.goal] : null,
+      // How this day should be described on screen — derived from the plan, so
+      // it can never contradict the assignments. `day.session`/`day.sub` stay
+      // as they are: they are the template's own names and are what the
+      // persisted workout/History record carries.
+      contentLabel: dayContentLabel(plan, dayId),
       items: items, adaptations: adaptations, selections: selections,
       adapted: adaptations.length > 0, executable: executable,
       alternative: alternative, templateId: templateId, ladderRounds: ladderRounds,
@@ -676,7 +731,8 @@
     EX: EX, DAYS: DAYS, DAYS_BY_ID: DAYS_BY_ID, GROUP_MOVES: GROUP_MOVES,
     REQUIREMENTS: REQUIREMENTS, defaultRequirements: defaultRequirements,
     recommendationFor: recommendationFor, recRationale: recRationale,
-    reqIndex: reqIndex, assignmentsForDay: assignmentsForDay, weeklyCounts: weeklyCounts,
+    reqIndex: reqIndex, assignmentsForDay: assignmentsForDay, dayContentLabel: dayContentLabel,
+    weeklyCounts: weeklyCounts,
     seedPlan: seedPlan, migratePlan: migratePlan, executablePrescription: executablePrescription,
     weeklyLoad: weeklyLoad, resolveDay: resolveDay,
     resolveWeek: resolveWeek, simplify: simplify, assessmentReady: assessmentReady,

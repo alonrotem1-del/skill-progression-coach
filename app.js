@@ -417,7 +417,7 @@
       :'<div class="path-summary">Your weekly training plan</div>';
 
     var left=''+
-      '<div class="hero"><div class="between"><div><div class="goal">'+esc(res.day.label)+' &middot; '+esc(res.day.session)+'</div>'+
+      '<div class="hero"><div class="between"><div><div class="goal">'+esc(res.day.label)+' &middot; '+esc(dayLabelOf(res).session)+'</div>'+
       '<h1>'+greet+'</h1></div></div>'+
       focusSummary+'</div>'+
       adhocResumeBanner()+
@@ -483,15 +483,15 @@
     var plan=getPlan(), ctx=weekCtx(), todayId=ctx.todayId;
     var week=Week.resolveWeek(plan,ctx);
     var cards=week.map(function(res){
-      var d=res.day, cur=d.id===todayId;
+      var d=res.day, cur=d.id===todayId, lbl=dayLabelOf(res);
       var goalName=res.goal?res.goal.name:'';
       var keyItems=res.items.filter(function(it){return it.included&&(it.priority==='A'||it.priority==='B');});
       if(!keyItems.length) keyItems=res.items.filter(function(it){return it.included;}).slice(0,3);
       var itemsHtml=keyItems.map(function(it){return '<div class="wd-item">'+prioPill(it.priority)+'<span>'+esc((it.ex&&it.ex.name)||it.exId)+'</span></div>';}).join('')
-        ||'<div class="muted small">'+(d.type==='rest'?'Rest &amp; recovery':'Log what actually appeared')+'</div>';
+        ||'<div class="muted small">'+(d.type==='rest'?'Rest &amp; recovery':(lbl.derived?esc(lbl.sub):'Log what actually appeared'))+'</div>';
       return '<button class="wd-card'+(cur?' today':'')+'" data-daydetail="'+d.id+'">'+
         '<div class="wd-head"><div><div class="wd-day">'+esc(d.label)+(cur?' <span class="wd-now">Today</span>':'')+'</div>'+
-        '<div class="wd-session">'+esc(d.session)+(d.sub?' &middot; '+esc(d.sub):'')+'</div></div>'+
+        '<div class="wd-session">'+esc(lbl.session)+(lbl.sub?' &middot; '+esc(lbl.sub):'')+'</div></div>'+
         weekStatusBadge(res)+'</div>'+
         (goalName?'<div class="wd-goal muted small">Supports: '+esc(goalName)+'</div>':'')+
         '<div class="wd-items">'+itemsHtml+'</div>'+
@@ -680,13 +680,19 @@
     return '<span class="wd-badge '+cls+'">'+label+'</span>';
   }
 
+  // A day's on-screen description, derived from the athlete's plan rather than
+  // from the program template, so it can never contradict the assignments.
+  function dayLabelOf(res){
+    return (res&&res.contentLabel)||{session:(res&&res.day&&res.day.session)||'',sub:(res&&res.day&&res.day.sub)||''};
+  }
+
   // ---- Day detail (Part 9 / Part 13) — opens as a side panel in landscape ---
   function openDayDetail(dayId){
     var plan=getPlan(), ctx=weekCtx();
-    var res=Week.resolveDay(plan,dayId,ctx), d=res.day;
+    var res=Week.resolveDay(plan,dayId,ctx), d=res.day, ddLbl=dayLabelOf(res);
     var body='<div class="grip"></div>'+
       '<div class="between"><h2>'+esc(d.label)+'</h2>'+weekStatusBadge(res)+'</div>'+
-      '<div class="muted small" style="margin-bottom:6px">'+esc(d.session)+(d.sub?' &middot; '+esc(d.sub):'')+'</div>'+
+      '<div class="muted small" style="margin-bottom:6px">'+esc(ddLbl.session)+(ddLbl.sub?' &middot; '+esc(ddLbl.sub):'')+'</div>'+
       (res.goal?'<div class="tag gold" style="margin-bottom:6px">'+ICON.star+' '+esc(res.goal.name)+'</div>':'');
     if(d.type==='climbing'){ body+=emphasisHtml(plan,dayId); }
     if(res.adapted){
@@ -1402,7 +1408,7 @@
 
   // The dominant scheduled-session card (Part 8 hierarchy).
   function scheduledCard(res,dominant){
-    var day=res.day;
+    var day=res.day, schedLbl=dayLabelOf(res);
     var hasBase=(day.type==='climbing'&&res.templateId)||day.type==='group';
     var hasExec=!!(res.executable&&res.executable.length);
     // A day resolves into ONE Daily Workout Queue: its base session (climbing/
@@ -1450,7 +1456,7 @@
     }
     return '<div class="rec sched">'+
       '<div class="kick">Scheduled today</div>'+
-      '<div class="name">'+esc(day.session)+(day.sub?' &middot; '+esc(day.sub):'')+'</div>'+
+      '<div class="name">'+esc(schedLbl.session)+(schedLbl.sub?' &middot; '+esc(schedLbl.sub):'')+'</div>'+
       (res.templateId&&Data.templates[res.templateId]?'<div class="meta"><span>'+durationText(Data.templates[res.templateId])+'</span><span>'+esc(Data.templates[res.templateId].difficulty||'')+'</span></div>':'')+
       (res.goal?'<div class="sched-goal">Primary contribution: <b>'+esc(res.goal.name)+'</b></div>':'')+
       (skillTags?'<div class="foci">'+skillTags+'</div>':'')+

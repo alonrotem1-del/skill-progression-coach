@@ -701,7 +701,7 @@ test.describe('Backup v2 — PWA / offline', () => {
     await page.evaluate(async () => {
       const reg = await navigator.serviceWorker.getRegistration();
       if (reg) await reg.unregister();
-      const stale = await window.caches.open('skill-progression-coach-v15');
+      const stale = await window.caches.open('skill-progression-coach-v16');
       await stale.put('./index.html', new Response('<html>stale</html>', { headers: { 'Content-Type': 'text/html' } }));
     });
     await page.reload();
@@ -717,8 +717,8 @@ test.describe('Backup v2 — PWA / offline', () => {
         hasBackup: !!(await cache.match('./backup.js', { ignoreSearch: true }))
       };
     });
-    expect(r.keys).not.toContain('skill-progression-coach-v15');
-    expect(r.keys).toContain('skill-progression-coach-v16');
+    expect(r.keys).not.toContain('skill-progression-coach-v16');
+    expect(r.keys).toContain('skill-progression-coach-v17');
     expect(r.hasIdb).toBe(true);
     expect(r.hasBackup).toBe(true);
     await openData(page);
