@@ -19,8 +19,14 @@ async function fresh(page) {
   await page.goto('index.html');
   await page.evaluate(async () => {
     const I = window.CoachIDB;
+    // Let the app's own deferred boot settle first. It opens this database and
+    // (since P5) chains a second async step onto it, so deleting underneath it
+    // leaves a connection open that blocks the next version change.
+    try { await I.init(); } catch (e) {}
+    try { if (window.CoachContext) await window.CoachContext.init(); } catch (e) {}
     try { const db = await I.open(); db.close(); } catch (e) {}
     I._reset();
+    if (window.CoachContext) window.CoachContext._reset();
     await new Promise((res) => {
       const r = indexedDB.deleteDatabase('spc');
       r.onsuccess = r.onerror = r.onblocked = () => res();
@@ -284,7 +290,10 @@ test.describe('idb.js — append-only stores', () => {
   test('15 — no update or delete operation is exposed for append-only records', async ({ page }) => {
     await fresh(page);
     const api = await page.evaluate(() => Object.keys(window.CoachIDB).filter(k => typeof window.CoachIDB[k] === 'function'));
-    expect(api.sort()).toEqual(['_applySchema', '_reset', 'allByIndex', 'append', 'count', 'get', 'init', 'open', 'put', 'status']);
+    // appendIfNone is an append with a uniqueness precondition, not an update:
+    // it can only ever add a row, and only when the index key is absent.
+    expect(api.sort()).toEqual(['_applySchema', '_reset', 'allByIndex', 'append', 'appendIfNone',
+      'count', 'get', 'init', 'open', 'put', 'status']);
     expect(api).not.toContain('delete');
     expect(api).not.toContain('remove');
     expect(api).not.toContain('update');
@@ -693,7 +702,7 @@ test.describe('idb.js — PWA / offline', () => {
       const cache = await window.caches.open(cacheName);
       return { cacheName, hasIdb: !!(await cache.match('./idb.js', { ignoreSearch: true })) };
     });
-    expect(cached.cacheName).toMatch(/skill-progression-coach-v19/);
+    expect(cached.cacheName).toMatch(/skill-progression-coach-v20/);
     expect(cached.hasIdb).toBe(true);
   });
 
@@ -729,7 +738,7 @@ test.describe('idb.js — PWA / offline', () => {
     await page.waitForTimeout(800); // let activate() prune obsolete caches
     const keys = await page.evaluate(() => window.caches.keys());
     expect(keys).not.toContain('skill-progression-coach-v17');
-    expect(keys).toContain('skill-progression-coach-v19');
+    expect(keys).toContain('skill-progression-coach-v20');
     // The live activation has idb.js, and the database still opens.
     const ok = await page.evaluate(async () => (await window.CoachIDB.init()).ok);
     expect(ok).toBe(true);
@@ -749,5 +758,76 @@ test.describe('idb.js — PWA / offline', () => {
     });
     expect(r.count).toBe(1);
     expect(r.row.marker).toBe('before-reload');
+  });
+});
+
+// ── appendIfNone: the one atomic check-and-append (added for P5) ───────────
+// The events store is keyed by an autoIncrement sequence, so it cannot carry a
+// unique constraint. This primitive is the whole uniqueness mechanism for "at
+// most one record of this kind", and it has to hold under concurrency.
+test.describe('idb.js — appendIfNone', () => {
+  test('31 — appends when the index is empty, and reports the assigned seq', async ({ page }) => {
+    await fresh(page);
+    const r = await page.evaluate(async () => {
+      const I = window.CoachIDB;
+      const out = await I.appendIfNone('events', 'kind', 'OnlyOne', { kind: 'OnlyOne', date: 'd', n: 1 });
+      return { out: out, count: await I.count('events') };
+    });
+    expect(r.out.appended).toBe(true);
+    expect(typeof r.out.seq).toBe('number');
+    expect(r.out.existing).toBe(0);
+    expect(r.count).toBe(1);
+  });
+
+  test('32 — refuses a second record under the same index key, and says why', async ({ page }) => {
+    await fresh(page);
+    const r = await page.evaluate(async () => {
+      const I = window.CoachIDB;
+      await I.appendIfNone('events', 'kind', 'OnlyOne', { kind: 'OnlyOne', date: 'd', n: 1 });
+      const second = await I.appendIfNone('events', 'kind', 'OnlyOne', { kind: 'OnlyOne', date: 'd', n: 2 });
+      // A DIFFERENT key is unaffected — this is per-key, not a store-wide latch.
+      const other = await I.appendIfNone('events', 'kind', 'Another', { kind: 'Another', date: 'd', n: 3 });
+      const rows = await I.allByIndex('events', 'kind', 'OnlyOne');
+      return { second: second, other: other, kept: rows.map((x) => x.n), count: await I.count('events') };
+    });
+    expect(r.second.appended).toBe(false);
+    expect(r.second.existing).toBe(1);
+    expect(r.second.seq).toBeNull();
+    expect(r.other.appended).toBe(true);
+    expect(r.kept).toEqual([1]);              // the original, not the newcomer
+    expect(r.count).toBe(2);
+  });
+
+  test('33 — under twenty racing callers exactly one append wins', async ({ page }) => {
+    await fresh(page);
+    const r = await page.evaluate(async () => {
+      const I = window.CoachIDB;
+      const rs = await Promise.all(Array.from({ length: 20 }, (_, i) =>
+        I.appendIfNone('events', 'kind', 'OnlyOne', { kind: 'OnlyOne', date: 'd', n: i })));
+      return { won: rs.filter((x) => x.appended).length, count: await I.count('events') };
+    });
+    expect(r.won).toBe(1);
+    expect(r.count).toBe(1);
+  });
+
+  test('34 — it keeps the append-only and index guards of the ordinary API', async ({ page }) => {
+    await fresh(page);
+    const errs = await page.evaluate(async () => {
+      const I = window.CoachIDB;
+      const out = [];
+      const tries = [
+        ['athlete', 'kind', 'x'],        // not append-only
+        ['events', 'nope', 'x'],         // no such index
+        ['nosuchstore', 'kind', 'x']     // no such store
+      ];
+      for (const t of tries) {
+        try { await I.appendIfNone(t[0], t[1], t[2], { kind: 'x' }); out.push(null); }
+        catch (e) { out.push(e.message); }
+      }
+      return out;
+    });
+    expect(errs[0]).toMatch(/not append-only/);
+    expect(errs[1]).toMatch(/no index/);
+    expect(errs[2]).toMatch(/unknown object store/);
   });
 });

@@ -47,7 +47,10 @@ async function seed(page, dayId) {
     localStorage.setItem('puc_log', JSON.stringify([{ date: '2026-01-01', reps: 7 }]));
   });
   await page.reload();
-  await page.evaluate(async () => { await window.CoachIDB.init(); });
+  await page.evaluate(async () => {
+    await window.CoachIDB.init();
+    if (window.CoachContext) await window.CoachContext.init();
+  });
 }
 
 // Recognisable content in every durable store, plus a cache entry that must
@@ -581,14 +584,26 @@ test.describe('Backup v2 — Backup v1 files remain importable, and restore cohe
     await page.waitForTimeout(700);
 
     const after = await readDurable(page);
-    // No evidence, events, artifacts, commitments or packages from the newer
-    // era survive beside the older localStorage snapshot.
+    // No evidence, artifacts or commitments from the newer era survive beside
+    // the older localStorage snapshot.
     expect(after.stores.ledger).toEqual([]);
-    expect(after.stores.events).toEqual([]);
     expect(after.stores.artifacts).toEqual([]);
     expect(after.stores.commitments).toEqual([]);
-    expect(after.stores.contextPackages).toEqual([]);
     expect(after.cacheCount).toBe(0);
+    // The newer era's EVENTS are gone too. What is here instead is the one row
+    // boot writes on an uninitialised device: a v1 backup predates the
+    // interpretation context entirely, so the restore leaves no adoption, and
+    // onboarding is incomplete until null -> ctx_1 exists (invariant 26).
+    // Re-establishing the shipped context is not mixed-era state; it is the
+    // device becoming initialised again.
+    expect(after.stores.events.map(e => e.kind)).toEqual(['InterpretationAdoption']);
+    expect(after.stores.events[0].fromContextId).toBeNull();
+    expect(after.stores.events[0].toContextId).toBe('ctx_1');
+    expect(after.stores.events[0].trigger).toBe('initial');
+    expect(after.stores.contextPackages.map(p => p.contextId)).toEqual(['ctx_1']);
+    // And it is the freshly installed package, not the newer era's row.
+    expect(after.stores.contextPackages[0].tag).toBeUndefined();
+    expect(after.stores.contextPackages[0].contentBundle.version).toBe(1);
   });
 
   test('24 — a v1 restore leaves durable storage in a valid, operable clean baseline', async ({ page }) => {
@@ -656,9 +671,11 @@ test.describe('Backup v2 — the append-only API is not weakened by restore supp
     });
     expect(r.errors.ledger).toMatch(/append-only/);
     expect(r.errors.events).toMatch(/append-only/);
-    // The public function surface is exactly what Phase 2 shipped: the restore
-    // mechanism lives in its own namespace, not on the normal API.
-    expect(r.api).toEqual(['_applySchema', '_reset', 'allByIndex', 'append', 'count', 'get', 'init', 'open', 'put', 'status']);
+    // The public function surface adds only appendIfNone since Phase 2 — an
+    // append with a uniqueness precondition, which can still only ever add a
+    // row. The restore mechanism stays in its own namespace, off the normal API.
+    expect(r.api).toEqual(['_applySchema', '_reset', 'allByIndex', 'append', 'appendIfNone',
+      'count', 'get', 'init', 'open', 'put', 'status']);
     expect(r.api).not.toContain('delete');
     expect(r.api).not.toContain('clear');
     expect(r.restoreIsSeparate).toBe(true);
@@ -714,13 +731,17 @@ test.describe('Backup v2 — PWA / offline', () => {
       return {
         keys,
         hasIdb: !!(await cache.match('./idb.js', { ignoreSearch: true })),
-        hasBackup: !!(await cache.match('./backup.js', { ignoreSearch: true }))
+        hasBackup: !!(await cache.match('./backup.js', { ignoreSearch: true })),
+        hasContext: !!(await cache.match('./context.js', { ignoreSearch: true })),
+        hasBundle: !!(await cache.match('./content/bundle-1.json', { ignoreSearch: true }))
       };
     });
     expect(r.keys).not.toContain('skill-progression-coach-v17');
-    expect(r.keys).toContain('skill-progression-coach-v19');
+    expect(r.keys).toContain('skill-progression-coach-v20');
     expect(r.hasIdb).toBe(true);
     expect(r.hasBackup).toBe(true);
+    expect(r.hasContext).toBe(true);
+    expect(r.hasBundle).toBe(true);
     await openData(page);
     await expect(page.locator('[data-backup-export]')).toBeVisible();
   });

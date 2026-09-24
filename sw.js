@@ -7,12 +7,19 @@
  * activation, deletes only obsolete Skill-Coach caches — never the original
  * app's caches. It also never intercepts requests outside its scope.
  */
-const CACHE = 'skill-progression-coach-v19';
+const CACHE = 'skill-progression-coach-v20';
 const SCOPE = new URL(self.registration.scope).pathname; // e.g. /skill-progression-coach/
 const ASSETS = [
   './', './index.html',
   './app.js', './data.js', './week.js', './engine.js', './progress.js', './store.js',
   './duration.js', './adapt.js', './settings.js', './daily.js', './backup.js', './idb.js',
+  './context.js',
+  // Content is DELIVERED here and nowhere else. Evaluation reads definitions
+  // only from the durable contextPackages store (Technical Schema §16,
+  // invariant 25) — these entries exist so a first offline boot can install a
+  // package, never so a cache entry can be read as an athlete's context.
+  './content/contexts.json', './content/vocabulary.json',
+  './content/bundle-1.json', './content/semantics-1.json',
   './manifest.webmanifest',
   './icon.svg', './icon-192.png', './icon-512.png', './icon-512-maskable.png', './apple-touch-icon.png'
 ];

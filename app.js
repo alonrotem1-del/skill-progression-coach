@@ -3194,9 +3194,11 @@
       '<button class="btn ghost" data-redo>Re-run Onboarding</button>'+
       '<button class="btn danger" data-reset>Reset Coach Data (spc_c_*)</button>'+
       '<p class="footnote muted tiny">Reset only deletes coach data. Your Pull-Up Coach history and progress are untouched.</p>'+
-      '<p class="footnote muted tiny" data-idb-status></p>';
+      '<p class="footnote muted tiny" data-idb-status></p>'+
+      '<p class="footnote muted tiny" data-ctx-status></p>';
     var wrap=shell(html,'profile'); wireSettingsBack(wrap);
     idbStatusLine(wrap);
+    ctxStatusLine(wrap);
     on('[data-install]','click',function(){
       var p=window.__spcInstallPrompt; if(!p) return;
       p.prompt(); if(p.userChoice) p.userChoice.then(function(){ window.__spcInstallPrompt=null; if(settingsView==='data') renderProfile(); });
@@ -3219,6 +3221,21 @@
       el.textContent=s.ok
         ? 'Durable storage: ready (schema v'+s.schemaVersion+(s.persisted?', persisted':'')+').'
         : 'Durable storage: unavailable — '+(s.error||'unknown')+'. Your data is unaffected.';
+    });
+  }
+
+  // Interpretation-context diagnostics. The context is invisible to the athlete
+  // in this phase — nothing is evaluated under it yet — so this line is the only
+  // way to see on-device that it installed and was adopted.
+  function ctxStatusLine(wrap){
+    var el=wrap.querySelector('[data-ctx-status]');
+    if(!el) return;
+    if(!window.CoachContext){ el.textContent='Interpretation context: module not loaded.'; return; }
+    el.textContent='Interpretation context: checking…';
+    window.CoachContext.init().then(function(s){
+      el.textContent=s.ok
+        ? 'Interpretation context: '+s.contextId+' installed and adopted ('+s.adoptions+' adoption'+(s.adoptions===1?'':'s')+').'
+        : 'Interpretation context: unavailable — '+(s.error||'unknown')+'. Your data is unaffected.';
     });
   }
 
@@ -3567,5 +3584,14 @@
   // Stand up the durable store so it exists on the device (Technical Schema
   // §16). Nothing reads or writes athlete data through it yet — localStorage
   // remains authoritative — so this runs after boot and can never affect it.
-  try{ if(window.CoachIDB) window.CoachIDB.init(); }catch(e){}
+  // Then make the approved Interpretation Context durably available and record
+  // its adoption (Technical Schema §8, §16). Persist-before-adopt lives inside
+  // context.js. Nothing evaluates under it yet, so this too runs after boot and
+  // cannot affect it — and it never rejects.
+  try{
+    if(window.CoachIDB){
+      var _idbBoot=window.CoachIDB.init();
+      if(window.CoachContext) _idbBoot.then(function(){ return window.CoachContext.init(); });
+    }
+  }catch(e){}
 })();

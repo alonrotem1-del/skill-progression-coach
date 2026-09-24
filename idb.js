@@ -185,6 +185,44 @@
     });
   }
 
+  // Appends ONLY if the index holds no record under `key`, with the count and
+  // the add inside ONE readwrite transaction. IndexedDB serialises overlapping
+  // readwrite transactions, including across tabs, so two concurrent callers
+  // cannot both see an empty index and both append. This is the whole
+  // uniqueness mechanism for a store whose key is an autoIncrement sequence and
+  // therefore cannot carry a unique constraint of its own.
+  function appendIfNone(storeName, indexName, key, record) {
+    var bad = guard(storeName, true);
+    if (bad) return Promise.reject(bad);
+    var def = defOf(storeName);
+    if (def.indexes.indexOf(indexName) === -1) {
+      return Promise.reject(new Error(storeName + ' has no index: ' + indexName));
+    }
+    return open().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx, out = { appended: false, seq: null, existing: 0 };
+        try { tx = db.transaction(storeName, 'readwrite'); }
+        catch (e) { reject(e); return; }
+        tx.oncomplete = function () { resolve(out); };
+        tx.onabort = function () { reject(tx.error || new Error('transaction aborted')); };
+        tx.onerror = function () { reject(tx.error || new Error('transaction failed')); };
+        try {
+          var store = tx.objectStore(storeName);
+          var c = store.index(indexName).count(key);
+          c.onsuccess = function () {
+            out.existing = c.result;
+            if (c.result > 0) return;
+            var add = store.add(record);
+            add.onsuccess = function () { out.appended = true; out.seq = add.result; };
+          };
+        } catch (e) {
+          try { tx.abort(); } catch (e2) {}
+          reject(e);
+        }
+      });
+    });
+  }
+
   function count(storeName) {
     if (!defOf(storeName)) return Promise.reject(new Error('unknown object store: ' + storeName));
     return run(storeName, 'readonly', function (store) { return store.count(); });
@@ -337,6 +375,7 @@
     status: status,
 
     append: append,
+    appendIfNone: appendIfNone,
     put: put,
     get: get,
     allByIndex: allByIndex,
