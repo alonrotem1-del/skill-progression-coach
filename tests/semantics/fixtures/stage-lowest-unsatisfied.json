@@ -1,0 +1,148 @@
+{
+  "name": "stage-lowest-unsatisfied",
+  "description": "Stages 1 and 3 of the explosive-pull progression are satisfied and stage 2 is not. stageSelection is lowest_unsatisfied, so the current stage is 2 - the app does not skip a gap because something above it happened to be cleared.",
+  "bundle": "bundle-1",
+  "semantics": [
+    1
+  ],
+  "commitments": {
+    "athleteGoals": [
+      "ring_muscle_up"
+    ],
+    "constraints": [],
+    "preferences": {}
+  },
+  "ledger": [
+    {
+      "seq": 1,
+      "occurredAt": "2026-09-01T10:00:00.000Z",
+      "recordedAt": "2026-09-01T10:00:00.000Z",
+      "exerciseId": "fastpull",
+      "side": null,
+      "attributes": {
+        "reps": 4,
+        "kip": true
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    },
+    {
+      "seq": 2,
+      "occurredAt": "2026-09-02T10:00:00.000Z",
+      "recordedAt": "2026-09-02T10:00:00.000Z",
+      "exerciseId": "c2b",
+      "side": null,
+      "attributes": {
+        "reps": 2,
+        "kip": true
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    },
+    {
+      "seq": 3,
+      "occurredAt": "2026-09-03T10:00:00.000Z",
+      "recordedAt": "2026-09-03T10:00:00.000Z",
+      "exerciseId": "c2r_pullup",
+      "side": null,
+      "attributes": {
+        "reps": 3,
+        "kip": true
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    }
+  ],
+  "expected": {
+    "evaluations": {
+      "exp_highpull_3|combined|ctx_1": {
+        "status": "satisfied",
+        "satisfiedBy": [
+          1
+        ],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 1,
+          "attribute": "reps",
+          "value": 4
+        }
+      },
+      "exp_c2b_3|combined|ctx_1": {
+        "status": "unsatisfied",
+        "satisfiedBy": [],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 2,
+          "attribute": "reps",
+          "value": 2
+        },
+        "shortfall": "short by 1 rep"
+      },
+      "exp_c2r_3|combined|ctx_1": {
+        "status": "satisfied",
+        "satisfiedBy": [
+          3
+        ],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 3,
+          "attribute": "reps",
+          "value": 3
+        }
+      }
+    },
+    "holders": {
+      "stage:rmu_exp_s1|combined": {
+        "status": "satisfied"
+      },
+      "stage:rmu_exp_s2|combined": {
+        "status": "unsatisfied"
+      },
+      "stage:rmu_exp_s3|combined": {
+        "status": "satisfied"
+      }
+    },
+    "currentStage": {
+      "rmu_explosive_pull|combined": "rmu_exp_s2"
+    }
+  },
+  "scopeProgressions": [
+    "rmu_explosive_pull"
+  ]
+}

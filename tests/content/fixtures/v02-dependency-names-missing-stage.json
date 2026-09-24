@@ -1,0 +1,9 @@
+{
+  "name": "v02-dependency-names-missing-stage",
+  "rule": "V2",
+  "reason": "A dependency requires a stage that does not exist, so nothing could ever unblock the subject.",
+  "expect": { "level": "error", "includes": "unknown stage" },
+  "ops": [
+    { "op": "set", "path": "bundle.dependencies[#dep_transition_needs_rto].requires.stageId", "value": "rmu_sup_s9" }
+  ]
+}

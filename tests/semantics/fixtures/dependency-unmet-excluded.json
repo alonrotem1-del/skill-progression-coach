@@ -1,0 +1,254 @@
+{
+  "name": "dependency-unmet-excluded",
+  "description": "The pistol case from Technical Schema v1.1 \u00a76. One demonstrated left-leg pistol, logged while the left ankle dependency was unmet. dependencyInvalidEvidence is exclude: the row is excluded from the terminal evaluation with a structured reason, it stays demonstrated in the ledger, and the right side is untouched. Two readings of one immutable fact, no contradiction.",
+  "bundle": "bundle-1",
+  "semantics": [
+    1
+  ],
+  "commitments": {
+    "athleteGoals": [
+      "pistol_squat"
+    ],
+    "constraints": [],
+    "preferences": {}
+  },
+  "ledger": [
+    {
+      "seq": 1,
+      "occurredAt": "2026-09-01T10:00:00.000Z",
+      "recordedAt": "2026-09-01T10:00:00.000Z",
+      "exerciseId": "pistol",
+      "side": "left",
+      "attributes": {
+        "reps": 1,
+        "depth": "below_parallel",
+        "execution": "controlled"
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [
+          "dep_pistol_needs_ankle"
+        ],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    }
+  ],
+  "expected": {
+    "evaluations": {
+      "pistol_terminal|left|ctx_1": {
+        "status": "unsatisfied",
+        "satisfiedBy": [],
+        "excluded": [
+          {
+            "seq": 1,
+            "reason": "dependency_unmet(dep_pistol_needs_ankle)"
+          }
+        ]
+      },
+      "pistol_terminal|right|ctx_1": {
+        "status": "unsatisfied",
+        "satisfiedBy": [],
+        "excluded": [
+          {
+            "seq": 1,
+            "reason": "wrong_side"
+          }
+        ]
+      }
+    },
+    "holders": {
+      "goalTerminal:pistol_squat|left": {
+        "status": "unsatisfied"
+      },
+      "goalTerminal:pistol_squat|right": {
+        "status": "unsatisfied"
+      }
+    },
+    "dependencies": {
+      "dep_pistol_needs_ankle|left": {
+        "met": false,
+        "reason": "no_evidence",
+        "blocks": [
+          "goalTerminal:pistol_squat"
+        ]
+      },
+      "dep_pistol_needs_ankle|right": {
+        "met": false,
+        "reason": "no_evidence",
+        "blocks": [
+          "goalTerminal:pistol_squat"
+        ]
+      }
+    }
+  },
+  "alternates": [
+    {
+      "note": "The identical row, logged with the dependency met, is admitted on the left and still not applicable on the right.",
+      "ledger": [
+        {
+          "seq": 1,
+          "occurredAt": "2026-09-01T10:00:00.000Z",
+          "recordedAt": "2026-09-01T10:00:00.000Z",
+          "exerciseId": "knee_wall",
+          "side": "left",
+          "attributes": {
+            "cm": 11
+          },
+          "provenance": "demonstrated",
+          "provenanceSource": "in_session",
+          "sourceWorkoutItem": {
+            "workoutId": "w_fixture",
+            "itemIndex": 0
+          },
+          "sequenceInItem": 1,
+          "context": {
+            "readiness": {},
+            "accommodationInForce": null,
+            "unmetDependencies": [],
+            "prescribedDose": null,
+            "contextId": "ctx_1"
+          }
+        },
+        {
+          "seq": 2,
+          "occurredAt": "2026-09-01T10:00:00.000Z",
+          "recordedAt": "2026-09-01T10:00:00.000Z",
+          "exerciseId": "knee_wall",
+          "side": "right",
+          "attributes": {
+            "cm": 11
+          },
+          "provenance": "demonstrated",
+          "provenanceSource": "in_session",
+          "sourceWorkoutItem": {
+            "workoutId": "w_fixture",
+            "itemIndex": 0
+          },
+          "sequenceInItem": 1,
+          "context": {
+            "readiness": {},
+            "accommodationInForce": null,
+            "unmetDependencies": [],
+            "prescribedDose": null,
+            "contextId": "ctx_1"
+          }
+        },
+        {
+          "seq": 3,
+          "occurredAt": "2026-09-02T10:00:00.000Z",
+          "recordedAt": "2026-09-02T10:00:00.000Z",
+          "exerciseId": "pistol",
+          "side": "left",
+          "attributes": {
+            "reps": 1,
+            "depth": "below_parallel",
+            "execution": "controlled"
+          },
+          "provenance": "demonstrated",
+          "provenanceSource": "in_session",
+          "sourceWorkoutItem": {
+            "workoutId": "w_fixture",
+            "itemIndex": 0
+          },
+          "sequenceInItem": 1,
+          "context": {
+            "readiness": {},
+            "accommodationInForce": null,
+            "unmetDependencies": [],
+            "prescribedDose": null,
+            "contextId": "ctx_1"
+          }
+        }
+      ],
+      "expected": {
+        "evaluations": {
+          "ankle_9|left|ctx_1": {
+            "status": "satisfied",
+            "satisfiedBy": [
+              1
+            ],
+            "excluded": [
+              {
+                "seq": 2,
+                "reason": "wrong_side"
+              }
+            ],
+            "bestObservation": {
+              "seq": 1,
+              "attribute": "cm",
+              "value": 11
+            }
+          },
+          "ankle_9|right|ctx_1": {
+            "status": "satisfied",
+            "satisfiedBy": [
+              2
+            ],
+            "excluded": [
+              {
+                "seq": 1,
+                "reason": "wrong_side"
+              }
+            ],
+            "bestObservation": {
+              "seq": 2,
+              "attribute": "cm",
+              "value": 11
+            }
+          },
+          "pistol_terminal|left|ctx_1": {
+            "status": "satisfied",
+            "satisfiedBy": [
+              3
+            ],
+            "excluded": [],
+            "bestObservation": {
+              "seq": 3,
+              "attribute": "reps",
+              "value": 1
+            }
+          },
+          "pistol_terminal|right|ctx_1": {
+            "status": "unsatisfied",
+            "satisfiedBy": [],
+            "excluded": [
+              {
+                "seq": 3,
+                "reason": "wrong_side"
+              }
+            ]
+          }
+        },
+        "holders": {
+          "goalTerminal:pistol_squat|left": {
+            "status": "satisfied"
+          },
+          "goalTerminal:pistol_squat|right": {
+            "status": "unsatisfied"
+          }
+        },
+        "dependencies": {
+          "dep_pistol_needs_ankle|left": {
+            "met": true,
+            "reason": null,
+            "blocks": []
+          },
+          "dep_pistol_needs_ankle|right": {
+            "met": true,
+            "reason": null,
+            "blocks": []
+          }
+        }
+      }
+    }
+  ]
+}

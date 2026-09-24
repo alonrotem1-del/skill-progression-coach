@@ -1,0 +1,16 @@
+{
+  "name": "v17-context-below-required-semantics",
+  "rule": "V17",
+  "reason": "A context pairing bundle 2, which requires semantics 2, with semantics 1. Release tooling must refuse to mint it.",
+  "expect": { "level": "error", "includes": "refusing to mint" },
+  "previous": [],
+  "ops": [
+    { "op": "set", "path": "bundle.requiresSemanticsAtLeast", "value": 2 },
+    { "op": "push", "path": "contexts", "value": {
+        "id": "ctx_2",
+        "contentBundleVersion": 2,
+        "evaluationSemanticsVersion": 1,
+        "mintedAt": "2026-10-01T00:00:00.000Z",
+        "releaseNotes": "Deliberately incompatible fixture." } }
+  ]
+}

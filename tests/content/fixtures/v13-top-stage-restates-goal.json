@@ -1,0 +1,9 @@
+{
+  "name": "v13-top-stage-restates-goal",
+  "rule": "V13",
+  "reason": "The Transition progression's top stage becomes the goal's own terminal criterion — the integration-progression duplication the ontology forbids.",
+  "expect": { "level": "warning", "includes": "goal terminal criterion" },
+  "ops": [
+    { "op": "set", "path": "bundle.progressions[#rmu_transition].stages[2].requirement", "value": { "criterion": "rmu_terminal" } }
+  ]
+}

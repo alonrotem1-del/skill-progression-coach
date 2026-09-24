@@ -1,0 +1,156 @@
+{
+  "name": "req-allof-two-observations",
+  "description": "allOf[m_a, m_b] is satisfied by two different observations. holderComposition is all_criteria_any_observation: each Criterion may be met by its own observation, while criterionComposition keeps every condition of one Criterion inside one observation.",
+  "bundle": "mini-expr",
+  "semantics": [
+    1
+  ],
+  "commitments": {
+    "athleteGoals": [
+      "ring_muscle_up"
+    ],
+    "constraints": [],
+    "preferences": {}
+  },
+  "ledger": [
+    {
+      "seq": 1,
+      "occurredAt": "2026-09-01T10:00:00.000Z",
+      "recordedAt": "2026-09-01T10:00:00.000Z",
+      "exerciseId": "m_pull",
+      "side": null,
+      "attributes": {
+        "reps": 5
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    },
+    {
+      "seq": 2,
+      "occurredAt": "2026-09-02T10:00:00.000Z",
+      "recordedAt": "2026-09-02T10:00:00.000Z",
+      "exerciseId": "m_hang",
+      "side": null,
+      "attributes": {
+        "seconds": 30
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    }
+  ],
+  "expected": {
+    "evaluations": {
+      "m_a|combined|ctx_1": {
+        "status": "satisfied",
+        "satisfiedBy": [
+          1
+        ],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 1,
+          "attribute": "reps",
+          "value": 5
+        }
+      },
+      "m_b|combined|ctx_1": {
+        "status": "satisfied",
+        "satisfiedBy": [
+          2
+        ],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 2,
+          "attribute": "seconds",
+          "value": 30
+        }
+      }
+    },
+    "holders": {
+      "progression:m_allof|combined": {
+        "status": "satisfied"
+      }
+    }
+  },
+  "alternates": [
+    {
+      "note": "Only m_a is met, so allOf is unsatisfied under expressionStatusCombination: strict.",
+      "ledger": [
+        {
+          "seq": 1,
+          "occurredAt": "2026-09-01T10:00:00.000Z",
+          "recordedAt": "2026-09-01T10:00:00.000Z",
+          "exerciseId": "m_pull",
+          "side": null,
+          "attributes": {
+            "reps": 5
+          },
+          "provenance": "demonstrated",
+          "provenanceSource": "in_session",
+          "sourceWorkoutItem": {
+            "workoutId": "w_fixture",
+            "itemIndex": 0
+          },
+          "sequenceInItem": 1,
+          "context": {
+            "readiness": {},
+            "accommodationInForce": null,
+            "unmetDependencies": [],
+            "prescribedDose": null,
+            "contextId": "ctx_1"
+          }
+        }
+      ],
+      "expected": {
+        "evaluations": {
+          "m_a|combined|ctx_1": {
+            "status": "satisfied",
+            "satisfiedBy": [
+              1
+            ],
+            "excluded": [],
+            "bestObservation": {
+              "seq": 1,
+              "attribute": "reps",
+              "value": 5
+            }
+          },
+          "m_b|combined|ctx_1": {
+            "status": "unsatisfied",
+            "satisfiedBy": [],
+            "excluded": [],
+            "shortfall": "no observation of a linked exercise records seconds"
+          }
+        },
+        "holders": {
+          "progression:m_allof|combined": {
+            "status": "unsatisfied"
+          }
+        }
+      }
+    }
+  ]
+}

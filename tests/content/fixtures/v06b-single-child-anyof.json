@@ -1,0 +1,9 @@
+{
+  "name": "v06b-single-child-anyof",
+  "rule": "V6",
+  "reason": "anyOf with one child. It means the bare leaf and hides an alternative that was deleted rather than considered.",
+  "expect": { "level": "error", "includes": "single-child" },
+  "ops": [
+    { "op": "set", "path": "bundle.progressions[#rmu_dip_press].stages[0].requirement", "value": { "anyOf": [ { "criterion": "dip_bar_5" } ] } }
+  ]
+}

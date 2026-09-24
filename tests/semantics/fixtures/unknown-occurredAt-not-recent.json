@@ -1,0 +1,120 @@
+{
+  "name": "unknown-occurredAt-not-recent",
+  "description": "A migrated claim of ten pull-ups with occurredAt unknown, beside a demonstrated six. The undated row never ranks as more recent than a dated one, and demonstrated_supersedes settles the reported value at 6 regardless of date. The claim still carries the ten-rep stage provisionally, because that is the only thing it can honestly do.",
+  "bundle": "bundle-1",
+  "semantics": [
+    1
+  ],
+  "commitments": {
+    "athleteGoals": [
+      "ring_muscle_up"
+    ],
+    "constraints": [],
+    "preferences": {}
+  },
+  "ledger": [
+    {
+      "seq": 1,
+      "occurredAt": "unknown",
+      "recordedAt": "2026-09-01T10:05:00.000Z",
+      "exerciseId": "pullup",
+      "side": null,
+      "attributes": {
+        "reps": 10,
+        "kip": false
+      },
+      "provenance": "claimed",
+      "provenanceSource": "legacy_migration",
+      "sourceWorkoutItem": null,
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    },
+    {
+      "seq": 2,
+      "occurredAt": "2026-09-01T10:00:00.000Z",
+      "recordedAt": "2026-09-01T10:00:00.000Z",
+      "exerciseId": "pullup",
+      "side": null,
+      "attributes": {
+        "reps": 6,
+        "kip": false
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    }
+  ],
+  "expected": {
+    "evaluations": {
+      "rmu_pull_1|combined|ctx_1": {
+        "status": "satisfied",
+        "satisfiedBy": [
+          1,
+          2
+        ],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 2,
+          "attribute": "reps",
+          "value": 6
+        }
+      },
+      "rmu_pull_5|combined|ctx_1": {
+        "status": "satisfied",
+        "satisfiedBy": [
+          1,
+          2
+        ],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 2,
+          "attribute": "reps",
+          "value": 6
+        }
+      },
+      "rmu_pull_10|combined|ctx_1": {
+        "status": "provisional",
+        "satisfiedBy": [
+          1
+        ],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 1,
+          "attribute": "reps",
+          "value": 10
+        }
+      }
+    },
+    "holders": {
+      "stage:rmu_pull_s1|combined": {
+        "status": "satisfied"
+      },
+      "stage:rmu_pull_s2|combined": {
+        "status": "satisfied"
+      },
+      "stage:rmu_pull_s3|combined": {
+        "status": "provisional"
+      }
+    },
+    "currentStage": {
+      "rmu_pull_strength|combined": "rmu_pull_s3"
+    }
+  }
+}

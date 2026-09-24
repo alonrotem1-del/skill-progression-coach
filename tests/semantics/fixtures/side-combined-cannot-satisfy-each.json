@@ -1,0 +1,106 @@
+{
+  "name": "side-combined-cannot-satisfy-each",
+  "description": "One knee-to-wall row logged as side both, 12 cm. sideAggregation is combined_cannot_satisfy_each: a bilateral measurement cannot stand in for either side of a per-side Criterion, so both sides exclude it rather than both sides crediting it.",
+  "bundle": "bundle-1",
+  "semantics": [
+    1
+  ],
+  "commitments": {
+    "athleteGoals": [
+      "pistol_squat"
+    ],
+    "constraints": [],
+    "preferences": {}
+  },
+  "ledger": [
+    {
+      "seq": 1,
+      "occurredAt": "2026-09-01T10:00:00.000Z",
+      "recordedAt": "2026-09-01T10:00:00.000Z",
+      "exerciseId": "knee_wall",
+      "side": "both",
+      "attributes": {
+        "cm": 12
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    }
+  ],
+  "expected": {
+    "evaluations": {
+      "ankle_9|left|ctx_1": {
+        "status": "unsatisfied",
+        "satisfiedBy": [],
+        "excluded": [
+          {
+            "seq": 1,
+            "reason": "wrong_side"
+          }
+        ]
+      },
+      "ankle_9|right|ctx_1": {
+        "status": "unsatisfied",
+        "satisfiedBy": [],
+        "excluded": [
+          {
+            "seq": 1,
+            "reason": "wrong_side"
+          }
+        ]
+      },
+      "ankle_12|left|ctx_1": {
+        "status": "unsatisfied",
+        "satisfiedBy": [],
+        "excluded": [
+          {
+            "seq": 1,
+            "reason": "wrong_side"
+          }
+        ]
+      },
+      "ankle_12|right|ctx_1": {
+        "status": "unsatisfied",
+        "satisfiedBy": [],
+        "excluded": [
+          {
+            "seq": 1,
+            "reason": "wrong_side"
+          }
+        ]
+      }
+    },
+    "holders": {
+      "stage:pistol_ankle_s1|left": {
+        "status": "unsatisfied"
+      },
+      "stage:pistol_ankle_s1|right": {
+        "status": "unsatisfied"
+      },
+      "stage:pistol_ankle_s2|left": {
+        "status": "unsatisfied"
+      },
+      "stage:pistol_ankle_s2|right": {
+        "status": "unsatisfied"
+      }
+    },
+    "currentStage": {
+      "pistol_ankle_mobility|left": "pistol_ankle_s1",
+      "pistol_ankle_mobility|right": "pistol_ankle_s1"
+    }
+  },
+  "scopeProgressions": [
+    "pistol_ankle_mobility"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "v15-bundle-missing-app-exercise",
+  "rule": "V15",
+  "reason": "The bundle drops 'support', which week.js and data.js still cite as block.exId, so a logged support hold could not be interpreted at all.",
+  "expect": { "level": "error", "includes": "support" },
+  "ops": [
+    { "op": "remove", "path": "bundle.exercises[#support]" }
+  ]
+}

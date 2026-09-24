@@ -1,0 +1,9 @@
+{
+  "name": "v08-condition-attribute-not-observable",
+  "rule": "V8",
+  "reason": "The straight-bar dip stage now demands a catch quality, but no exercise linked to that stage records one, so the stage can never be cleared.",
+  "expect": { "level": "error", "includes": "catch_quality" },
+  "ops": [
+    { "op": "push", "path": "bundle.criteria[#dip_bar_5].conditions", "value": { "attribute": "catch_quality", "op": "gte", "value": "controlled" } }
+  ]
+}

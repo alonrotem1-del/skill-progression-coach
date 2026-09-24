@@ -1,0 +1,319 @@
+{
+  "version": 1,
+  "publishedAt": "2026-09-24",
+  "requiresSemanticsAtLeast": 1,
+  "note": "Content Bundle 1. Two canonical Goals: Ring Muscle-Up and Pistol Squat. Criteria and exerciseLinks are top-level arrays so each is defined exactly once and referenced by id; Technical Schema v1.1 §4 states its shapes are illustrative of what must exist, not a serialisation format. Contains no evaluation rule of any kind - thresholds, scales, structure and references only.",
+
+  "attributes": [
+    { "id": "reps", "label": "Repetitions", "type": "quantity", "unit": "reps" },
+    { "id": "seconds", "label": "Duration", "type": "quantity", "unit": "seconds" },
+    { "id": "kg", "label": "Added load", "type": "quantity", "unit": "kg" },
+    { "id": "cm", "label": "Distance", "type": "quantity", "unit": "cm" },
+    { "id": "kip", "label": "Kipped", "type": "flag" },
+    { "id": "lateral_shift", "label": "Hip dropped or shifted", "type": "flag" },
+    { "id": "catch_quality", "label": "Catch quality", "type": "grade", "scale": ["uncontrolled", "assisted", "controlled"] },
+    { "id": "depth", "label": "Depth reached", "type": "grade", "scale": ["above_parallel", "parallel", "below_parallel"] },
+    { "id": "execution", "label": "Execution quality", "type": "grade", "scale": ["uncontrolled", "assisted", "controlled"] }
+  ],
+
+  "exercises": [
+    { "id": "pullup", "name": "Strict Pull-Up", "unilateral": false, "producesAttributes": ["reps", "kip"], "loadDimensions": { "pull": 2, "grip": 1, "elbow": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 5 } },
+    { "id": "weighted_pullup", "name": "Weighted Pull-Up", "unilateral": false, "producesAttributes": ["reps", "kg", "kip"], "loadDimensions": { "pull": 2, "grip": 1, "elbow": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 3 } },
+    { "id": "scap", "name": "Scapular Pull-Up", "unilateral": false, "producesAttributes": ["reps"], "loadDimensions": { "pull": 1, "grip": 1, "shoulder": 1 }, "defaultDose": { "scheme": "sets", "sets": 2, "reps": 8 } },
+    { "id": "ring_row", "name": "Ring Row", "unilateral": false, "producesAttributes": ["reps"], "loadDimensions": { "pull": 2, "grip": 1, "elbow": 1, "shoulder": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 8 } },
+    { "id": "deadhang", "name": "Active Dead Hang", "unilateral": false, "producesAttributes": ["seconds"], "loadDimensions": { "grip": 2 }, "defaultDose": { "scheme": "hold", "sets": 3, "seconds": 30 } },
+    { "id": "activehang", "name": "Active Hang", "unilateral": false, "producesAttributes": ["seconds"], "loadDimensions": { "grip": 2, "shoulder": 1 }, "defaultDose": { "scheme": "hold", "sets": 3, "seconds": 20 } },
+    { "id": "lockoff", "name": "Lock-Off Hold", "unilateral": false, "producesAttributes": ["seconds"], "loadDimensions": { "pull": 2, "grip": 1, "elbow": 1 }, "defaultDose": { "scheme": "hold", "sets": 3, "seconds": 10 } },
+    { "id": "fastpull", "name": "High Pull (Explosive)", "unilateral": false, "producesAttributes": ["reps", "kip"], "loadDimensions": { "pull": 2, "grip": 1, "elbow": 1, "shoulder": 1, "explosive": 2 }, "defaultDose": { "scheme": "sets", "sets": 4, "reps": 3 } },
+    { "id": "c2b", "name": "Chest-to-Bar Pull-Up", "unilateral": false, "producesAttributes": ["reps", "kip"], "loadDimensions": { "pull": 2, "grip": 1, "elbow": 1, "shoulder": 1, "explosive": 2 }, "defaultDose": { "scheme": "sets", "sets": 4, "reps": 3 } },
+    { "id": "support", "name": "Ring / Straight-Bar Support Hold", "unilateral": false, "producesAttributes": ["seconds"], "loadDimensions": { "push": 1, "shoulder": 1 }, "defaultDose": { "scheme": "hold", "sets": 3, "seconds": 20 } },
+    { "id": "dip", "name": "Straight-Bar Dip", "unilateral": false, "producesAttributes": ["reps"], "loadDimensions": { "push": 2, "shoulder": 1, "elbow": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 5 } },
+    { "id": "pbdip", "name": "Parallel-Bar Dip", "unilateral": false, "producesAttributes": ["reps"], "loadDimensions": { "push": 2, "shoulder": 1, "elbow": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 5 } },
+    { "id": "hollow", "name": "Hollow Body Hold", "unilateral": false, "producesAttributes": ["seconds"], "loadDimensions": { "core": 2 }, "defaultDose": { "scheme": "hold", "sets": 3, "seconds": 30 } },
+    { "id": "lowtrans", "name": "Low-Bar Transition Drill", "unilateral": false, "producesAttributes": ["reps", "catch_quality"], "loadDimensions": { "pull": 1, "grip": 1, "elbow": 1, "shoulder": 1, "explosive": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 3 } },
+    { "id": "transition", "name": "Muscle-Up Transition Drill", "unilateral": false, "producesAttributes": ["reps", "catch_quality"], "loadDimensions": { "pull": 1, "push": 1, "shoulder": 1, "elbow": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 3 } },
+    { "id": "negmu", "name": "Negative Muscle-Up", "unilateral": false, "producesAttributes": ["reps", "catch_quality"], "loadDimensions": { "pull": 2, "push": 1, "grip": 1, "shoulder": 2, "elbow": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 2 } },
+    { "id": "bandmu", "name": "Banded Muscle-Up", "unilateral": false, "producesAttributes": ["reps", "catch_quality"], "loadDimensions": { "pull": 2, "push": 1, "grip": 1, "shoulder": 1, "elbow": 1, "explosive": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 2 } },
+
+    { "id": "fg_hang", "name": "False-Grip Ring Hang", "unilateral": false, "producesAttributes": ["seconds"], "loadDimensions": { "grip": 2, "pull": 1, "elbow": 1 }, "defaultDose": { "scheme": "hold", "sets": 4, "seconds": 15 } },
+    { "id": "rto_support", "name": "Ring Support, Rings Turned Out", "unilateral": false, "producesAttributes": ["seconds"], "loadDimensions": { "push": 1, "shoulder": 2, "elbow": 1 }, "defaultDose": { "scheme": "hold", "sets": 4, "seconds": 15 } },
+    { "id": "c2r_pullup", "name": "Chest-to-Rings Pull-Up", "unilateral": false, "producesAttributes": ["reps", "kip"], "loadDimensions": { "pull": 2, "grip": 2, "elbow": 1, "shoulder": 1, "explosive": 2 }, "defaultDose": { "scheme": "sets", "sets": 4, "reps": 2 } },
+    { "id": "lowring_transition", "name": "Low-Ring Transition, Feet Assisting", "unilateral": false, "producesAttributes": ["reps", "catch_quality"], "loadDimensions": { "pull": 1, "push": 1, "shoulder": 1, "elbow": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 3 } },
+    { "id": "banded_ring_transition", "name": "Banded Ring Transition", "unilateral": false, "producesAttributes": ["reps", "catch_quality"], "loadDimensions": { "pull": 2, "push": 1, "grip": 1, "shoulder": 1, "elbow": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 3 } },
+    { "id": "ring_transition", "name": "Unassisted Ring Transition", "unilateral": false, "producesAttributes": ["reps", "catch_quality"], "loadDimensions": { "pull": 2, "push": 1, "grip": 2, "shoulder": 2, "elbow": 1, "explosive": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 1 } },
+    { "id": "ring_dip", "name": "Ring Dip", "unilateral": false, "producesAttributes": ["reps"], "loadDimensions": { "push": 2, "shoulder": 2, "elbow": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 3 } },
+    { "id": "rmu_attempt", "name": "Ring Muscle-Up", "unilateral": false, "producesAttributes": ["reps", "kip", "execution"], "loadDimensions": { "pull": 2, "push": 2, "grip": 2, "shoulder": 2, "elbow": 1, "explosive": 2 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 1 } },
+
+    { "id": "pistol", "name": "Pistol Squat", "unilateral": true, "producesAttributes": ["reps", "depth", "execution"], "loadDimensions": { "legs": 2 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 3 } },
+    { "id": "box_pistol", "name": "Box Pistol Squat", "unilateral": true, "producesAttributes": ["reps", "depth"], "loadDimensions": { "legs": 2 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 5 } },
+    { "id": "pistol_heel", "name": "Heel-Elevated Pistol Squat", "unilateral": true, "producesAttributes": ["reps", "depth", "execution"], "loadDimensions": { "legs": 2 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 3 } },
+    { "id": "deep_squat_hold", "name": "Deep Bodyweight Squat Hold", "unilateral": false, "producesAttributes": ["seconds", "depth"], "loadDimensions": { "legs": 1 }, "defaultDose": { "scheme": "hold", "sets": 3, "seconds": 30 } },
+    { "id": "sl_balance", "name": "Single-Leg Stance", "unilateral": true, "producesAttributes": ["seconds", "lateral_shift"], "loadDimensions": { "legs": 1 }, "defaultDose": { "scheme": "hold", "sets": 2, "seconds": 30 } },
+    { "id": "knee_wall", "name": "Knee-to-Wall Ankle Test", "unilateral": true, "producesAttributes": ["cm"], "loadDimensions": {}, "defaultDose": { "scheme": "assessment", "sets": 1 } },
+
+    { "id": "bouldering", "name": "Bouldering", "unilateral": false, "producesAttributes": [], "loadDimensions": { "pull": 2, "grip": 2, "elbow": 1, "shoulder": 1, "explosive": 1 }, "defaultDose": null },
+    { "id": "t2b", "name": "Toes-to-Bar", "unilateral": false, "producesAttributes": ["reps"], "loadDimensions": { "grip": 1, "core": 2 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 6 } },
+    { "id": "wristroller", "name": "Wrist Roller", "unilateral": false, "producesAttributes": ["reps"], "loadDimensions": { "grip": 1 }, "defaultDose": { "scheme": "sets", "sets": 2, "reps": 10 } },
+    { "id": "incline_press", "name": "Incline Chest Press", "unilateral": false, "producesAttributes": ["reps", "kg"], "loadDimensions": { "push": 2, "shoulder": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 10 } },
+    { "id": "chest_fly", "name": "Chest Fly", "unilateral": false, "producesAttributes": ["reps", "kg"], "loadDimensions": { "push": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 12 } },
+    { "id": "biceps", "name": "Biceps", "unilateral": false, "producesAttributes": ["reps", "kg"], "loadDimensions": { "pull": 1, "elbow": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 12 } },
+    { "id": "triceps", "name": "Triceps", "unilateral": false, "producesAttributes": ["reps", "kg"], "loadDimensions": { "push": 1, "elbow": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 12 } },
+    { "id": "hip_abduction", "name": "Hip Abduction", "unilateral": false, "producesAttributes": ["reps", "kg"], "loadDimensions": { "legs": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 15 } },
+    { "id": "bulgarian_split", "name": "Bulgarian Split Squat / Step-Up", "unilateral": true, "producesAttributes": ["reps", "kg"], "loadDimensions": { "legs": 2 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 8 } },
+    { "id": "hip_thrust", "name": "Hip Thrust", "unilateral": false, "producesAttributes": ["reps", "kg"], "loadDimensions": { "legs": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 12 } },
+    { "id": "deadlift_rdl", "name": "Deadlift / RDL", "unilateral": false, "producesAttributes": ["reps", "kg"], "loadDimensions": { "legs": 2, "grip": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 8 } }
+  ],
+
+  "criteria": [
+    { "id": "rmu_pull_1", "label": "Do 1 strict pull-up, no kip", "primaryAttribute": "reps", "sideScope": "combined", "conditions": [ { "attribute": "reps", "op": "gte", "value": 1 }, { "attribute": "kip", "op": "eq", "value": false } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+    { "id": "rmu_pull_5", "label": "Do 5 strict pull-ups, no kip", "primaryAttribute": "reps", "sideScope": "combined", "conditions": [ { "attribute": "reps", "op": "gte", "value": 5 }, { "attribute": "kip", "op": "eq", "value": false } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+    { "id": "rmu_pull_10", "label": "Do 10 strict pull-ups, no kip", "primaryAttribute": "reps", "sideScope": "combined", "conditions": [ { "attribute": "reps", "op": "gte", "value": 10 }, { "attribute": "kip", "op": "eq", "value": false } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+
+    { "id": "fg_hang_30", "label": "Hang from the rings in a false grip for 30 seconds", "primaryAttribute": "seconds", "sideScope": "combined", "conditions": [ { "attribute": "seconds", "op": "gte", "value": 30 } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+
+    { "id": "exp_highpull_3", "label": "Pull explosively to sternum height, 3 reps", "primaryAttribute": "reps", "sideScope": "combined", "conditions": [ { "attribute": "reps", "op": "gte", "value": 3 } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+    { "id": "exp_c2b_3", "label": "Do 3 chest-to-bar pull-ups", "primaryAttribute": "reps", "sideScope": "combined", "conditions": [ { "attribute": "reps", "op": "gte", "value": 3 } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+    { "id": "exp_c2r_3", "label": "Do 3 chest-to-rings pull-ups", "primaryAttribute": "reps", "sideScope": "combined", "conditions": [ { "attribute": "reps", "op": "gte", "value": 3 } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+
+    { "id": "sup_bar_20", "label": "Hold a support above the bar or rings for 20 seconds", "primaryAttribute": "seconds", "sideScope": "combined", "conditions": [ { "attribute": "seconds", "op": "gte", "value": 20 } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+    { "id": "sup_rto_20", "label": "Hold a ring support with the rings turned out for 20 seconds", "primaryAttribute": "seconds", "sideScope": "combined", "conditions": [ { "attribute": "seconds", "op": "gte", "value": 20 } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+
+    { "id": "trans_lowring_3", "label": "Do 3 low-ring transitions with your feet assisting", "primaryAttribute": "reps", "sideScope": "combined", "conditions": [ { "attribute": "reps", "op": "gte", "value": 3 }, { "attribute": "catch_quality", "op": "gte", "value": "assisted" } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+    { "id": "trans_banded_3", "label": "Do 3 banded ring transitions with a controlled catch", "primaryAttribute": "reps", "sideScope": "combined", "conditions": [ { "attribute": "reps", "op": "gte", "value": 3 }, { "attribute": "catch_quality", "op": "gte", "value": "controlled" } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+    { "id": "trans_full_1", "label": "Do 1 unassisted ring transition from a hang, with a controlled catch", "primaryAttribute": "reps", "sideScope": "combined", "conditions": [ { "attribute": "reps", "op": "gte", "value": 1 }, { "attribute": "catch_quality", "op": "gte", "value": "controlled" } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+
+    { "id": "dip_bar_5", "label": "Do 5 dips on a straight bar", "primaryAttribute": "reps", "sideScope": "combined", "conditions": [ { "attribute": "reps", "op": "gte", "value": 5 } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+    { "id": "dip_ring_5", "label": "Do 5 ring dips", "primaryAttribute": "reps", "sideScope": "combined", "conditions": [ { "attribute": "reps", "op": "gte", "value": 5 } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+
+    { "id": "rmu_terminal", "label": "Do 1 ring muscle-up, no kip, under control", "primaryAttribute": "reps", "sideScope": "combined", "conditions": [ { "attribute": "reps", "op": "gte", "value": 1 }, { "attribute": "kip", "op": "eq", "value": false }, { "attribute": "execution", "op": "gte", "value": "controlled" } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+
+    { "id": "slstr_box_5", "label": "Do 5 box pistol squats on each leg, to at least parallel", "primaryAttribute": "reps", "sideScope": "each", "conditions": [ { "attribute": "reps", "op": "gte", "value": 5 }, { "attribute": "depth", "op": "gte", "value": "parallel" } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+    { "id": "slstr_heel_3", "label": "Do 3 heel-elevated pistol squats on each leg, below parallel", "primaryAttribute": "reps", "sideScope": "each", "conditions": [ { "attribute": "reps", "op": "gte", "value": 3 }, { "attribute": "depth", "op": "gte", "value": "below_parallel" } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+
+    { "id": "deepsquat_30", "label": "Hold a full-depth bodyweight squat for 30 seconds", "primaryAttribute": "seconds", "sideScope": "combined", "conditions": [ { "attribute": "seconds", "op": "gte", "value": 30 }, { "attribute": "depth", "op": "gte", "value": "below_parallel" } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+
+    { "id": "slbal_30", "label": "Stand on one leg for 30 seconds without the hip dropping", "primaryAttribute": "seconds", "sideScope": "each", "conditions": [ { "attribute": "seconds", "op": "gte", "value": 30 }, { "attribute": "lateral_shift", "op": "eq", "value": false } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+
+    { "id": "ankle_9", "label": "Reach 9 cm knee-to-wall on each ankle", "primaryAttribute": "cm", "sideScope": "each", "conditions": [ { "attribute": "cm", "op": "gte", "value": 9 } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+    { "id": "ankle_12", "label": "Reach 12 cm knee-to-wall on each ankle", "primaryAttribute": "cm", "sideScope": "each", "conditions": [ { "attribute": "cm", "op": "gte", "value": 12 } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+
+    { "id": "pistol_terminal", "label": "Do 1 full-depth pistol squat on each leg, under control", "primaryAttribute": "reps", "sideScope": "each", "conditions": [ { "attribute": "reps", "op": "gte", "value": 1 }, { "attribute": "depth", "op": "gte", "value": "below_parallel" }, { "attribute": "execution", "op": "gte", "value": "controlled" } ], "demonstration": { "occasions": 1, "distinctDays": false } }
+  ],
+
+  "progressions": [
+    {
+      "id": "rmu_pull_strength",
+      "name": "Vertical Pull Strength",
+      "athleteFacingName": "Pull Strength",
+      "form": "STAGED",
+      "stages": [
+        { "id": "rmu_pull_s1", "name": "First strict pull-up", "order": 1, "requirement": { "criterion": "rmu_pull_1" } },
+        { "id": "rmu_pull_s2", "name": "Five strict pull-ups", "order": 2, "requirement": { "criterion": "rmu_pull_5" } },
+        { "id": "rmu_pull_s3", "name": "Ten strict pull-ups", "order": 3, "requirement": { "criterion": "rmu_pull_10" } }
+      ]
+    },
+    {
+      "id": "rmu_false_grip",
+      "name": "False Grip",
+      "athleteFacingName": "False Grip",
+      "form": "DIRECT",
+      "requirement": { "criterion": "fg_hang_30" }
+    },
+    {
+      "id": "rmu_explosive_pull",
+      "name": "Explosive Pull Height",
+      "athleteFacingName": "Pulling High Enough",
+      "form": "STAGED",
+      "stages": [
+        { "id": "rmu_exp_s1", "name": "Explosive pull to sternum", "order": 1, "requirement": { "criterion": "exp_highpull_3" } },
+        { "id": "rmu_exp_s2", "name": "Chest to bar", "order": 2, "requirement": { "criterion": "exp_c2b_3" } },
+        { "id": "rmu_exp_s3", "name": "Chest to rings", "order": 3, "requirement": { "criterion": "exp_c2r_3" } }
+      ]
+    },
+    {
+      "id": "rmu_ring_support",
+      "name": "Ring Support",
+      "athleteFacingName": "Holding the Top",
+      "form": "STAGED",
+      "stages": [
+        { "id": "rmu_sup_s1", "name": "Support hold", "order": 1, "requirement": { "criterion": "sup_bar_20" } },
+        { "id": "rmu_sup_s2", "name": "Rings turned out", "order": 2, "requirement": { "criterion": "sup_rto_20" } }
+      ]
+    },
+    {
+      "id": "rmu_transition",
+      "name": "Ring Transition",
+      "athleteFacingName": "Getting Over the Rings",
+      "form": "STAGED",
+      "stages": [
+        { "id": "rmu_trans_s1", "name": "Low-ring, feet assisting", "order": 1, "requirement": { "criterion": "trans_lowring_3" } },
+        { "id": "rmu_trans_s2", "name": "Banded", "order": 2, "requirement": { "criterion": "trans_banded_3" } },
+        { "id": "rmu_trans_s3", "name": "Unassisted from a hang", "order": 3, "requirement": { "criterion": "trans_full_1" } }
+      ]
+    },
+    {
+      "id": "rmu_dip_press",
+      "name": "Dip and Press-Out",
+      "athleteFacingName": "Pressing Out",
+      "form": "STAGED",
+      "stages": [
+        { "id": "rmu_dip_s1", "name": "Dip on a fixed bar", "order": 1, "requirement": { "criterion": "dip_bar_5" } },
+        { "id": "rmu_dip_s2", "name": "Ring dip", "order": 2, "requirement": { "criterion": "dip_ring_5" } }
+      ]
+    },
+
+    {
+      "id": "pistol_sl_strength",
+      "name": "Single-Leg Strength",
+      "athleteFacingName": "Single-Leg Strength",
+      "form": "STAGED",
+      "stages": [
+        { "id": "pistol_str_s1", "name": "Box pistol", "order": 1, "requirement": { "criterion": "slstr_box_5" } },
+        { "id": "pistol_str_s2", "name": "Heel-elevated pistol", "order": 2, "requirement": { "criterion": "slstr_heel_3" } }
+      ]
+    },
+    {
+      "id": "pistol_deep_squat",
+      "name": "Deep Squat Capacity",
+      "athleteFacingName": "Squatting Deep",
+      "form": "DIRECT",
+      "requirement": { "criterion": "deepsquat_30" }
+    },
+    {
+      "id": "pistol_balance",
+      "name": "Single-Leg Balance and Control",
+      "athleteFacingName": "Balance",
+      "form": "DIRECT",
+      "requirement": { "criterion": "slbal_30" }
+    },
+    {
+      "id": "pistol_ankle_mobility",
+      "name": "Ankle Dorsiflexion",
+      "athleteFacingName": "Ankle Mobility",
+      "form": "STAGED",
+      "stages": [
+        { "id": "pistol_ankle_s1", "name": "Nine centimetres", "order": 1, "requirement": { "criterion": "ankle_9" } },
+        { "id": "pistol_ankle_s2", "name": "Twelve centimetres", "order": 2, "requirement": { "criterion": "ankle_12" } }
+      ]
+    }
+  ],
+
+  "goals": [
+    {
+      "id": "ring_muscle_up",
+      "name": "Ring Muscle-Up",
+      "athleteFacingName": "First Ring Muscle-Up",
+      "terminalRequirement": { "criterion": "rmu_terminal" },
+      "coordinates": [
+        { "progressionId": "rmu_pull_strength", "role": "strength", "required": true },
+        { "progressionId": "rmu_false_grip", "role": "grip", "required": true },
+        { "progressionId": "rmu_explosive_pull", "role": "explosive", "required": true },
+        { "progressionId": "rmu_ring_support", "role": "support", "required": true },
+        { "progressionId": "rmu_transition", "role": "transition", "required": true },
+        { "progressionId": "rmu_dip_press", "role": "press", "required": true }
+      ]
+    },
+    {
+      "id": "pistol_squat",
+      "name": "Pistol Squat",
+      "athleteFacingName": "First Pistol Squat",
+      "terminalRequirement": { "criterion": "pistol_terminal" },
+      "coordinates": [
+        { "progressionId": "pistol_sl_strength", "role": "strength", "required": true },
+        { "progressionId": "pistol_deep_squat", "role": "capacity", "required": true },
+        { "progressionId": "pistol_balance", "role": "control", "required": true },
+        { "progressionId": "pistol_ankle_mobility", "role": "mobility", "required": true }
+      ]
+    }
+  ],
+
+  "dependencies": [
+    {
+      "id": "dep_transition_needs_rto",
+      "subject": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s3" },
+      "requires": { "kind": "stage", "progressionId": "rmu_ring_support", "stageId": "rmu_sup_s2" },
+      "sideRule": "any",
+      "constrains": ["prescription", "unlocking", "evidence_validity"],
+      "severity": "hard",
+      "accommodation": { "exerciseId": "lowring_transition", "doseNote": "Keep working the low-ring transition with your feet assisting until the rings-turned-out support hold is there." },
+      "rationale": "An unassisted transition finishes in a rings-turned-out support. Without that hold there is nothing to catch, so the attempt collapses at the bottom rather than teaching the movement."
+    },
+    {
+      "id": "dep_rmu_needs_false_grip",
+      "subject": { "kind": "goalTerminal", "goalId": "ring_muscle_up" },
+      "requires": { "kind": "progression", "progressionId": "rmu_false_grip" },
+      "sideRule": "any",
+      "constrains": ["prescription"],
+      "severity": "soft",
+      "rationale": "A false grip is what lets the wrist stay above the ring through the turnover. Without it the muscle-up is still attemptable, but the grip will be the thing that fails first."
+    },
+    {
+      "id": "dep_pistol_needs_ankle",
+      "subject": { "kind": "goalTerminal", "goalId": "pistol_squat" },
+      "requires": { "kind": "stage", "progressionId": "pistol_ankle_mobility", "stageId": "pistol_ankle_s1" },
+      "sideRule": "mirror",
+      "constrains": ["prescription", "unlocking", "evidence_validity"],
+      "severity": "hard",
+      "accommodation": { "exerciseId": "pistol_heel", "doseNote": "Elevate the heel while dorsiflexion is short; it removes the ankle limit without changing the rest of the movement." },
+      "rationale": "A full-depth pistol needs the shin to travel forward over the foot. If the ankle cannot reach that range, the depth has to come from somewhere else - usually the lower back - and the rep stops being the movement it looks like."
+    },
+    {
+      "id": "dep_pistol_needs_deep_squat",
+      "subject": { "kind": "goalTerminal", "goalId": "pistol_squat" },
+      "requires": { "kind": "progression", "progressionId": "pistol_deep_squat" },
+      "sideRule": "any",
+      "constrains": ["prescription", "unlocking"],
+      "severity": "hard",
+      "rationale": "A pistol is a full-depth squat on one leg. If the position is not available on two legs, one leg will not find it either."
+    }
+  ],
+
+  "exerciseLinks": [
+    { "exerciseId": "pullup", "target": { "kind": "stage", "progressionId": "rmu_pull_strength", "stageId": "rmu_pull_s1" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "pullup", "target": { "kind": "stage", "progressionId": "rmu_pull_strength", "stageId": "rmu_pull_s2" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "pullup", "target": { "kind": "stage", "progressionId": "rmu_pull_strength", "stageId": "rmu_pull_s3" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "weighted_pullup", "target": { "kind": "stage", "progressionId": "rmu_pull_strength", "stageId": "rmu_pull_s3" }, "relation": "train", "rank": 2, "sideScope": "combined" },
+    { "exerciseId": "ring_row", "target": { "kind": "stage", "progressionId": "rmu_pull_strength", "stageId": "rmu_pull_s1" }, "relation": "train", "rank": 2, "sideScope": "combined" },
+    { "exerciseId": "scap", "target": { "kind": "stage", "progressionId": "rmu_pull_strength", "stageId": "rmu_pull_s1" }, "relation": "train", "rank": 3, "sideScope": "combined" },
+    { "exerciseId": "lockoff", "target": { "kind": "stage", "progressionId": "rmu_pull_strength", "stageId": "rmu_pull_s2" }, "relation": "train", "rank": 2, "sideScope": "combined" },
+
+    { "exerciseId": "fg_hang", "target": { "kind": "progression", "progressionId": "rmu_false_grip" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "deadhang", "target": { "kind": "progression", "progressionId": "rmu_false_grip" }, "relation": "train", "rank": 2, "sideScope": "combined" },
+    { "exerciseId": "activehang", "target": { "kind": "progression", "progressionId": "rmu_false_grip" }, "relation": "train", "rank": 3, "sideScope": "combined" },
+
+    { "exerciseId": "fastpull", "target": { "kind": "stage", "progressionId": "rmu_explosive_pull", "stageId": "rmu_exp_s1" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "c2b", "target": { "kind": "stage", "progressionId": "rmu_explosive_pull", "stageId": "rmu_exp_s2" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "c2r_pullup", "target": { "kind": "stage", "progressionId": "rmu_explosive_pull", "stageId": "rmu_exp_s3" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+
+    { "exerciseId": "support", "target": { "kind": "stage", "progressionId": "rmu_ring_support", "stageId": "rmu_sup_s1" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "rto_support", "target": { "kind": "stage", "progressionId": "rmu_ring_support", "stageId": "rmu_sup_s2" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+
+    { "exerciseId": "lowring_transition", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s1" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "lowtrans", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s1" }, "relation": "train", "rank": 2, "sideScope": "combined" },
+    { "exerciseId": "banded_ring_transition", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s2" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "ring_transition", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s3" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "negmu", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s3" }, "relation": "train", "rank": 2, "sideScope": "combined" },
+    { "exerciseId": "transition", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s2" }, "relation": "train", "rank": 3, "sideScope": "combined" },
+
+    { "exerciseId": "dip", "target": { "kind": "stage", "progressionId": "rmu_dip_press", "stageId": "rmu_dip_s1" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "pbdip", "target": { "kind": "stage", "progressionId": "rmu_dip_press", "stageId": "rmu_dip_s1" }, "relation": "train", "rank": 2, "sideScope": "combined" },
+    { "exerciseId": "ring_dip", "target": { "kind": "stage", "progressionId": "rmu_dip_press", "stageId": "rmu_dip_s2" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+
+    { "exerciseId": "rmu_attempt", "target": { "kind": "goalTerminal", "goalId": "ring_muscle_up" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "bandmu", "target": { "kind": "goalTerminal", "goalId": "ring_muscle_up" }, "relation": "train", "rank": 2, "sideScope": "combined" },
+
+    { "exerciseId": "box_pistol", "target": { "kind": "stage", "progressionId": "pistol_sl_strength", "stageId": "pistol_str_s1" }, "relation": "assess", "rank": 1, "sideScope": "each" },
+    { "exerciseId": "bulgarian_split", "target": { "kind": "stage", "progressionId": "pistol_sl_strength", "stageId": "pistol_str_s1" }, "relation": "train", "rank": 2, "sideScope": "each" },
+    { "exerciseId": "pistol_heel", "target": { "kind": "stage", "progressionId": "pistol_sl_strength", "stageId": "pistol_str_s2" }, "relation": "assess", "rank": 1, "sideScope": "each" },
+
+    { "exerciseId": "deep_squat_hold", "target": { "kind": "progression", "progressionId": "pistol_deep_squat" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+
+    { "exerciseId": "sl_balance", "target": { "kind": "progression", "progressionId": "pistol_balance" }, "relation": "assess", "rank": 1, "sideScope": "each" },
+
+    { "exerciseId": "knee_wall", "target": { "kind": "stage", "progressionId": "pistol_ankle_mobility", "stageId": "pistol_ankle_s1" }, "relation": "assess", "rank": 1, "sideScope": "each" },
+    { "exerciseId": "knee_wall", "target": { "kind": "stage", "progressionId": "pistol_ankle_mobility", "stageId": "pistol_ankle_s2" }, "relation": "assess", "rank": 1, "sideScope": "each" },
+
+    { "exerciseId": "pistol", "target": { "kind": "goalTerminal", "goalId": "pistol_squat" }, "relation": "assess", "rank": 1, "sideScope": "each" },
+    { "exerciseId": "pistol_heel", "target": { "kind": "goalTerminal", "goalId": "pistol_squat" }, "relation": "train", "rank": 2, "sideScope": "each" }
+  ]
+}

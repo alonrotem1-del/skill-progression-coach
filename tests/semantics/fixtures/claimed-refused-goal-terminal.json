@@ -1,0 +1,59 @@
+{
+  "name": "claimed-refused-goal-terminal",
+  "description": "claimedAtGoalTerminal is refuse. A Goal is not achieved on the athlete's word, so the claim is excluded from the terminal evaluation with a structured reason \u2014 and the row itself stays in the ledger, still labelled claimed.",
+  "bundle": "bundle-1",
+  "semantics": [
+    1
+  ],
+  "commitments": {
+    "athleteGoals": [
+      "ring_muscle_up"
+    ],
+    "constraints": [],
+    "preferences": {}
+  },
+  "ledger": [
+    {
+      "seq": 1,
+      "occurredAt": "2026-09-01T10:00:00.000Z",
+      "recordedAt": "2026-09-01T10:00:00.000Z",
+      "exerciseId": "rmu_attempt",
+      "side": null,
+      "attributes": {
+        "reps": 1,
+        "kip": false,
+        "execution": "controlled"
+      },
+      "provenance": "claimed",
+      "provenanceSource": "onboarding_claim",
+      "sourceWorkoutItem": null,
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    }
+  ],
+  "expected": {
+    "evaluations": {
+      "rmu_terminal|combined|ctx_1": {
+        "status": "unsatisfied",
+        "satisfiedBy": [],
+        "excluded": [
+          {
+            "seq": 1,
+            "reason": "claimed_not_eligible"
+          }
+        ]
+      }
+    },
+    "holders": {
+      "goalTerminal:ring_muscle_up|combined": {
+        "status": "unsatisfied"
+      }
+    }
+  }
+}

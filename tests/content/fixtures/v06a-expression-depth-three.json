@@ -1,0 +1,16 @@
+{
+  "name": "v06a-expression-depth-three",
+  "rule": "V6",
+  "reason": "allOf[ leaf, allOf[ leaf, anyOf[...] ] ] is depth 3 — the bounded composition layer drifting into a rule language.",
+  "expect": { "level": "error", "includes": "depth" },
+  "ops": [
+    { "op": "set", "path": "bundle.goals[#ring_muscle_up].terminalRequirement", "value": {
+        "allOf": [
+          { "criterion": "rmu_terminal" },
+          { "allOf": [
+              { "criterion": "dip_ring_5" },
+              { "anyOf": [ { "criterion": "fg_hang_30" }, { "criterion": "sup_rto_20" } ] }
+            ] }
+        ] } }
+  ]
+}

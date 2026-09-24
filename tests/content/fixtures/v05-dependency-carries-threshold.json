@@ -1,0 +1,9 @@
+{
+  "name": "v05-dependency-carries-threshold",
+  "rule": "V5",
+  "reason": "A dependency with minSeconds: 30 has started to evaluate. Thresholds live in Criteria; a Dependency states an ordering only.",
+  "expect": { "level": "error", "includes": "minSeconds" },
+  "ops": [
+    { "op": "set", "path": "bundle.dependencies[#dep_rmu_needs_false_grip].minSeconds", "value": 30 }
+  ]
+}

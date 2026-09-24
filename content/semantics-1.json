@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "publishedAt": "2026-09-24",
+  "note": "Evaluation Semantics 1. Sets every dimension in vocabulary 1 explicitly, including the two deferred ones at none, so nothing about version 1's meaning depends on a resolved default.",
+  "policies": {
+    "supersession": "best_applicable",
+    "provenancePrecedence": "demonstrated_supersedes",
+    "claimedEligibility": "provisional_ordinary",
+    "claimedAtHardDependency": "refuse",
+    "claimedAtGoalTerminal": "refuse",
+    "dependencyInvalidEvidence": "exclude",
+    "missingAttribute": "cannot_satisfy",
+    "criterionComposition": "one_observation",
+    "holderComposition": "all_criteria_any_observation",
+    "expressionStatusCombination": "strict",
+    "stageSelection": "lowest_unsatisfied",
+    "sideAggregation": "combined_cannot_satisfy_each",
+    "freshness": "none",
+    "regression": "none"
+  }
+}

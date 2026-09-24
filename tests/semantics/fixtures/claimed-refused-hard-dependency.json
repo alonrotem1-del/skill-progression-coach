@@ -1,0 +1,127 @@
+{
+  "name": "claimed-refused-hard-dependency",
+  "description": "claimedAtHardDependency is refuse. The rings-turned-out support hold is only claimed, so sup_rto_20 reads provisional as an ordinary Criterion \u2014 and the hard Dependency that gates the unassisted transition stays unmet. A claim cannot unblock.",
+  "bundle": "bundle-1",
+  "semantics": [
+    1
+  ],
+  "commitments": {
+    "athleteGoals": [
+      "ring_muscle_up"
+    ],
+    "constraints": [],
+    "preferences": {}
+  },
+  "ledger": [
+    {
+      "seq": 1,
+      "occurredAt": "2026-09-01T10:00:00.000Z",
+      "recordedAt": "2026-09-01T10:00:00.000Z",
+      "exerciseId": "rto_support",
+      "side": null,
+      "attributes": {
+        "seconds": 25
+      },
+      "provenance": "claimed",
+      "provenanceSource": "onboarding_claim",
+      "sourceWorkoutItem": null,
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    }
+  ],
+  "expected": {
+    "evaluations": {
+      "sup_rto_20|combined|ctx_1": {
+        "status": "provisional",
+        "satisfiedBy": [
+          1
+        ],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 1,
+          "attribute": "seconds",
+          "value": 25
+        }
+      }
+    },
+    "holders": {
+      "stage:rmu_sup_s2|combined": {
+        "status": "provisional"
+      }
+    },
+    "dependencies": {
+      "dep_transition_needs_rto|combined": {
+        "met": false,
+        "reason": "claimed_not_eligible",
+        "blocks": [
+          "stage:rmu_trans_s3"
+        ]
+      }
+    }
+  },
+  "alternates": [
+    {
+      "note": "The same hold, demonstrated, meets the dependency.",
+      "ledger": [
+        {
+          "seq": 1,
+          "occurredAt": "2026-09-01T10:00:00.000Z",
+          "recordedAt": "2026-09-01T10:00:00.000Z",
+          "exerciseId": "rto_support",
+          "side": null,
+          "attributes": {
+            "seconds": 25
+          },
+          "provenance": "demonstrated",
+          "provenanceSource": "in_session",
+          "sourceWorkoutItem": {
+            "workoutId": "w_fixture",
+            "itemIndex": 0
+          },
+          "sequenceInItem": 1,
+          "context": {
+            "readiness": {},
+            "accommodationInForce": null,
+            "unmetDependencies": [],
+            "prescribedDose": null,
+            "contextId": "ctx_1"
+          }
+        }
+      ],
+      "expected": {
+        "evaluations": {
+          "sup_rto_20|combined|ctx_1": {
+            "status": "satisfied",
+            "satisfiedBy": [
+              1
+            ],
+            "excluded": [],
+            "bestObservation": {
+              "seq": 1,
+              "attribute": "seconds",
+              "value": 25
+            }
+          }
+        },
+        "holders": {
+          "stage:rmu_sup_s2|combined": {
+            "status": "satisfied"
+          }
+        },
+        "dependencies": {
+          "dep_transition_needs_rto|combined": {
+            "met": true,
+            "reason": null,
+            "blocks": []
+          }
+        }
+      }
+    }
+  ]
+}

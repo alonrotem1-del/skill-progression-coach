@@ -1,0 +1,9 @@
+{
+  "name": "v03a-staged-with-one-stage",
+  "rule": "V3",
+  "reason": "A STAGED progression with a single stage is a DIRECT progression wearing a costume.",
+  "expect": { "level": "error", "includes": "at least 2 stages" },
+  "ops": [
+    { "op": "remove", "path": "bundle.progressions[#rmu_ring_support].stages[1]" }
+  ]
+}

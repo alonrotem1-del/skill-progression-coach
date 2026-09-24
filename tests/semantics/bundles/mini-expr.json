@@ -1,0 +1,257 @@
+{
+  "id": "mini-expr",
+  "version": 1,
+  "note": "A minimal bundle used only by the three RequirementExpression cases. Content Bundle 1 ships every requirement as a bare leaf (Technical Schema v1.1 \u00a78: anyOf ships in the schema and unused in bundle 1), so allOf / anyOf / nesting have to be exercised against content authored for the purpose. Nothing here is shipped to an athlete. Each Criterion sits on its own attribute so the three expression shapes stay isolated from one another.",
+  "requiresSemanticsAtLeast": 1,
+  "attributes": [
+    {
+      "id": "reps",
+      "label": "Repetitions",
+      "type": "quantity",
+      "unit": "reps"
+    },
+    {
+      "id": "seconds",
+      "label": "Duration",
+      "type": "quantity",
+      "unit": "seconds"
+    },
+    {
+      "id": "cm",
+      "label": "Distance",
+      "type": "quantity",
+      "unit": "cm"
+    }
+  ],
+  "exercises": [
+    {
+      "id": "m_pull",
+      "name": "Mini Pull",
+      "unilateral": false,
+      "producesAttributes": [
+        "reps"
+      ],
+      "loadDimensions": {
+        "pull": 2
+      },
+      "defaultDose": {
+        "scheme": "sets",
+        "sets": 3,
+        "reps": 5
+      }
+    },
+    {
+      "id": "m_hang",
+      "name": "Mini Hang",
+      "unilateral": false,
+      "producesAttributes": [
+        "seconds"
+      ],
+      "loadDimensions": {
+        "grip": 2
+      },
+      "defaultDose": {
+        "scheme": "hold",
+        "sets": 3,
+        "seconds": 30
+      }
+    },
+    {
+      "id": "m_reach",
+      "name": "Mini Reach",
+      "unilateral": false,
+      "producesAttributes": [
+        "cm"
+      ],
+      "loadDimensions": {},
+      "defaultDose": {
+        "scheme": "assessment",
+        "sets": 1
+      }
+    }
+  ],
+  "criteria": [
+    {
+      "id": "m_a",
+      "label": "Five mini pulls",
+      "primaryAttribute": "reps",
+      "sideScope": "combined",
+      "conditions": [
+        {
+          "attribute": "reps",
+          "op": "gte",
+          "value": 5
+        }
+      ],
+      "demonstration": {
+        "occasions": 1,
+        "distinctDays": false
+      }
+    },
+    {
+      "id": "m_b",
+      "label": "Thirty-second mini hang",
+      "primaryAttribute": "seconds",
+      "sideScope": "combined",
+      "conditions": [
+        {
+          "attribute": "seconds",
+          "op": "gte",
+          "value": 30
+        }
+      ],
+      "demonstration": {
+        "occasions": 1,
+        "distinctDays": false
+      }
+    },
+    {
+      "id": "m_c",
+      "label": "Reach eight centimetres",
+      "primaryAttribute": "cm",
+      "sideScope": "combined",
+      "conditions": [
+        {
+          "attribute": "cm",
+          "op": "gte",
+          "value": 8
+        }
+      ],
+      "demonstration": {
+        "occasions": 1,
+        "distinctDays": false
+      }
+    }
+  ],
+  "progressions": [
+    {
+      "id": "m_allof",
+      "name": "Both Of Them",
+      "athleteFacingName": "Both",
+      "form": "DIRECT",
+      "requirement": {
+        "allOf": [
+          {
+            "criterion": "m_a"
+          },
+          {
+            "criterion": "m_b"
+          }
+        ]
+      }
+    },
+    {
+      "id": "m_anyof",
+      "name": "Either Of Them",
+      "athleteFacingName": "Either",
+      "form": "DIRECT",
+      "requirement": {
+        "anyOf": [
+          {
+            "criterion": "m_a"
+          },
+          {
+            "criterion": "m_b"
+          }
+        ]
+      }
+    },
+    {
+      "id": "m_nested",
+      "name": "One And Either",
+      "athleteFacingName": "One And Either",
+      "form": "DIRECT",
+      "requirement": {
+        "allOf": [
+          {
+            "criterion": "m_a"
+          },
+          {
+            "anyOf": [
+              {
+                "criterion": "m_b"
+              },
+              {
+                "criterion": "m_c"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "goals": [],
+  "dependencies": [],
+  "exerciseLinks": [
+    {
+      "exerciseId": "m_pull",
+      "target": {
+        "kind": "progression",
+        "progressionId": "m_allof"
+      },
+      "relation": "assess",
+      "rank": 1,
+      "sideScope": "combined"
+    },
+    {
+      "exerciseId": "m_hang",
+      "target": {
+        "kind": "progression",
+        "progressionId": "m_allof"
+      },
+      "relation": "assess",
+      "rank": 1,
+      "sideScope": "combined"
+    },
+    {
+      "exerciseId": "m_pull",
+      "target": {
+        "kind": "progression",
+        "progressionId": "m_anyof"
+      },
+      "relation": "assess",
+      "rank": 1,
+      "sideScope": "combined"
+    },
+    {
+      "exerciseId": "m_hang",
+      "target": {
+        "kind": "progression",
+        "progressionId": "m_anyof"
+      },
+      "relation": "assess",
+      "rank": 1,
+      "sideScope": "combined"
+    },
+    {
+      "exerciseId": "m_pull",
+      "target": {
+        "kind": "progression",
+        "progressionId": "m_nested"
+      },
+      "relation": "assess",
+      "rank": 1,
+      "sideScope": "combined"
+    },
+    {
+      "exerciseId": "m_hang",
+      "target": {
+        "kind": "progression",
+        "progressionId": "m_nested"
+      },
+      "relation": "assess",
+      "rank": 1,
+      "sideScope": "combined"
+    },
+    {
+      "exerciseId": "m_reach",
+      "target": {
+        "kind": "progression",
+        "progressionId": "m_nested"
+      },
+      "relation": "assess",
+      "rank": 1,
+      "sideScope": "combined"
+    }
+  ]
+}

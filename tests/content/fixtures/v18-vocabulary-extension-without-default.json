@@ -1,0 +1,14 @@
+{
+  "name": "v18-vocabulary-extension-without-default",
+  "rule": "V18",
+  "reason": "Vocabulary 2 adds a dimension with no behaviour-preserving default. Semantics 1 cannot resolve it, so every retained fixture verdict would change the moment the extension shipped.",
+  "expect": { "level": "error", "includes": "behaviourPreservingDefault" },
+  "ops": [
+    { "op": "set", "path": "vocabulary.vocabularyVersion", "value": 2 },
+    { "op": "push", "path": "vocabulary.dimensions", "value": {
+        "key": "tieBreak",
+        "allowedValues": ["earliest", "latest"],
+        "introducedInVocabulary": 2,
+        "governs": "Which of two equally applicable observations is cited." } }
+  ]
+}

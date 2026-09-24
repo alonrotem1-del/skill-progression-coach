@@ -1,0 +1,120 @@
+{
+  "name": "demonstrated-supersedes-claimed",
+  "description": "Claim 10, demonstrated 8. provenancePrecedence is demonstrated_supersedes, so the verdict reports 8 and both rows survive and are cited. The claim is not deleted, not relabelled, and still carries the 10-rep stage provisionally.",
+  "bundle": "bundle-1",
+  "semantics": [
+    1
+  ],
+  "commitments": {
+    "athleteGoals": [
+      "ring_muscle_up"
+    ],
+    "constraints": [],
+    "preferences": {}
+  },
+  "ledger": [
+    {
+      "seq": 1,
+      "occurredAt": "2026-08-01T10:00:00.000Z",
+      "recordedAt": "2026-08-01T10:00:00.000Z",
+      "exerciseId": "pullup",
+      "side": null,
+      "attributes": {
+        "reps": 10,
+        "kip": false
+      },
+      "provenance": "claimed",
+      "provenanceSource": "onboarding_claim",
+      "sourceWorkoutItem": null,
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    },
+    {
+      "seq": 2,
+      "occurredAt": "2026-09-01T10:00:00.000Z",
+      "recordedAt": "2026-09-01T10:00:00.000Z",
+      "exerciseId": "pullup",
+      "side": null,
+      "attributes": {
+        "reps": 8,
+        "kip": false
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    }
+  ],
+  "expected": {
+    "evaluations": {
+      "rmu_pull_1|combined|ctx_1": {
+        "status": "satisfied",
+        "satisfiedBy": [
+          1,
+          2
+        ],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 2,
+          "attribute": "reps",
+          "value": 8
+        }
+      },
+      "rmu_pull_5|combined|ctx_1": {
+        "status": "satisfied",
+        "satisfiedBy": [
+          1,
+          2
+        ],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 2,
+          "attribute": "reps",
+          "value": 8
+        }
+      },
+      "rmu_pull_10|combined|ctx_1": {
+        "status": "provisional",
+        "satisfiedBy": [
+          1
+        ],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 1,
+          "attribute": "reps",
+          "value": 10
+        }
+      }
+    },
+    "holders": {
+      "stage:rmu_pull_s1|combined": {
+        "status": "satisfied"
+      },
+      "stage:rmu_pull_s2|combined": {
+        "status": "satisfied"
+      },
+      "stage:rmu_pull_s3|combined": {
+        "status": "provisional"
+      }
+    },
+    "currentStage": {
+      "rmu_pull_strength|combined": "rmu_pull_s3"
+    }
+  }
+}

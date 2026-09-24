@@ -1,0 +1,9 @@
+{
+  "name": "v16a-semantics-unknown-dimension",
+  "rule": "V16",
+  "reason": "A semantics file invents a policy dimension. The vocabulary is the only place a dimension may be introduced, and its arrival must carry a behaviour-preserving default.",
+  "expect": { "level": "error", "includes": "unknown policy dimension" },
+  "ops": [
+    { "op": "set", "path": "semantics[0].policies.tieBreak", "value": "first" }
+  ]
+}

@@ -1,0 +1,160 @@
+{
+  "name": "side-each-independent",
+  "description": "Left 7 cm, right 12 cm on the knee-to-wall test. ankle_9 has sideScope each, so the two sides are evaluated independently: left unsatisfied, right satisfied, and the ankle progression sits on a different stage per side. Within the progressions this case provides evidence for, the limiter is the left side only.",
+  "bundle": "bundle-1",
+  "semantics": [
+    1
+  ],
+  "commitments": {
+    "athleteGoals": [
+      "pistol_squat"
+    ],
+    "constraints": [],
+    "preferences": {}
+  },
+  "ledger": [
+    {
+      "seq": 1,
+      "occurredAt": "2026-09-01T10:00:00.000Z",
+      "recordedAt": "2026-09-01T10:00:00.000Z",
+      "exerciseId": "knee_wall",
+      "side": "left",
+      "attributes": {
+        "cm": 7
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    },
+    {
+      "seq": 2,
+      "occurredAt": "2026-09-01T10:00:00.000Z",
+      "recordedAt": "2026-09-01T10:00:00.000Z",
+      "exerciseId": "knee_wall",
+      "side": "right",
+      "attributes": {
+        "cm": 12
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    }
+  ],
+  "expected": {
+    "evaluations": {
+      "ankle_9|left|ctx_1": {
+        "status": "unsatisfied",
+        "satisfiedBy": [],
+        "excluded": [
+          {
+            "seq": 2,
+            "reason": "wrong_side"
+          }
+        ],
+        "bestObservation": {
+          "seq": 1,
+          "attribute": "cm",
+          "value": 7
+        },
+        "shortfall": "short by 2 cm"
+      },
+      "ankle_9|right|ctx_1": {
+        "status": "satisfied",
+        "satisfiedBy": [
+          2
+        ],
+        "excluded": [
+          {
+            "seq": 1,
+            "reason": "wrong_side"
+          }
+        ],
+        "bestObservation": {
+          "seq": 2,
+          "attribute": "cm",
+          "value": 12
+        }
+      },
+      "ankle_12|left|ctx_1": {
+        "status": "unsatisfied",
+        "satisfiedBy": [],
+        "excluded": [
+          {
+            "seq": 2,
+            "reason": "wrong_side"
+          }
+        ],
+        "bestObservation": {
+          "seq": 1,
+          "attribute": "cm",
+          "value": 7
+        },
+        "shortfall": "short by 5 cm"
+      },
+      "ankle_12|right|ctx_1": {
+        "status": "satisfied",
+        "satisfiedBy": [
+          2
+        ],
+        "excluded": [
+          {
+            "seq": 1,
+            "reason": "wrong_side"
+          }
+        ],
+        "bestObservation": {
+          "seq": 2,
+          "attribute": "cm",
+          "value": 12
+        }
+      }
+    },
+    "holders": {
+      "stage:pistol_ankle_s1|left": {
+        "status": "unsatisfied"
+      },
+      "stage:pistol_ankle_s1|right": {
+        "status": "satisfied"
+      },
+      "stage:pistol_ankle_s2|left": {
+        "status": "unsatisfied"
+      },
+      "stage:pistol_ankle_s2|right": {
+        "status": "satisfied"
+      }
+    },
+    "currentStage": {
+      "pistol_ankle_mobility|left": "pistol_ankle_s1",
+      "pistol_ankle_mobility|right": null
+    },
+    "limiters": {
+      "pistol_squat|left": "pistol_ankle_mobility",
+      "pistol_squat|right": null
+    }
+  },
+  "scopeProgressions": [
+    "pistol_ankle_mobility"
+  ]
+}

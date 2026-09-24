@@ -1,0 +1,88 @@
+{
+  "name": "regression-none",
+  "description": "Five strict pull-ups in August, three in September. regression is none in semantics 1, so the later sub-threshold observation does not demote anything: the criterion stays satisfied and cites the observation that satisfied it. Nothing about the recent row is hidden - it is in the ledger and available to any future policy.",
+  "bundle": "bundle-1",
+  "semantics": [
+    1
+  ],
+  "commitments": {
+    "athleteGoals": [
+      "ring_muscle_up"
+    ],
+    "constraints": [],
+    "preferences": {}
+  },
+  "ledger": [
+    {
+      "seq": 1,
+      "occurredAt": "2026-08-01T10:00:00.000Z",
+      "recordedAt": "2026-08-01T10:00:00.000Z",
+      "exerciseId": "pullup",
+      "side": null,
+      "attributes": {
+        "reps": 5,
+        "kip": false
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    },
+    {
+      "seq": 2,
+      "occurredAt": "2026-09-01T10:00:00.000Z",
+      "recordedAt": "2026-09-01T10:00:00.000Z",
+      "exerciseId": "pullup",
+      "side": null,
+      "attributes": {
+        "reps": 3,
+        "kip": false
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    }
+  ],
+  "expected": {
+    "evaluations": {
+      "rmu_pull_5|combined|ctx_1": {
+        "status": "satisfied",
+        "satisfiedBy": [
+          1
+        ],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 1,
+          "attribute": "reps",
+          "value": 5
+        }
+      }
+    },
+    "holders": {
+      "stage:rmu_pull_s2|combined": {
+        "status": "satisfied"
+      }
+    }
+  }
+}

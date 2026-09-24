@@ -1,0 +1,9 @@
+{
+  "name": "v11-each-criterion-without-unilateral",
+  "rule": "V11",
+  "reason": "The pistol is declared bilateral while its terminal criterion is per-side, so no observation could ever satisfy the left or right side on its own.",
+  "expect": { "level": "error", "includes": "sideScope" },
+  "ops": [
+    { "op": "set", "path": "bundle.exercises[#pistol].unilateral", "value": false }
+  ]
+}

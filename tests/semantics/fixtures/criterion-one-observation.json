@@ -1,0 +1,195 @@
+{
+  "name": "criterion-one-observation",
+  "description": "rmu_terminal asks for three things at once: one rep, no kip, controlled execution. Two observations that between them satisfy all three do NOT satisfy it \u2014 criterionComposition is one_observation. A single observation that carries all three does. Falling short of a threshold is not an exclusion: the row is admissible and simply did not clear the bar, so it may still be cited as bestObservation.",
+  "bundle": "bundle-1",
+  "semantics": [
+    1
+  ],
+  "commitments": {
+    "athleteGoals": [
+      "ring_muscle_up"
+    ],
+    "constraints": [],
+    "preferences": {}
+  },
+  "ledger": [
+    {
+      "seq": 1,
+      "occurredAt": "2026-09-01T10:00:00.000Z",
+      "recordedAt": "2026-09-01T10:00:00.000Z",
+      "exerciseId": "rmu_attempt",
+      "side": null,
+      "attributes": {
+        "reps": 1,
+        "kip": false,
+        "execution": "assisted"
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    },
+    {
+      "seq": 2,
+      "occurredAt": "2026-09-02T10:00:00.000Z",
+      "recordedAt": "2026-09-02T10:00:00.000Z",
+      "exerciseId": "rmu_attempt",
+      "side": null,
+      "attributes": {
+        "reps": 1,
+        "kip": true,
+        "execution": "controlled"
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    }
+  ],
+  "expected": {
+    "evaluations": {
+      "rmu_terminal|combined|ctx_1": {
+        "status": "unsatisfied",
+        "satisfiedBy": [],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 2,
+          "attribute": "reps",
+          "value": 1
+        },
+        "shortfall": "no single observation meets all three conditions"
+      }
+    },
+    "holders": {
+      "goalTerminal:ring_muscle_up|combined": {
+        "status": "unsatisfied"
+      }
+    }
+  },
+  "alternates": [
+    {
+      "note": "One observation carrying all three conditions satisfies it.",
+      "ledger": [
+        {
+          "seq": 1,
+          "occurredAt": "2026-09-01T10:00:00.000Z",
+          "recordedAt": "2026-09-01T10:00:00.000Z",
+          "exerciseId": "rmu_attempt",
+          "side": null,
+          "attributes": {
+            "reps": 1,
+            "kip": false,
+            "execution": "assisted"
+          },
+          "provenance": "demonstrated",
+          "provenanceSource": "in_session",
+          "sourceWorkoutItem": {
+            "workoutId": "w_fixture",
+            "itemIndex": 0
+          },
+          "sequenceInItem": 1,
+          "context": {
+            "readiness": {},
+            "accommodationInForce": null,
+            "unmetDependencies": [],
+            "prescribedDose": null,
+            "contextId": "ctx_1"
+          }
+        },
+        {
+          "seq": 2,
+          "occurredAt": "2026-09-02T10:00:00.000Z",
+          "recordedAt": "2026-09-02T10:00:00.000Z",
+          "exerciseId": "rmu_attempt",
+          "side": null,
+          "attributes": {
+            "reps": 1,
+            "kip": true,
+            "execution": "controlled"
+          },
+          "provenance": "demonstrated",
+          "provenanceSource": "in_session",
+          "sourceWorkoutItem": {
+            "workoutId": "w_fixture",
+            "itemIndex": 0
+          },
+          "sequenceInItem": 1,
+          "context": {
+            "readiness": {},
+            "accommodationInForce": null,
+            "unmetDependencies": [],
+            "prescribedDose": null,
+            "contextId": "ctx_1"
+          }
+        },
+        {
+          "seq": 3,
+          "occurredAt": "2026-09-03T10:00:00.000Z",
+          "recordedAt": "2026-09-03T10:00:00.000Z",
+          "exerciseId": "rmu_attempt",
+          "side": null,
+          "attributes": {
+            "reps": 1,
+            "kip": false,
+            "execution": "controlled"
+          },
+          "provenance": "demonstrated",
+          "provenanceSource": "in_session",
+          "sourceWorkoutItem": {
+            "workoutId": "w_fixture",
+            "itemIndex": 0
+          },
+          "sequenceInItem": 1,
+          "context": {
+            "readiness": {},
+            "accommodationInForce": null,
+            "unmetDependencies": [],
+            "prescribedDose": null,
+            "contextId": "ctx_1"
+          }
+        }
+      ],
+      "expected": {
+        "evaluations": {
+          "rmu_terminal|combined|ctx_1": {
+            "status": "satisfied",
+            "satisfiedBy": [
+              3
+            ],
+            "excluded": [],
+            "bestObservation": {
+              "seq": 3,
+              "attribute": "reps",
+              "value": 1
+            }
+          }
+        },
+        "holders": {
+          "goalTerminal:ring_muscle_up|combined": {
+            "status": "satisfied"
+          }
+        }
+      }
+    }
+  ]
+}

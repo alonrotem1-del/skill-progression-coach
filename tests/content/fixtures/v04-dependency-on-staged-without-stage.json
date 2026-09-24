@@ -1,0 +1,9 @@
+{
+  "name": "v04-dependency-on-staged-without-stage",
+  "rule": "V4",
+  "reason": "The dependency names a STAGED progression as a whole, leaving it ambiguous which stage unblocks the pistol.",
+  "expect": { "level": "error", "includes": "which stage" },
+  "ops": [
+    { "op": "set", "path": "bundle.dependencies[#dep_pistol_needs_ankle].requires", "value": { "kind": "progression", "progressionId": "pistol_ankle_mobility" } }
+  ]
+}

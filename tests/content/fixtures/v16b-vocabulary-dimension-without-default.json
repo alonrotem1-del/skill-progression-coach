@@ -1,0 +1,10 @@
+{
+  "name": "v16b-vocabulary-dimension-without-default",
+  "rule": "V16",
+  "reason": "A dimension the semantics file does not set and the vocabulary gives no default for. The evaluator would have nothing to resolve it to.",
+  "expect": { "level": "error", "includes": "behaviour-preserving default" },
+  "ops": [
+    { "op": "remove", "path": "vocabulary.dimensions[#freshness].behaviourPreservingDefault" },
+    { "op": "remove", "path": "semantics[0].policies.freshness" }
+  ]
+}

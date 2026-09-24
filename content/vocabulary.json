@@ -1,0 +1,106 @@
+{
+  "vocabularyVersion": 1,
+  "note": "The bounded evaluation-policy vocabulary (Technical Schema v1.1 §9). Ships with the engine, not with a bundle. An EvaluationSemantics record stores only the dimensions it explicitly sets; the evaluator resolves each dimension as (stored value ?? behaviourPreservingDefault). A dimension introduced later must declare a default that reproduces the world before it existed.",
+  "dimensions": [
+    {
+      "key": "supersession",
+      "allowedValues": ["best_applicable", "most_recent"],
+      "behaviourPreservingDefault": "best_applicable",
+      "introducedInVocabulary": 1,
+      "governs": "How several observations of one attribute combine into the value a condition is tested against."
+    },
+    {
+      "key": "provenancePrecedence",
+      "allowedValues": ["demonstrated_supersedes", "most_recent_wins"],
+      "behaviourPreservingDefault": "demonstrated_supersedes",
+      "introducedInVocabulary": 1,
+      "governs": "Claimed 10, demonstrated 8 - the evaluation reports 8, and both records survive."
+    },
+    {
+      "key": "claimedEligibility",
+      "allowedValues": ["provisional_ordinary", "none"],
+      "behaviourPreservingDefault": "provisional_ordinary",
+      "introducedInVocabulary": 1,
+      "governs": "Whether a claim may provisionally satisfy an ordinary Criterion at all."
+    },
+    {
+      "key": "claimedAtHardDependency",
+      "allowedValues": ["refuse", "admit"],
+      "behaviourPreservingDefault": "refuse",
+      "introducedInVocabulary": 1,
+      "governs": "A claim may not unblock a hard Dependency."
+    },
+    {
+      "key": "claimedAtGoalTerminal",
+      "allowedValues": ["refuse", "admit"],
+      "behaviourPreservingDefault": "refuse",
+      "introducedInVocabulary": 1,
+      "governs": "A Goal is not achieved on the athlete's word."
+    },
+    {
+      "key": "dependencyInvalidEvidence",
+      "allowedValues": ["exclude", "admit"],
+      "behaviourPreservingDefault": "exclude",
+      "introducedInVocabulary": 1,
+      "governs": "Evidence collected against an unmet blocking Dependency is excluded, never relabelled."
+    },
+    {
+      "key": "missingAttribute",
+      "allowedValues": ["cannot_satisfy", "ignore_condition"],
+      "behaviourPreservingDefault": "cannot_satisfy",
+      "introducedInVocabulary": 1,
+      "governs": "The tri-state rule. A pull-up logged without a kip value cannot clear 'no kip'."
+    },
+    {
+      "key": "criterionComposition",
+      "allowedValues": ["one_observation", "may_span"],
+      "behaviourPreservingDefault": "one_observation",
+      "introducedInVocabulary": 1,
+      "governs": "All conditions of a Criterion must hold of the same observation."
+    },
+    {
+      "key": "holderComposition",
+      "allowedValues": ["all_criteria_any_observation"],
+      "behaviourPreservingDefault": "all_criteria_any_observation",
+      "introducedInVocabulary": 1,
+      "governs": "A holder's Criteria may each be satisfied by different observations."
+    },
+    {
+      "key": "expressionStatusCombination",
+      "allowedValues": ["strict", "anyof_requires_demonstrated"],
+      "behaviourPreservingDefault": "strict",
+      "introducedInVocabulary": 1,
+      "governs": "How child statuses combine into a parent. strict: allOf is satisfied iff every child is, provisional if all are satisfied-or-provisional with at least one provisional; anyOf is satisfied iff any child is, provisional if any child is."
+    },
+    {
+      "key": "stageSelection",
+      "allowedValues": ["lowest_unsatisfied", "highest_satisfied_next"],
+      "behaviourPreservingDefault": "lowest_unsatisfied",
+      "introducedInVocabulary": 1,
+      "governs": "Which Stage is current. Only meaningful for STAGED Progressions."
+    },
+    {
+      "key": "sideAggregation",
+      "allowedValues": ["combined_cannot_satisfy_each", "combined_satisfies_each"],
+      "behaviourPreservingDefault": "combined_cannot_satisfy_each",
+      "introducedInVocabulary": 1,
+      "governs": "A bilateral measurement cannot satisfy a per-side Criterion."
+    },
+    {
+      "key": "freshness",
+      "allowedValues": ["none", "expire_after_months", "confidence_decay"],
+      "behaviourPreservingDefault": "none",
+      "introducedInVocabulary": 1,
+      "deferred": true,
+      "governs": "Declared now, valued none. When a freshness rule arrives it is a value change on an existing dimension, which mints a new context and is therefore gated."
+    },
+    {
+      "key": "regression",
+      "allowedValues": ["none", "floor_only", "demote_on_repeat"],
+      "behaviourPreservingDefault": "none",
+      "introducedInVocabulary": 1,
+      "deferred": true,
+      "governs": "Declared now, valued none. Same reasoning as freshness."
+    }
+  ]
+}

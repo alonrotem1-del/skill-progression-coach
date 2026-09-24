@@ -1,0 +1,9 @@
+{
+  "name": "v07-dependency-carries-requirement",
+  "rule": "V7",
+  "reason": "A requirement on a Dependency is a fourth attachment position, which would let composition extend over Dependencies.",
+  "expect": { "level": "error", "includes": "may only sit on" },
+  "ops": [
+    { "op": "set", "path": "bundle.dependencies[#dep_pistol_needs_deep_squat].requirement", "value": { "criterion": "deepsquat_30" } }
+  ]
+}

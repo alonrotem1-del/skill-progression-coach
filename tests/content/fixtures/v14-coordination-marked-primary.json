@@ -1,0 +1,9 @@
+{
+  "name": "v14-coordination-marked-primary",
+  "rule": "V14",
+  "reason": "A coordination link marked primary reintroduces the single-spine tree the goal graph replaced.",
+  "expect": { "level": "error", "includes": "primary" },
+  "ops": [
+    { "op": "set", "path": "bundle.goals[#ring_muscle_up].coordinates[0].primary", "value": true }
+  ]
+}

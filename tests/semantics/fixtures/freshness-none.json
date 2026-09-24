@@ -1,0 +1,62 @@
+{
+  "name": "freshness-none",
+  "description": "A false-grip hang demonstrated two years ago. freshness is none in semantics 1, so it still satisfies and nothing is excluded as stale. When a freshness rule arrives it is a value change on a dimension that already exists, which mints a new context and is therefore something the athlete adopts rather than something that happens to them.",
+  "bundle": "bundle-1",
+  "semantics": [
+    1
+  ],
+  "commitments": {
+    "athleteGoals": [
+      "ring_muscle_up"
+    ],
+    "constraints": [],
+    "preferences": {}
+  },
+  "ledger": [
+    {
+      "seq": 1,
+      "occurredAt": "2024-09-01T10:00:00.000Z",
+      "recordedAt": "2024-09-01T10:00:00.000Z",
+      "exerciseId": "fg_hang",
+      "side": null,
+      "attributes": {
+        "seconds": 32
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    }
+  ],
+  "expected": {
+    "evaluations": {
+      "fg_hang_30|combined|ctx_1": {
+        "status": "satisfied",
+        "satisfiedBy": [
+          1
+        ],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 1,
+          "attribute": "seconds",
+          "value": 32
+        }
+      }
+    },
+    "holders": {
+      "progression:rmu_false_grip|combined": {
+        "status": "satisfied"
+      }
+    }
+  }
+}

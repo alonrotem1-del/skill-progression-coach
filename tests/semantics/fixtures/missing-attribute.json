@@ -1,0 +1,175 @@
+{
+  "name": "missing-attribute",
+  "description": "Ten pull-ups logged with no kip value. missingAttribute is cannot_satisfy: the tri-state rule. An absent value is not a pass and not a fail of the athlete's making - it is an unanswered question, excluded with the attribute named, so the app can ask.",
+  "bundle": "bundle-1",
+  "semantics": [
+    1
+  ],
+  "commitments": {
+    "athleteGoals": [
+      "ring_muscle_up"
+    ],
+    "constraints": [],
+    "preferences": {}
+  },
+  "ledger": [
+    {
+      "seq": 1,
+      "occurredAt": "2026-09-01T10:00:00.000Z",
+      "recordedAt": "2026-09-01T10:00:00.000Z",
+      "exerciseId": "pullup",
+      "side": null,
+      "attributes": {
+        "reps": 10
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    }
+  ],
+  "expected": {
+    "evaluations": {
+      "rmu_pull_1|combined|ctx_1": {
+        "status": "unsatisfied",
+        "satisfiedBy": [],
+        "excluded": [
+          {
+            "seq": 1,
+            "reason": "missing_attribute(kip)"
+          }
+        ]
+      },
+      "rmu_pull_5|combined|ctx_1": {
+        "status": "unsatisfied",
+        "satisfiedBy": [],
+        "excluded": [
+          {
+            "seq": 1,
+            "reason": "missing_attribute(kip)"
+          }
+        ]
+      },
+      "rmu_pull_10|combined|ctx_1": {
+        "status": "unsatisfied",
+        "satisfiedBy": [],
+        "excluded": [
+          {
+            "seq": 1,
+            "reason": "missing_attribute(kip)"
+          }
+        ]
+      }
+    },
+    "holders": {
+      "stage:rmu_pull_s1|combined": {
+        "status": "unsatisfied"
+      },
+      "stage:rmu_pull_s2|combined": {
+        "status": "unsatisfied"
+      },
+      "stage:rmu_pull_s3|combined": {
+        "status": "unsatisfied"
+      }
+    },
+    "currentStage": {
+      "rmu_pull_strength|combined": "rmu_pull_s1"
+    }
+  },
+  "alternates": [
+    {
+      "note": "The same ten reps with kip answered false satisfies all three stages.",
+      "ledger": [
+        {
+          "seq": 1,
+          "occurredAt": "2026-09-01T10:00:00.000Z",
+          "recordedAt": "2026-09-01T10:00:00.000Z",
+          "exerciseId": "pullup",
+          "side": null,
+          "attributes": {
+            "reps": 10,
+            "kip": false
+          },
+          "provenance": "demonstrated",
+          "provenanceSource": "in_session",
+          "sourceWorkoutItem": {
+            "workoutId": "w_fixture",
+            "itemIndex": 0
+          },
+          "sequenceInItem": 1,
+          "context": {
+            "readiness": {},
+            "accommodationInForce": null,
+            "unmetDependencies": [],
+            "prescribedDose": null,
+            "contextId": "ctx_1"
+          }
+        }
+      ],
+      "expected": {
+        "evaluations": {
+          "rmu_pull_1|combined|ctx_1": {
+            "status": "satisfied",
+            "satisfiedBy": [
+              1
+            ],
+            "excluded": [],
+            "bestObservation": {
+              "seq": 1,
+              "attribute": "reps",
+              "value": 10
+            }
+          },
+          "rmu_pull_5|combined|ctx_1": {
+            "status": "satisfied",
+            "satisfiedBy": [
+              1
+            ],
+            "excluded": [],
+            "bestObservation": {
+              "seq": 1,
+              "attribute": "reps",
+              "value": 10
+            }
+          },
+          "rmu_pull_10|combined|ctx_1": {
+            "status": "satisfied",
+            "satisfiedBy": [
+              1
+            ],
+            "excluded": [],
+            "bestObservation": {
+              "seq": 1,
+              "attribute": "reps",
+              "value": 10
+            }
+          }
+        },
+        "holders": {
+          "stage:rmu_pull_s1|combined": {
+            "status": "satisfied"
+          },
+          "stage:rmu_pull_s2|combined": {
+            "status": "satisfied"
+          },
+          "stage:rmu_pull_s3|combined": {
+            "status": "satisfied"
+          }
+        },
+        "currentStage": {
+          "rmu_pull_strength|combined": null
+        }
+      }
+    }
+  ]
+}

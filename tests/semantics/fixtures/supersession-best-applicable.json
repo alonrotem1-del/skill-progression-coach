@@ -1,0 +1,166 @@
+{
+  "name": "supersession-best-applicable",
+  "description": "Six reps first, then three. supersession is best_applicable, so the best applicable value wins regardless of ledger order - the alternate reverses the order and the verdict is identical.",
+  "bundle": "bundle-1",
+  "semantics": [
+    1
+  ],
+  "commitments": {
+    "athleteGoals": [
+      "ring_muscle_up"
+    ],
+    "constraints": [],
+    "preferences": {}
+  },
+  "ledger": [
+    {
+      "seq": 1,
+      "occurredAt": "2026-08-01T10:00:00.000Z",
+      "recordedAt": "2026-08-01T10:00:00.000Z",
+      "exerciseId": "pullup",
+      "side": null,
+      "attributes": {
+        "reps": 6,
+        "kip": false
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    },
+    {
+      "seq": 2,
+      "occurredAt": "2026-09-01T10:00:00.000Z",
+      "recordedAt": "2026-09-01T10:00:00.000Z",
+      "exerciseId": "pullup",
+      "side": null,
+      "attributes": {
+        "reps": 3,
+        "kip": false
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    }
+  ],
+  "expected": {
+    "evaluations": {
+      "rmu_pull_5|combined|ctx_1": {
+        "status": "satisfied",
+        "satisfiedBy": [
+          1
+        ],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 1,
+          "attribute": "reps",
+          "value": 6
+        }
+      }
+    },
+    "holders": {
+      "stage:rmu_pull_s2|combined": {
+        "status": "satisfied"
+      }
+    }
+  },
+  "alternates": [
+    {
+      "note": "The same two values in the opposite order. Best applicable is still 6.",
+      "ledger": [
+        {
+          "seq": 1,
+          "occurredAt": "2026-08-01T10:00:00.000Z",
+          "recordedAt": "2026-08-01T10:00:00.000Z",
+          "exerciseId": "pullup",
+          "side": null,
+          "attributes": {
+            "reps": 3,
+            "kip": false
+          },
+          "provenance": "demonstrated",
+          "provenanceSource": "in_session",
+          "sourceWorkoutItem": {
+            "workoutId": "w_fixture",
+            "itemIndex": 0
+          },
+          "sequenceInItem": 1,
+          "context": {
+            "readiness": {},
+            "accommodationInForce": null,
+            "unmetDependencies": [],
+            "prescribedDose": null,
+            "contextId": "ctx_1"
+          }
+        },
+        {
+          "seq": 2,
+          "occurredAt": "2026-09-01T10:00:00.000Z",
+          "recordedAt": "2026-09-01T10:00:00.000Z",
+          "exerciseId": "pullup",
+          "side": null,
+          "attributes": {
+            "reps": 6,
+            "kip": false
+          },
+          "provenance": "demonstrated",
+          "provenanceSource": "in_session",
+          "sourceWorkoutItem": {
+            "workoutId": "w_fixture",
+            "itemIndex": 0
+          },
+          "sequenceInItem": 1,
+          "context": {
+            "readiness": {},
+            "accommodationInForce": null,
+            "unmetDependencies": [],
+            "prescribedDose": null,
+            "contextId": "ctx_1"
+          }
+        }
+      ],
+      "expected": {
+        "evaluations": {
+          "rmu_pull_5|combined|ctx_1": {
+            "status": "satisfied",
+            "satisfiedBy": [
+              2
+            ],
+            "excluded": [],
+            "bestObservation": {
+              "seq": 2,
+              "attribute": "reps",
+              "value": 6
+            }
+          }
+        },
+        "holders": {
+          "stage:rmu_pull_s2|combined": {
+            "status": "satisfied"
+          }
+        }
+      }
+    }
+  ]
+}

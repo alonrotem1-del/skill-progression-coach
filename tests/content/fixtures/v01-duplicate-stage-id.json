@@ -1,0 +1,9 @@
+{
+  "name": "v01-duplicate-stage-id",
+  "rule": "V1",
+  "reason": "Two progressions declare a stage with the same id. Evidence that cleared one stage would silently clear the other.",
+  "expect": { "level": "error", "includes": "duplicate id" },
+  "ops": [
+    { "op": "set", "path": "bundle.progressions[#rmu_explosive_pull].stages[0].id", "value": "rmu_pull_s1" }
+  ]
+}

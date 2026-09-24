@@ -1,0 +1,10 @@
+{
+  "name": "v10-primary-attribute-moved",
+  "rule": "V10",
+  "reason": "The criterion keeps its id but counts depth instead of reps, so a frozen artifact's 'short by 2 reps' sentence now resolves against a grade.",
+  "expect": { "level": "error", "includes": "moved from" },
+  "previous": [],
+  "ops": [
+    { "op": "set", "path": "bundle.criteria[#slstr_box_5].primaryAttribute", "value": "depth" }
+  ]
+}

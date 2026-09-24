@@ -1,0 +1,10 @@
+{
+  "name": "v09-grade-scale-inserted-level",
+  "rule": "V9",
+  "reason": "A level inserted into the middle of the depth scale. Every stored 'parallel' would quietly mean something else — the subtlest corruption available in this schema.",
+  "expect": { "level": "error", "includes": "below the top" },
+  "previous": [],
+  "ops": [
+    { "op": "set", "path": "bundle.attributes[#depth].scale", "value": ["above_parallel", "nearly_parallel", "parallel", "below_parallel"] }
+  ]
+}

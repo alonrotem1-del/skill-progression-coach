@@ -1,0 +1,12 @@
+{
+  "note": "The minted Interpretation Contexts (Technical Schema v1.1 §8). The only content file that grows: a context is never edited or removed once minted, because an athlete may be pinned to it. Release tooling refuses to mint a pair whose bundle requires a higher semantics version than the one named.",
+  "contexts": [
+    {
+      "id": "ctx_1",
+      "contentBundleVersion": 1,
+      "evaluationSemanticsVersion": 1,
+      "mintedAt": "2026-09-24T00:00:00.000Z",
+      "releaseNotes": "First interpretation context. Content Bundle 1 (Ring Muscle-Up and Pistol Squat) under Evaluation Semantics 1. Every athlete's first adoption is null -> ctx_1."
+    }
+  ]
+}

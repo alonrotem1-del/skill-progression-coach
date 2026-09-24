@@ -1,0 +1,197 @@
+{
+  "name": "req-nested-depth-2",
+  "description": "allOf[m_a, anyOf[m_b, m_c]] \u2014 the deepest expression the frozen schema allows. The inner anyOf is met by m_c while m_b is not, and the outer allOf is satisfied.",
+  "bundle": "mini-expr",
+  "semantics": [
+    1
+  ],
+  "commitments": {
+    "athleteGoals": [
+      "ring_muscle_up"
+    ],
+    "constraints": [],
+    "preferences": {}
+  },
+  "ledger": [
+    {
+      "seq": 1,
+      "occurredAt": "2026-09-01T10:00:00.000Z",
+      "recordedAt": "2026-09-01T10:00:00.000Z",
+      "exerciseId": "m_pull",
+      "side": null,
+      "attributes": {
+        "reps": 6
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    },
+    {
+      "seq": 2,
+      "occurredAt": "2026-09-02T10:00:00.000Z",
+      "recordedAt": "2026-09-02T10:00:00.000Z",
+      "exerciseId": "m_reach",
+      "side": null,
+      "attributes": {
+        "cm": 8
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    }
+  ],
+  "expected": {
+    "evaluations": {
+      "m_a|combined|ctx_1": {
+        "status": "satisfied",
+        "satisfiedBy": [
+          1
+        ],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 1,
+          "attribute": "reps",
+          "value": 6
+        }
+      },
+      "m_b|combined|ctx_1": {
+        "status": "unsatisfied",
+        "satisfiedBy": [],
+        "excluded": [],
+        "shortfall": "no observation of a linked exercise records seconds"
+      },
+      "m_c|combined|ctx_1": {
+        "status": "satisfied",
+        "satisfiedBy": [
+          2
+        ],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 2,
+          "attribute": "cm",
+          "value": 8
+        }
+      }
+    },
+    "holders": {
+      "progression:m_nested|combined": {
+        "status": "satisfied"
+      }
+    }
+  },
+  "alternates": [
+    {
+      "note": "The inner anyOf has no child met, so the outer allOf is unsatisfied even though m_a is met.",
+      "ledger": [
+        {
+          "seq": 1,
+          "occurredAt": "2026-09-01T10:00:00.000Z",
+          "recordedAt": "2026-09-01T10:00:00.000Z",
+          "exerciseId": "m_pull",
+          "side": null,
+          "attributes": {
+            "reps": 6
+          },
+          "provenance": "demonstrated",
+          "provenanceSource": "in_session",
+          "sourceWorkoutItem": {
+            "workoutId": "w_fixture",
+            "itemIndex": 0
+          },
+          "sequenceInItem": 1,
+          "context": {
+            "readiness": {},
+            "accommodationInForce": null,
+            "unmetDependencies": [],
+            "prescribedDose": null,
+            "contextId": "ctx_1"
+          }
+        },
+        {
+          "seq": 2,
+          "occurredAt": "2026-09-02T10:00:00.000Z",
+          "recordedAt": "2026-09-02T10:00:00.000Z",
+          "exerciseId": "m_reach",
+          "side": null,
+          "attributes": {
+            "cm": 4
+          },
+          "provenance": "demonstrated",
+          "provenanceSource": "in_session",
+          "sourceWorkoutItem": {
+            "workoutId": "w_fixture",
+            "itemIndex": 0
+          },
+          "sequenceInItem": 1,
+          "context": {
+            "readiness": {},
+            "accommodationInForce": null,
+            "unmetDependencies": [],
+            "prescribedDose": null,
+            "contextId": "ctx_1"
+          }
+        }
+      ],
+      "expected": {
+        "evaluations": {
+          "m_a|combined|ctx_1": {
+            "status": "satisfied",
+            "satisfiedBy": [
+              1
+            ],
+            "excluded": [],
+            "bestObservation": {
+              "seq": 1,
+              "attribute": "reps",
+              "value": 6
+            }
+          },
+          "m_b|combined|ctx_1": {
+            "status": "unsatisfied",
+            "satisfiedBy": [],
+            "excluded": [],
+            "shortfall": "no observation of a linked exercise records seconds"
+          },
+          "m_c|combined|ctx_1": {
+            "status": "unsatisfied",
+            "satisfiedBy": [],
+            "excluded": [],
+            "bestObservation": {
+              "seq": 2,
+              "attribute": "cm",
+              "value": 4
+            },
+            "shortfall": "short by 4 cm"
+          }
+        },
+        "holders": {
+          "progression:m_nested|combined": {
+            "status": "unsatisfied"
+          }
+        }
+      }
+    }
+  ]
+}

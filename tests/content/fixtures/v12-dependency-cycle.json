@@ -1,0 +1,16 @@
+{
+  "name": "v12-dependency-cycle",
+  "rule": "V12",
+  "reason": "The rings-turned-out support now requires the unassisted transition, which already requires the support. Neither can ever unblock.",
+  "expect": { "level": "error", "includes": "cycle" },
+  "ops": [
+    { "op": "push", "path": "bundle.dependencies", "value": {
+        "id": "dep_rto_needs_transition",
+        "subject": { "kind": "stage", "progressionId": "rmu_ring_support", "stageId": "rmu_sup_s2" },
+        "requires": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s3" },
+        "sideRule": "any",
+        "constrains": ["unlocking"],
+        "severity": "hard",
+        "rationale": "Deliberately circular fixture." } }
+  ]
+}

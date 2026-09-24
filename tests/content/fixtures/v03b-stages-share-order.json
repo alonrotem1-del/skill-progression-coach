@@ -1,0 +1,9 @@
+{
+  "name": "v03b-stages-share-order",
+  "rule": "V3",
+  "reason": "Two stages claim order 1, so 'which stage is current' has no answer.",
+  "expect": { "level": "error", "includes": "total order" },
+  "ops": [
+    { "op": "set", "path": "bundle.progressions[#rmu_pull_strength].stages[1].order", "value": 1 }
+  ]
+}

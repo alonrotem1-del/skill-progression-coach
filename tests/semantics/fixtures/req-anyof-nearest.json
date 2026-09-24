@@ -1,0 +1,154 @@
+{
+  "name": "req-anyof-nearest",
+  "description": "anyOf[m_a, m_b] is satisfied by m_b alone. When neither child is met the expression is unsatisfied and EVERY child's shortfall is reported, each on its own primary attribute. Which shortfall to show an athlete is a presentation decision; it is deliberately not a semantics dimension, so the harness asserts the shortfalls, not a winner.",
+  "bundle": "mini-expr",
+  "semantics": [
+    1
+  ],
+  "commitments": {
+    "athleteGoals": [
+      "ring_muscle_up"
+    ],
+    "constraints": [],
+    "preferences": {}
+  },
+  "ledger": [
+    {
+      "seq": 1,
+      "occurredAt": "2026-09-01T10:00:00.000Z",
+      "recordedAt": "2026-09-01T10:00:00.000Z",
+      "exerciseId": "m_hang",
+      "side": null,
+      "attributes": {
+        "seconds": 30
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    }
+  ],
+  "expected": {
+    "evaluations": {
+      "m_a|combined|ctx_1": {
+        "status": "unsatisfied",
+        "satisfiedBy": [],
+        "excluded": [],
+        "shortfall": "no observation of a linked exercise records reps"
+      },
+      "m_b|combined|ctx_1": {
+        "status": "satisfied",
+        "satisfiedBy": [
+          1
+        ],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 1,
+          "attribute": "seconds",
+          "value": 30
+        }
+      }
+    },
+    "holders": {
+      "progression:m_anyof|combined": {
+        "status": "satisfied"
+      }
+    }
+  },
+  "alternates": [
+    {
+      "note": "Neither child is met. anyOf is unsatisfied and both shortfalls are reported.",
+      "ledger": [
+        {
+          "seq": 1,
+          "occurredAt": "2026-09-01T10:00:00.000Z",
+          "recordedAt": "2026-09-01T10:00:00.000Z",
+          "exerciseId": "m_pull",
+          "side": null,
+          "attributes": {
+            "reps": 3
+          },
+          "provenance": "demonstrated",
+          "provenanceSource": "in_session",
+          "sourceWorkoutItem": {
+            "workoutId": "w_fixture",
+            "itemIndex": 0
+          },
+          "sequenceInItem": 1,
+          "context": {
+            "readiness": {},
+            "accommodationInForce": null,
+            "unmetDependencies": [],
+            "prescribedDose": null,
+            "contextId": "ctx_1"
+          }
+        },
+        {
+          "seq": 2,
+          "occurredAt": "2026-09-02T10:00:00.000Z",
+          "recordedAt": "2026-09-02T10:00:00.000Z",
+          "exerciseId": "m_hang",
+          "side": null,
+          "attributes": {
+            "seconds": 10
+          },
+          "provenance": "demonstrated",
+          "provenanceSource": "in_session",
+          "sourceWorkoutItem": {
+            "workoutId": "w_fixture",
+            "itemIndex": 0
+          },
+          "sequenceInItem": 1,
+          "context": {
+            "readiness": {},
+            "accommodationInForce": null,
+            "unmetDependencies": [],
+            "prescribedDose": null,
+            "contextId": "ctx_1"
+          }
+        }
+      ],
+      "expected": {
+        "evaluations": {
+          "m_a|combined|ctx_1": {
+            "status": "unsatisfied",
+            "satisfiedBy": [],
+            "excluded": [],
+            "bestObservation": {
+              "seq": 1,
+              "attribute": "reps",
+              "value": 3
+            },
+            "shortfall": "short by 2 reps"
+          },
+          "m_b|combined|ctx_1": {
+            "status": "unsatisfied",
+            "satisfiedBy": [],
+            "excluded": [],
+            "bestObservation": {
+              "seq": 2,
+              "attribute": "seconds",
+              "value": 10
+            },
+            "shortfall": "short by 20 seconds"
+          }
+        },
+        "holders": {
+          "progression:m_anyof|combined": {
+            "status": "unsatisfied"
+          }
+        }
+      }
+    }
+  ]
+}
