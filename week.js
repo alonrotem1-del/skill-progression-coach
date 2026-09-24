@@ -166,7 +166,7 @@
     tophold: { exId: 'support', label: 'Top Hold', scheme: 'hold', sets: 3, seconds: 15 },
     t2b: { exId: 't2b', label: 'Toes-to-Bar', scheme: 'sets', sets: 3, reps: 8 },
     deadhang: { exId: 'deadhang', label: 'Dead Hang', scheme: 'hold', sets: 3, seconds: 30 },
-    ringsupport: { exId: 'support', label: 'Ring Support Hold', scheme: 'hold', sets: 3, seconds: 20 },
+    ringsupport: { exId: 'ring_support', label: 'Ring Support Hold', scheme: 'hold', sets: 3, seconds: 20 },
     pistol: { exId: 'pistol', label: 'Pistol Squat', scheme: 'sets', sets: 3, reps: 5, note: 'Each leg — controlled' },
     pullup_ladder: { exId: 'pullup', label: 'Pull-Up Ladder', scheme: 'ladder', steps: [1, 2, 3], rounds: 5,
       restBetweenStepsSec: 25, restBetweenRoundsSec: 150, note: '1-2-3 × 5 rounds, clean reps' },

@@ -693,7 +693,7 @@ test.describe('idb.js — PWA / offline', () => {
       const cache = await window.caches.open(cacheName);
       return { cacheName, hasIdb: !!(await cache.match('./idb.js', { ignoreSearch: true })) };
     });
-    expect(cached.cacheName).toMatch(/skill-progression-coach-v18/);
+    expect(cached.cacheName).toMatch(/skill-progression-coach-v19/);
     expect(cached.hasIdb).toBe(true);
   });
 
@@ -729,7 +729,7 @@ test.describe('idb.js — PWA / offline', () => {
     await page.waitForTimeout(800); // let activate() prune obsolete caches
     const keys = await page.evaluate(() => window.caches.keys());
     expect(keys).not.toContain('skill-progression-coach-v17');
-    expect(keys).toContain('skill-progression-coach-v18');
+    expect(keys).toContain('skill-progression-coach-v19');
     // The live activation has idb.js, and the database still opens.
     const ok = await page.evaluate(async () => (await window.CoachIDB.init()).ok);
     expect(ok).toBe(true);

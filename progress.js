@@ -60,7 +60,10 @@
       if (best.bestReps != null && exId === 'pullup') bench.pullup_max = Math.max(bench.pullup_max || 0, best.bestReps);
       if (best.bestReps != null && exId === 'dip') bench.dips_max = Math.max(bench.dips_max || 0, best.bestReps);
       if (best.bestSeconds != null && (exId === 'deadhang' || exId === 'activehang')) bench.deadhang_secs = Math.max(bench.deadhang_secs || 0, best.bestSeconds);
-      if (best.bestSeconds != null && exId === 'support') bench.ring_support_secs = Math.max(bench.ring_support_secs || 0, best.bestSeconds);
+      // Both support ids still feed the one legacy benchmark, exactly as before
+      // the ids were split — this bench key has always been apparatus-ambiguous
+      // and nothing in the new content model reads it.
+      if (best.bestSeconds != null && (exId === 'support' || exId === 'ring_support')) bench.ring_support_secs = Math.max(bench.ring_support_secs || 0, best.bestSeconds);
     });
 
     // 2) skill/technique nodes measured in "sessions" advance by 1 when trained.

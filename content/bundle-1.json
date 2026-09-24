@@ -26,7 +26,8 @@
     { "id": "lockoff", "name": "Lock-Off Hold", "unilateral": false, "producesAttributes": ["seconds"], "loadDimensions": { "pull": 2, "grip": 1, "elbow": 1 }, "defaultDose": { "scheme": "hold", "sets": 3, "seconds": 10 } },
     { "id": "fastpull", "name": "High Pull (Explosive)", "unilateral": false, "producesAttributes": ["reps", "kip"], "loadDimensions": { "pull": 2, "grip": 1, "elbow": 1, "shoulder": 1, "explosive": 2 }, "defaultDose": { "scheme": "sets", "sets": 4, "reps": 3 } },
     { "id": "c2b", "name": "Chest-to-Bar Pull-Up", "unilateral": false, "producesAttributes": ["reps", "kip"], "loadDimensions": { "pull": 2, "grip": 1, "elbow": 1, "shoulder": 1, "explosive": 2 }, "defaultDose": { "scheme": "sets", "sets": 4, "reps": 3 } },
-    { "id": "support", "name": "Ring / Straight-Bar Support Hold", "unilateral": false, "producesAttributes": ["seconds"], "loadDimensions": { "push": 1, "shoulder": 1 }, "defaultDose": { "scheme": "hold", "sets": 3, "seconds": 20 } },
+    { "id": "support", "name": "Top Support Hold (Bar)", "unilateral": false, "producesAttributes": ["seconds"], "loadDimensions": { "push": 1, "shoulder": 1 }, "defaultDose": { "scheme": "hold", "sets": 3, "seconds": 15 } },
+    { "id": "ring_support", "name": "Ring Support Hold", "unilateral": false, "producesAttributes": ["seconds"], "loadDimensions": { "push": 1, "shoulder": 2, "elbow": 1 }, "defaultDose": { "scheme": "hold", "sets": 3, "seconds": 20 } },
     { "id": "dip", "name": "Straight-Bar Dip", "unilateral": false, "producesAttributes": ["reps"], "loadDimensions": { "push": 2, "shoulder": 1, "elbow": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 5 } },
     { "id": "pbdip", "name": "Parallel-Bar Dip", "unilateral": false, "producesAttributes": ["reps"], "loadDimensions": { "push": 2, "shoulder": 1, "elbow": 1 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 5 } },
     { "id": "hollow", "name": "Hollow Body Hold", "unilateral": false, "producesAttributes": ["seconds"], "loadDimensions": { "core": 2 }, "defaultDose": { "scheme": "hold", "sets": 3, "seconds": 30 } },
@@ -75,7 +76,7 @@
     { "id": "exp_c2b_3", "label": "Do 3 chest-to-bar pull-ups", "primaryAttribute": "reps", "sideScope": "combined", "conditions": [ { "attribute": "reps", "op": "gte", "value": 3 } ], "demonstration": { "occasions": 1, "distinctDays": false } },
     { "id": "exp_c2r_3", "label": "Do 3 chest-to-rings pull-ups", "primaryAttribute": "reps", "sideScope": "combined", "conditions": [ { "attribute": "reps", "op": "gte", "value": 3 } ], "demonstration": { "occasions": 1, "distinctDays": false } },
 
-    { "id": "sup_bar_20", "label": "Hold a support above the bar or rings for 20 seconds", "primaryAttribute": "seconds", "sideScope": "combined", "conditions": [ { "attribute": "seconds", "op": "gte", "value": 20 } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+    { "id": "sup_ring_20", "label": "Hold a ring support for 20 seconds", "primaryAttribute": "seconds", "sideScope": "combined", "conditions": [ { "attribute": "seconds", "op": "gte", "value": 20 } ], "demonstration": { "occasions": 1, "distinctDays": false } },
     { "id": "sup_rto_20", "label": "Hold a ring support with the rings turned out for 20 seconds", "primaryAttribute": "seconds", "sideScope": "combined", "conditions": [ { "attribute": "seconds", "op": "gte", "value": 20 } ], "demonstration": { "occasions": 1, "distinctDays": false } },
 
     { "id": "trans_lowring_3", "label": "Do 3 low-ring transitions with your feet assisting", "primaryAttribute": "reps", "sideScope": "combined", "conditions": [ { "attribute": "reps", "op": "gte", "value": 3 }, { "attribute": "catch_quality", "op": "gte", "value": "assisted" } ], "demonstration": { "occasions": 1, "distinctDays": false } },
@@ -136,7 +137,7 @@
       "athleteFacingName": "Holding the Top",
       "form": "STAGED",
       "stages": [
-        { "id": "rmu_sup_s1", "name": "Support hold", "order": 1, "requirement": { "criterion": "sup_bar_20" } },
+        { "id": "rmu_sup_s1", "name": "Ring support hold", "order": 1, "requirement": { "criterion": "sup_ring_20" } },
         { "id": "rmu_sup_s2", "name": "Rings turned out", "order": 2, "requirement": { "criterion": "sup_rto_20" } }
       ]
     },
@@ -285,7 +286,7 @@
     { "exerciseId": "c2b", "target": { "kind": "stage", "progressionId": "rmu_explosive_pull", "stageId": "rmu_exp_s2" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
     { "exerciseId": "c2r_pullup", "target": { "kind": "stage", "progressionId": "rmu_explosive_pull", "stageId": "rmu_exp_s3" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
 
-    { "exerciseId": "support", "target": { "kind": "stage", "progressionId": "rmu_ring_support", "stageId": "rmu_sup_s1" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "ring_support", "target": { "kind": "stage", "progressionId": "rmu_ring_support", "stageId": "rmu_sup_s1" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
     { "exerciseId": "rto_support", "target": { "kind": "stage", "progressionId": "rmu_ring_support", "stageId": "rmu_sup_s2" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
 
     { "exerciseId": "lowring_transition", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s1" }, "relation": "assess", "rank": 1, "sideScope": "combined" },

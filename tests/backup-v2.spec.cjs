@@ -718,7 +718,7 @@ test.describe('Backup v2 — PWA / offline', () => {
       };
     });
     expect(r.keys).not.toContain('skill-progression-coach-v17');
-    expect(r.keys).toContain('skill-progression-coach-v18');
+    expect(r.keys).toContain('skill-progression-coach-v19');
     expect(r.hasIdb).toBe(true);
     expect(r.hasBackup).toBe(true);
     await openData(page);

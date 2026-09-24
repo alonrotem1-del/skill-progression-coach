@@ -335,10 +335,17 @@
       purpose: 'The extra pulling range needed to get above the bar.',
       cues: 'Pull until the chest touches the bar; keep the body tight.', related: ['mu_c2b'],
       alternatives: [], equipment: 'Pull-up bar', defaults: { sets: 4, reps: 3 } }),
-    support: ex({ id: 'support', name: 'Ring / Straight-Bar Support Hold', category: 'Push & Support', measure: 'sec', benchKey: 'ring_support_secs',
-      purpose: 'The locked support position you land in after the transition.',
+    support: ex({ id: 'support', name: 'Top Support Hold (Bar)', category: 'Push & Support', measure: 'sec', benchKey: 'ring_support_secs',
+      purpose: 'The locked support position above a bar — where the muscle-up lands.',
       cues: 'Straight locked arms above the bar, tight body, shoulders down.', related: ['mu_support'],
-      alternatives: [], equipment: 'Rings or straight bar', defaults: { sets: 4, seconds: 15 } }),
+      alternatives: [], equipment: 'Straight bar or parallel bars', defaults: { sets: 4, seconds: 15 } }),
+    // Rings are a different capability from a bar top hold: the rings rotate and
+    // must be actively held still. Kept as its own id so a logged ring support is
+    // ring evidence and a logged top hold is not — see content/bundle-1.json.
+    ring_support: ex({ id: 'ring_support', name: 'Ring Support Hold', category: 'Push & Support', measure: 'sec', benchKey: 'ring_support_secs',
+      purpose: 'Holding a locked support on rings, which rotate under you — the position the ring muscle-up finishes in.',
+      cues: 'Rings pressed down and held still, arms locked, shoulders down, body tight.', related: ['mu_support'],
+      alternatives: ['support'], equipment: 'Rings', defaults: { sets: 3, seconds: 20 } }),
     dip: ex({ id: 'dip', name: 'Straight-Bar Dip', category: 'Push', measure: 'reps', benchKey: 'dips_max',
       purpose: 'Pushing strength that finishes the muscle-up above the bar.',
       cues: 'Controlled descent, full lockout at the top.', related: ['mu_dip5'],
