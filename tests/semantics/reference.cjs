@@ -185,6 +185,13 @@ var HAND_COMPUTED = {
      'holder stage:rmu_pull_s2|combined => satisfied']
   ],
 
+  'train-link-not-evidence': [
+    ['crit r_hold_20|combined => satisfied by 2',
+     'holder progression:r_prog|combined => satisfied'],
+    ['crit r_hold_20|combined => unsatisfied',
+     'holder progression:r_prog|combined => unsatisfied']
+  ],
+
   'unknown-occurredAt-not-recent': [
     ['crit rmu_pull_1|combined => satisfied by 1,2',
      'crit rmu_pull_5|combined => satisfied by 1,2',

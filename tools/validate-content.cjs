@@ -16,6 +16,28 @@
  *
  * Also usable as a library: require() it and call validate(contentSet). That is
  * how tests/content.spec.cjs drives the red fixtures.
+ *
+ * LOCKED: ExerciseLink.relation decides evidence eligibility.
+ *
+ *   assess    observations of this exercise MAY be evaluated against the linked
+ *             holder's Criteria. It may also be prescribed for training.
+ *   train     a prescription / development relationship ONLY. Evidence from this
+ *             exercise can never satisfy the linked holder's Criteria.
+ *   maintain  likewise non-evidential: keeping a capability already held.
+ *
+ *   TRAIN DOES NOT IMPLY EVIDENCE ELIGIBILITY.
+ *
+ * This is a structural invariant of the content contract, not an evaluation
+ * policy: it does not appear in content/vocabulary.json, it cannot vary between
+ * EvaluationSemantics versions, and there is no exception for an exercise that
+ * is "harder than" what a Criterion asks for. A substitution that should count
+ * is written as a second assess link, in content, where a reader can see it.
+ * A new kind of evidence relationship would be a new role, added through the
+ * ordinary schema versioning process.
+ *
+ * Consequently no rule here treats the roles as interchangeable. V8, V11 and
+ * V19 count assess links only; V20 checks that an assess link asserts something
+ * it can actually perform. See content/CONTRACT.md.
  */
 'use strict';
 
@@ -382,13 +404,16 @@ function v7(ix, rep) {
 // =========================================================================
 // V8 — every condition attribute is actually observable at its holder
 // =========================================================================
+// Assess links only. A train-only exercise is never counted when deciding
+// whether a holder can be assessed, because its evidence cannot satisfy the
+// holder's Criteria at all.
 
 function v8(ix, rep) {
   Object.keys(ix.holders).forEach(function (hk) {
     var h = ix.holders[hk];
     if (!h.requirement) return;
     var links = (ix.linksByHolder[hk] || []).filter(function (l) {
-      return l.relation === 'train' || l.relation === 'assess';
+      return l.relation === 'assess';
     });
     var produced = Object.create(null);
     links.forEach(function (l) {
@@ -401,8 +426,8 @@ function v8(ix, rep) {
       (c.conditions || []).forEach(function (cond) {
         if (!produced[cond.attribute]) {
           rep.err('V8', hk + ' / ' + cid,
-            'condition on "' + cond.attribute + '" but no train/assess-linked exercise produces it' +
-            (links.length ? '' : ' (the holder has no train/assess link at all)'));
+            'condition on "' + cond.attribute + '" but no ASSESS-linked exercise produces it' +
+            (links.length ? '' : ' (the holder has no assess link at all; a train link cannot assess)'));
         }
       });
     });
@@ -480,13 +505,13 @@ function v11(ix, rep) {
     if (!holders.length) return;                       // orphan criterion: V2/V8 territory
     var ok = holders.some(function (hk) {
       return (ix.linksByHolder[hk] || []).some(function (l) {
-        if (l.relation !== 'train' && l.relation !== 'assess') return false;
+        if (l.relation !== 'assess') return false;
         var ex = ix.exercises[l.exerciseId];
         return !!(ex && ex.unilateral && l.sideScope === 'each');
       });
     });
     if (!ok) {
-      rep.err('V11', at, 'sideScope "each" but no holder of this criterion has a unilateral train/assess exercise linked with sideScope "each" — the criterion could never be satisfied per side');
+      rep.err('V11', at, 'sideScope "each" but no holder of this criterion has a unilateral ASSESS exercise linked with sideScope "each" — the criterion could never be satisfied per side');
     }
   });
 
@@ -746,6 +771,86 @@ function v18(vocabulary, semanticsList, options, rep) {
 }
 
 // =========================================================================
+// V19 — every criterion has a real assess route
+// =========================================================================
+// One assess-linked exercise, at one of the criterion's holders, that produces
+// EVERY attribute the criterion conditions on, with a compatible side scope.
+// Anything less is a criterion nobody can ever clear.
+
+function assessLinksFor(ix, hk) {
+  return (ix.linksByHolder[hk] || []).filter(function (l) { return l.relation === 'assess'; });
+}
+
+function coversCriterion(ix, link, criterion) {
+  var ex = ix.exercises[link.exerciseId];
+  if (!ex) return false;
+  var produces = ex.producesAttributes || [];
+  var covered = (criterion.conditions || []).every(function (cd) { return produces.indexOf(cd.attribute) >= 0; });
+  if (!covered) return false;
+  // A per-side Criterion needs per-side evidence; a combined Criterion cannot be
+  // assessed by a link that only ever reports one side.
+  if (criterion.sideScope === 'each') return link.sideScope === 'each' && !!ex.unilateral;
+  return link.sideScope === 'combined';
+}
+
+function v19(ix, rep) {
+  var holdersOf = Object.create(null);
+  Object.keys(ix.holders).forEach(function (hk) {
+    var h = ix.holders[hk];
+    if (!h.requirement) return;
+    leafCriteria(h.requirement).forEach(function (cid) {
+      (holdersOf[cid] = holdersOf[cid] || []).push(hk);
+    });
+  });
+  (ix.bundle.criteria || []).forEach(function (c, i) {
+    var at = 'criteria[' + i + ']';
+    var holders = holdersOf[c.id] || [];
+    if (!holders.length) {
+      rep.err('V19', at, 'criterion "' + c.id + '" is not the requirement of any holder, so nothing could ever assess it');
+      return;
+    }
+    var routes = [];
+    holders.forEach(function (hk) {
+      assessLinksFor(ix, hk).forEach(function (l) {
+        if (coversCriterion(ix, l, c)) routes.push(hk + ' <- ' + l.exerciseId);
+      });
+    });
+    if (!routes.length) {
+      rep.err('V19', at, 'criterion "' + c.id + '" has no assess route: no assess-linked exercise at ' +
+        holders.join(' / ') + ' produces all of [' +
+        (c.conditions || []).map(function (cd) { return cd.attribute; }).join(', ') +
+        '] with sideScope "' + (c.sideScope === 'each' ? 'each' : 'combined') +
+        '". Evidence eligibility is explicit: a train link cannot stand in for it.');
+    }
+  });
+}
+
+// =========================================================================
+// V20 — an assess link asserts something it can perform
+// =========================================================================
+// Labelling a link `assess` is a claim that observations of that exercise can be
+// evaluated against the holder. If it produces no criterion's attributes there,
+// the claim is empty and usually means `train` was meant.
+
+function v20(ix, rep) {
+  (ix.bundle.exerciseLinks || []).forEach(function (l, i) {
+    if (l.relation !== 'assess') return;
+    var hk = holderKey(l.target);
+    var h = hk && ix.holders[hk];
+    if (!h || !h.requirement) return;              // V2 reports an unresolved target
+    var assessable = leafCriteria(h.requirement).some(function (cid) {
+      var c = ix.criteria[cid];
+      return !!c && coversCriterion(ix, l, c);
+    });
+    if (!assessable) {
+      rep.err('V20', 'exerciseLinks[' + i + ']',
+        'assess link "' + l.exerciseId + '" -> ' + hk + ' cannot assess any criterion there ' +
+        '(attributes or side scope do not match). Did you mean relation "train"?');
+    }
+  });
+}
+
+// =========================================================================
 // the whole run
 // =========================================================================
 
@@ -772,6 +877,7 @@ function validate(set) {
     v6(ix, rep); v7(ix, rep); v8(ix, rep);
     v9(bundle, previous, rep); v10(bundle, previous, rep);
     v11(ix, rep); v12(ix, rep); v13(ix, rep); v14(ix, rep);
+    v19(ix, rep); v20(ix, rep);
     if (i === bundles.length - 1) v15(ix, set.continuity, rep);
   });
 

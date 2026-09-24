@@ -1,0 +1,12 @@
+{
+  "name": "v20-assess-link-that-cannot-assess",
+  "rule": "V20",
+  "reason": "An assess link that asserts an assessment it cannot perform: the wrist roller records reps, the ring support stage asks for seconds. Almost always a train link mislabelled as assess.",
+  "expect": { "level": "error", "includes": "cannot assess any criterion" },
+  "ops": [
+    { "op": "push", "path": "bundle.exerciseLinks", "value": {
+        "exerciseId": "wristroller",
+        "target": { "kind": "stage", "progressionId": "rmu_ring_support", "stageId": "rmu_sup_s1" },
+        "relation": "assess", "rank": 3, "sideScope": "combined" } }
+  ]
+}

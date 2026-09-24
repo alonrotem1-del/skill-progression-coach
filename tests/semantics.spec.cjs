@@ -39,7 +39,9 @@ const NAMED_CASES = [
   'claimed-refused-goal-terminal', 'demonstrated-supersedes-claimed', 'dependency-unmet-excluded',
   'side-each-independent', 'side-combined-cannot-satisfy-each', 'missing-attribute',
   'stage-lowest-unsatisfied', 'freshness-none', 'regression-none',
-  'supersession-best-applicable', 'unknown-occurredAt-not-recent'
+  'supersession-best-applicable', 'unknown-occurredAt-not-recent',
+  // added after §15 was written, when ExerciseLink.relation became load-bearing
+  'train-link-not-evidence'
 ];
 
 const FIXTURES = fs.readdirSync(FIXTURE_DIR).filter((f) => f.endsWith('.json')).sort()
@@ -150,9 +152,13 @@ function invalidatingDependency(m, obs, holderKey, side) {
  *   or an exclusion reason string
  */
 function rowVerdict(m, obs, criterion, side, holders) {
+  // LOCKED: only an assess link admits evidence. A train link is a prescription
+  // relationship, so an observation reaching this holder only through one is not
+  // evidence about this Criterion at all — not excluded, simply not applicable,
+  // because every exclusion reason in §7 is a reason evidence was set aside.
   const applicableHolders = holders.filter((hk) =>
     (m.linksByHolder[hk] || []).some((l) =>
-      l.exerciseId === obs.exerciseId && (l.relation === 'train' || l.relation === 'assess')));
+      l.exerciseId === obs.exerciseId && l.relation === 'assess'));
   if (!applicableHolders.length) return { v: 'n/a' };
 
   const ex = m.exercises[obs.exerciseId];
@@ -210,7 +216,7 @@ function scenarios(fx) {
 // =========================================================================
 
 test.describe('P4 semantics harness — the fixture set', () => {
-  test('01 exactly the 17 named §15 cases are present, one file each', () => {
+  test('01 exactly the named cases are present, one file each', () => {
     expect(FIXTURES.map((f) => f.name).sort()).toEqual(NAMED_CASES.slice().sort());
     FIXTURES.forEach((f) => expect(f._file).toBe(f.name + '.json'));
   });
@@ -240,7 +246,7 @@ test.describe('P4 semantics harness — the fixture set', () => {
     expect(rep.errors).toEqual([]);
     const v18 = rep.notes.filter((n) => n.rule === 'V18').map((n) => n.message).join(' ');
     expect(v18).toContain('PENDING');
-    expect(v18).toContain('17 behaviour-preservation fixtures');
+    expect(v18).toContain('18 behaviour-preservation fixtures');
   });
 
   test('05 the evaluator seam is unregistered, so interpret() serves the hand-computed table', () => {

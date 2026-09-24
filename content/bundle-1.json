@@ -2,7 +2,7 @@
   "version": 1,
   "publishedAt": "2026-09-24",
   "requiresSemanticsAtLeast": 1,
-  "note": "Content Bundle 1. Two canonical Goals: Ring Muscle-Up and Pistol Squat. Criteria and exerciseLinks are top-level arrays so each is defined exactly once and referenced by id; Technical Schema v1.1 §4 states its shapes are illustrative of what must exist, not a serialisation format. Contains no evaluation rule of any kind - thresholds, scales, structure and references only. Two authoring rules this bundle holds to. (1) An exercise is linked to a holder only when an observation of it would be admissible evidence for that holder's Criteria - a bar drill may be excellent training for a ring Stage, but it is not linked there, because nothing in the schema makes a train link less evidential than an assess link. (2) No Dependency constrains evidence_validity: an unmet Dependency changes what is prescribed and what is opened up, never what a clean demonstration means, because a proxy capability must not overrule the performance it is a proxy for.",
+  "note": "Content Bundle 1. Two canonical Goals: Ring Muscle-Up and Pistol Squat. Criteria and exerciseLinks are top-level arrays so each is defined exactly once and referenced by id; Technical Schema v1.1 §4 states its shapes are illustrative of what must exist, not a serialisation format. Contains no evaluation rule of any kind - thresholds, scales, structure and references only. Two authoring rules this bundle holds to. (1) ExerciseLink.relation decides evidence eligibility, and the decision is explicit rather than inferred: an assess link means observations of that exercise may be evaluated against the holder's Criteria, a train link is a prescription relationship only and can never satisfy them. TRAIN DOES NOT IMPLY EVIDENCE ELIGIBILITY. A bar drill may therefore be excellent training for a ring Stage and stay linked there, because the role - not the athlete's apparatus, and never a 'harder than' judgement - is what admits evidence. (2) No Dependency constrains evidence_validity: an unmet Dependency changes what is prescribed and what is opened up, never what a clean demonstration means, because a proxy capability must not overrule the performance it is a proxy for.",
 
   "attributes": [
     { "id": "reps", "label": "Repetitions", "type": "quantity", "unit": "reps" },
@@ -272,12 +272,16 @@
     { "exerciseId": "pullup", "target": { "kind": "stage", "progressionId": "rmu_pull_strength", "stageId": "rmu_pull_s1" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
     { "exerciseId": "pullup", "target": { "kind": "stage", "progressionId": "rmu_pull_strength", "stageId": "rmu_pull_s2" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
     { "exerciseId": "pullup", "target": { "kind": "stage", "progressionId": "rmu_pull_strength", "stageId": "rmu_pull_s3" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
-    { "exerciseId": "weighted_pullup", "target": { "kind": "stage", "progressionId": "rmu_pull_strength", "stageId": "rmu_pull_s3" }, "relation": "train", "rank": 2, "sideScope": "combined" },
+    { "exerciseId": "weighted_pullup", "target": { "kind": "stage", "progressionId": "rmu_pull_strength", "stageId": "rmu_pull_s1" }, "relation": "assess", "rank": 2, "sideScope": "combined" },
+    { "exerciseId": "weighted_pullup", "target": { "kind": "stage", "progressionId": "rmu_pull_strength", "stageId": "rmu_pull_s2" }, "relation": "assess", "rank": 2, "sideScope": "combined" },
+    { "exerciseId": "weighted_pullup", "target": { "kind": "stage", "progressionId": "rmu_pull_strength", "stageId": "rmu_pull_s3" }, "relation": "assess", "rank": 2, "sideScope": "combined" },
     { "exerciseId": "ring_row", "target": { "kind": "stage", "progressionId": "rmu_pull_strength", "stageId": "rmu_pull_s1" }, "relation": "train", "rank": 2, "sideScope": "combined" },
     { "exerciseId": "scap", "target": { "kind": "stage", "progressionId": "rmu_pull_strength", "stageId": "rmu_pull_s1" }, "relation": "train", "rank": 3, "sideScope": "combined" },
     { "exerciseId": "lockoff", "target": { "kind": "stage", "progressionId": "rmu_pull_strength", "stageId": "rmu_pull_s2" }, "relation": "train", "rank": 2, "sideScope": "combined" },
 
     { "exerciseId": "fg_hang", "target": { "kind": "progression", "progressionId": "rmu_false_grip" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "deadhang", "target": { "kind": "progression", "progressionId": "rmu_false_grip" }, "relation": "train", "rank": 2, "sideScope": "combined" },
+    { "exerciseId": "activehang", "target": { "kind": "progression", "progressionId": "rmu_false_grip" }, "relation": "train", "rank": 3, "sideScope": "combined" },
 
     { "exerciseId": "fastpull", "target": { "kind": "stage", "progressionId": "rmu_explosive_pull", "stageId": "rmu_exp_s1" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
     { "exerciseId": "c2b", "target": { "kind": "stage", "progressionId": "rmu_explosive_pull", "stageId": "rmu_exp_s2" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
@@ -287,10 +291,14 @@
     { "exerciseId": "rto_support", "target": { "kind": "stage", "progressionId": "rmu_ring_support", "stageId": "rmu_sup_s2" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
 
     { "exerciseId": "lowring_transition", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s1" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "lowtrans", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s1" }, "relation": "train", "rank": 2, "sideScope": "combined" },
     { "exerciseId": "banded_ring_transition", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s2" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "transition", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s2" }, "relation": "train", "rank": 2, "sideScope": "combined" },
     { "exerciseId": "ring_transition", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s3" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "negmu", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s3" }, "relation": "train", "rank": 2, "sideScope": "combined" },
 
     { "exerciseId": "dip", "target": { "kind": "stage", "progressionId": "rmu_dip_press", "stageId": "rmu_dip_s1" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "pbdip", "target": { "kind": "stage", "progressionId": "rmu_dip_press", "stageId": "rmu_dip_s1" }, "relation": "train", "rank": 2, "sideScope": "combined" },
     { "exerciseId": "ring_dip", "target": { "kind": "stage", "progressionId": "rmu_dip_press", "stageId": "rmu_dip_s2" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
 
     { "exerciseId": "rmu_attempt", "target": { "kind": "goalTerminal", "goalId": "ring_muscle_up" }, "relation": "assess", "rank": 1, "sideScope": "combined" },

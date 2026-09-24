@@ -1,0 +1,9 @@
+{
+  "name": "v19-criterion-without-assess-route",
+  "rule": "V19",
+  "reason": "The only exercise that could assess the false grip is demoted to a train link, so the criterion has no assess route and could never be cleared. Evidence eligibility is explicit: a train link cannot stand in.",
+  "expect": { "level": "error", "includes": "no assess route" },
+  "ops": [
+    { "op": "set", "path": "bundle.exerciseLinks[@exerciseId=fg_hang].relation", "value": "train" }
+  ]
+}

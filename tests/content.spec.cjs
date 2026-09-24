@@ -24,13 +24,16 @@ const FIXTURE_DIR = path.join(__dirname, 'content', 'fixtures');
 const FIXTURES = fs.readdirSync(FIXTURE_DIR).filter((f) => f.endsWith('.json')).sort()
   .map((f) => JSON.parse(fs.readFileSync(path.join(FIXTURE_DIR, f), 'utf8')));
 
-const ALL_RULES = Array.from({ length: 18 }, (_, i) => 'V' + (i + 1));
+const ALL_RULES = Array.from({ length: 20 }, (_, i) => 'V' + (i + 1));
 
 const clone = (x) => JSON.parse(JSON.stringify(x));
 
 // ---- path resolution -----------------------------------------------------
 // "bundle.progressions[#rmu_pull_strength].stages[1].order"
-//   [#id] selects an array member by id or key; [n] by position.
+//   [#id]            array member by id or key
+//   [@field=value]   first array member whose field equals value, and
+//                    [@a=1&b=2] for more than one — exercise links have no id
+//   [n]              by position
 function steps(p) {
   const out = [];
   p.split('.').forEach((part) => {
@@ -49,6 +52,17 @@ function index(container, sel) {
     const i = container.findIndex((x) => x && (x.id === id || x.key === id));
     if (i < 0) throw new Error('no member with id/key "' + id + '"');
     return i;
+  }
+  if (sel[0] === '@') {
+    const want = sel.slice(1).split('&').map((kv) => kv.split('='));
+    const deep = (o, k) => k.split('.').reduce((acc, part) => (acc == null ? acc : acc[part]), o);
+    const hits = container.reduce((acc, x, i) => {
+      if (want.every(([k, v]) => String(deep(x, k)) === v)) acc.push(i);
+      return acc;
+    }, []);
+    if (!hits.length) throw new Error('no member matching [' + sel + ']');
+    if (hits.length > 1) throw new Error('selector [' + sel + '] matches ' + hits.length + ' members');
+    return hits[0];
   }
   const i = Number(sel);
   if (!Number.isInteger(i) || i < 0 || i >= container.length) throw new Error('index ' + sel + ' out of range');
@@ -157,11 +171,11 @@ test.describe('P4 content — shipped content', () => {
   });
 });
 
-// The two authoring rules the bundle's own note states. Both were review
-// findings, so they are tests now rather than paragraphs: nothing in the schema
-// makes a `train` link less evidential than an `assess` link, and nothing stops
-// a Dependency from invalidating evidence, so content has to hold the line.
-test.describe('P4 content — evidence discipline', () => {
+// ExerciseLink.relation is load-bearing, and these tests are what makes it so
+// on the content side. LOCKED: assess is the evidence-eligible relationship,
+// train is prescription only, and there is no "harder than" exception — a
+// substitution that should count is written as a second assess link.
+test.describe('P4 content — exercise link role semantics', () => {
   const B = CONTENT.bundles[0];
   const exById = {}; B.exercises.forEach((e) => (exById[e.id] = e));
   const crById = {}; B.criteria.forEach((c) => (crById[c.id] = c));
@@ -174,61 +188,173 @@ test.describe('P4 content — evidence discipline', () => {
     (p.stages || []).forEach((st) => (holders['stage:' + st.id] = V.leafCriteria(st.requirement)));
   });
   B.goals.forEach((g) => (holders['goalTerminal:' + g.id] = V.leafCriteria(g.terminalRequirement)));
+
   const linksByHolder = {};
   B.exerciseLinks.forEach((l) => {
     (linksByHolder[holderKey(l.target)] = linksByHolder[holderKey(l.target)] || []).push(l);
   });
+  const holdersOfCriterion = {};
+  Object.keys(holders).forEach((h) => holders[h].forEach((cid) => {
+    (holdersOfCriterion[cid] = holdersOfCriterion[cid] || []).push(h);
+  }));
 
-  // A train link whose exercise could satisfy the holder's criterion, allowed
-  // only where the substitution is strictly harder than what it stands in for.
-  const ALLOWED_TRAIN_EVIDENCE = {
-    'stage:rmu_pull_s3/rmu_pull_10/weighted_pullup':
-      'Ten clean weighted pull-ups are strictly harder than the ten bodyweight reps the criterion asks for.'
-  };
+  // The single definition of "can this exercise, through this link, satisfy this
+  // criterion". Everything below asks it; nothing below has its own opinion.
+  function canAssess(link, criterion) {
+    if (link.relation !== 'assess') return false;
+    const ex = exById[link.exerciseId];
+    const produces = ex.producesAttributes || [];
+    if (!criterion.conditions.every((cd) => produces.indexOf(cd.attribute) >= 0)) return false;
+    return criterion.sideScope === 'each'
+      ? (link.sideScope === 'each' && !!ex.unilateral)
+      : link.sideScope === 'combined';
+  }
+  const assessorsOf = (cid) => (holdersOfCriterion[cid] || []).reduce((acc, h) => {
+    (linksByHolder[h] || []).forEach((l) => { if (canAssess(l, crById[cid])) acc.push(l.exerciseId); });
+    return acc;
+  }, []);
+  const attributeMatch = (link, criterion) => criterion.conditions
+    .every((cd) => (exById[link.exerciseId].producesAttributes || []).indexOf(cd.attribute) >= 0);
 
-  test('15 no train link can satisfy a criterion it was only meant to develop', () => {
-    const offenders = [];
-    Object.keys(holders).forEach((h) => {
-      holders[h].forEach((cid) => {
-        const need = crById[cid].conditions.map((cd) => cd.attribute);
-        (linksByHolder[h] || []).forEach((l) => {
-          if (l.relation !== 'train') return;
-          const produces = exById[l.exerciseId].producesAttributes || [];
-          if (!need.every((a) => produces.indexOf(a) >= 0)) return;      // not evidence about this criterion
-          const key = h + '/' + cid + '/' + l.exerciseId;
-          if (!ALLOWED_TRAIN_EVIDENCE[key]) offenders.push(key);
-        });
+  test('15 a train link can never satisfy a criterion, whatever it produces', () => {
+    const trains = B.exerciseLinks.filter((l) => l.relation === 'train');
+    expect(trains.length, 'the bundle should still prescribe through train links').toBeGreaterThan(0);
+    trains.forEach((l) => {
+      (holders[holderKey(l.target)] || []).forEach((cid) => {
+        expect(canAssess(l, crById[cid]), l.exerciseId + ' train -> ' + cid).toBe(false);
       });
     });
-    expect(offenders, 'a bar drill must not silently satisfy a ring criterion').toEqual([]);
+    // And the point of the lock: several of those train links DO produce every
+    // attribute their criterion asks for. Under the old reading they were evidence.
+    const wouldHaveCounted = trains.filter((l) =>
+      (holders[holderKey(l.target)] || []).some((cid) => attributeMatch(l, crById[cid])));
+    expect(wouldHaveCounted.map((l) => l.exerciseId).sort()).toEqual(
+      ['activehang', 'deadhang', 'lowtrans', 'negmu', 'pbdip', 'transition']);
   });
 
-  test('16 every holder is assessable, and only by an assess link', () => {
-    Object.keys(holders).forEach((h) => {
-      const assess = (linksByHolder[h] || []).filter((l) => l.relation === 'assess');
-      expect(assess.length, h + ' has no assess link').toBeGreaterThan(0);
-      holders[h].forEach((cid) => {
-        const need = crById[cid].conditions.map((cd) => cd.attribute);
-        const covered = assess.some((l) => need.every((a) => (exById[l.exerciseId].producesAttributes || []).indexOf(a) >= 0));
-        expect(covered, h + ' / ' + cid + ' is not covered by any assess link').toBe(true);
-      });
+  test('16 the same exercise satisfies a criterion only where an assess link exists', () => {
+    // The weighted pull-up is the authored case: assess on the pull stages,
+    // and nothing anywhere else in the bundle.
+    expect(assessorsOf('rmu_pull_10')).toContain('weighted_pullup');
+    expect(assessorsOf('rmu_pull_5')).toContain('weighted_pullup');
+    expect(assessorsOf('rmu_pull_1')).toContain('weighted_pullup');
+    expect(assessorsOf('rmu_terminal')).not.toContain('weighted_pullup');
+    // Nothing in the bundle carries both roles to the same holder, so no link
+    // needs an exception to be readable.
+    const seen = {};
+    B.exerciseLinks.forEach((l) => {
+      const k = l.exerciseId + '@' + holderKey(l.target);
+      expect(seen[k], k + ' is linked twice').toBeUndefined();
+      seen[k] = l.relation;
     });
   });
 
-  test('17 no dependency constrains evidence_validity: a proxy never overrules a demonstration', () => {
-    const offenders = B.dependencies
-      .filter((d) => (d.constrains || []).indexOf('evidence_validity') >= 0)
-      .map((d) => d.id);
-    expect(offenders).toEqual([]);
+  test('17 false-grip training alternatives cannot assess the false grip', () => {
+    expect(assessorsOf('fg_hang_30')).toEqual(['fg_hang']);
+    ['deadhang', 'activehang'].forEach((id) => {
+      const l = B.exerciseLinks.find((x) => x.exerciseId === id && x.target.progressionId === 'rmu_false_grip');
+      expect(l, id + ' should still be prescribed for the false grip').toBeTruthy();
+      expect(l.relation).toBe('train');
+      expect(attributeMatch(l, crById['fg_hang_30']), id + ' does record seconds').toBe(true);
+      expect(canAssess(l, crById['fg_hang_30']), id + ' must not assess it').toBe(false);
+    });
   });
 
-  test('18 no goal terminal is gated by a hard dependency on a supporting capability', () => {
-    const hardOnTerminal = B.dependencies.filter((d) =>
-      d.subject.kind === 'goalTerminal' && d.severity === 'hard').map((d) => d.id);
-    expect(hardOnTerminal, 'a clean terminal performance is the evidence for the Goal').toEqual([]);
+  test('18 bar transition drills cannot assess a ring transition criterion', () => {
+    expect(assessorsOf('trans_lowring_3')).toEqual(['lowring_transition']);
+    expect(assessorsOf('trans_banded_3')).toEqual(['banded_ring_transition']);
+    expect(assessorsOf('trans_full_1')).toEqual(['ring_transition']);
+    ['lowtrans', 'transition', 'negmu'].forEach((id) => {
+      B.exerciseLinks.filter((x) => x.exerciseId === id).forEach((l) => expect(l.relation, id).toBe('train'));
+    });
   });
 
-  test('19 every hard dependency offers an accommodation, since it changes what is prescribed', () => {
+  test('19 the heel-elevated pistol cannot assess the pistol terminal', () => {
+    expect(assessorsOf('pistol_terminal')).toEqual(['pistol']);
+    expect(B.exerciseLinks.some((l) =>
+      l.exerciseId === 'pistol_heel' && l.target.kind === 'goalTerminal')).toBe(false);
+    // It remains the accommodation for the ankle dependency, which is how the
+    // plan reaches it — an accommodation is prescription, never evidence.
+    const dep = B.dependencies.find((d) => d.id === 'dep_pistol_needs_ankle');
+    expect(dep.accommodation.exerciseId).toBe('pistol_heel');
+    // and it assesses its own stage, where it is the movement being measured
+    expect(assessorsOf('slstr_heel_3')).toEqual(['pistol_heel']);
+  });
+
+  test('20 ring support criteria cannot be assessed by the bar top hold', () => {
+    expect(assessorsOf('sup_ring_20')).toEqual(['ring_support']);
+    expect(assessorsOf('sup_rto_20')).toEqual(['rto_support']);
+    expect(B.exerciseLinks.some((l) => l.exerciseId === 'support')).toBe(false);
+    expect(assessorsOf('dip_ring_5')).toEqual(['ring_dip']);
+    expect(assessorsOf('exp_c2r_3')).toEqual(['c2r_pullup']);
+  });
+
+  test('21 the weighted pull-up assess relationship behaves exactly as authored', () => {
+    const links = B.exerciseLinks.filter((l) => l.exerciseId === 'weighted_pullup');
+    expect(links.length).toBe(3);
+    expect(links.map((l) => l.target.stageId).sort()).toEqual(['rmu_pull_s1', 'rmu_pull_s2', 'rmu_pull_s3']);
+    links.forEach((l) => {
+      expect(l.relation).toBe('assess');
+      expect(l.rank).toBe(2);              // the bodyweight pull-up stays rank 1
+      expect(l.sideScope).toBe('combined');
+    });
+    // It reports added load, which is what makes the substitution safe, and the
+    // criteria say nothing about load — "strict" governs the kip, not the weight.
+    expect(exById.weighted_pullup.producesAttributes).toContain('kg');
+    ['rmu_pull_1', 'rmu_pull_5', 'rmu_pull_10'].forEach((cid) => {
+      expect(crById[cid].conditions.map((c) => c.attribute).sort()).toEqual(['kip', 'reps']);
+    });
+  });
+
+  test('22 every criterion in the bundle has exactly the assess route it should', () => {
+    const routes = {};
+    B.criteria.forEach((c) => (routes[c.id] = assessorsOf(c.id).sort()));
+    Object.keys(routes).forEach((cid) => {
+      expect(routes[cid].length, cid + ' has no assess route').toBeGreaterThan(0);
+    });
+    expect(routes).toEqual({
+      rmu_pull_1: ['pullup', 'weighted_pullup'],
+      rmu_pull_5: ['pullup', 'weighted_pullup'],
+      rmu_pull_10: ['pullup', 'weighted_pullup'],
+      fg_hang_30: ['fg_hang'],
+      exp_highpull_3: ['fastpull'],
+      exp_c2b_3: ['c2b'],
+      exp_c2r_3: ['c2r_pullup'],
+      sup_ring_20: ['ring_support'],
+      sup_rto_20: ['rto_support'],
+      trans_lowring_3: ['lowring_transition'],
+      trans_banded_3: ['banded_ring_transition'],
+      trans_full_1: ['ring_transition'],
+      dip_bar_5: ['dip'],
+      dip_ring_5: ['ring_dip'],
+      rmu_terminal: ['rmu_attempt'],
+      slstr_box_5: ['box_pistol'],
+      slstr_heel_3: ['pistol_heel'],
+      deepsquat_30: ['deep_squat_hold'],
+      ankle_9: ['knee_wall'],
+      ankle_12: ['knee_wall'],
+      pistol_terminal: ['pistol']
+    });
+  });
+
+  test('23 the role is a structural invariant, not a policy dimension', () => {
+    const keys = CONTENT.vocabulary.dimensions.map((d) => d.key);
+    ['trainEvidenceEligibility', 'linkRole', 'relationEvidence', 'evidenceRelation']
+      .forEach((k) => expect(keys, k + ' must not be a policy dimension').not.toContain(k));
+    expect(JSON.stringify(CONTENT.semantics[0].policies)).not.toMatch(/train|assess/i);
+  });
+
+  test('24 no dependency constrains evidence_validity: a proxy never overrules a demonstration', () => {
+    expect(B.dependencies.filter((d) => (d.constrains || []).indexOf('evidence_validity') >= 0)
+      .map((d) => d.id)).toEqual([]);
+  });
+
+  test('25 no goal terminal is gated by a hard dependency on a supporting capability', () => {
+    expect(B.dependencies.filter((d) => d.subject.kind === 'goalTerminal' && d.severity === 'hard')
+      .map((d) => d.id)).toEqual([]);
+  });
+
+  test('26 every hard dependency offers an accommodation, since it changes what is prescribed', () => {
     B.dependencies.filter((d) => d.severity === 'hard').forEach((d) => {
       expect(d.accommodation, d.id).toBeTruthy();
       expect(exById[d.accommodation.exerciseId], d.id + ' accommodation exercise').toBeTruthy();

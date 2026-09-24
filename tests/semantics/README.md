@@ -4,8 +4,10 @@ The harness described in the Implementation Plan §15. It ships in P4, **before 
 evaluator exists**, so the evaluator is built to pass it rather than the fixtures
 being written to match whatever the evaluator happens to do.
 
-    fixtures/<case>.json     one of the 17 named cases
+    fixtures/<case>.json      one case (§15's seventeen, plus train-link-not-evidence)
     bundles/mini-expr.json    a minimal bundle for the three expression cases
+    bundles/mini-dep.json     evidence_validity, which bundle 1 deliberately does not use
+    bundles/mini-role.json    the assess / train role distinction, one variable
     reference.cjs             the hand-computed verdicts, in a different notation
     ../semantics.spec.cjs     the checker
 
@@ -62,6 +64,13 @@ What it does prove:
 A row that simply fell short of a threshold is **not** excluded: exclusion is
 about admissibility, and §7's reasons are all admissibility reasons. Such a row
 is absent from both lists and may still be cited as `bestObservation`.
+
+The same applies to a row that reaches a holder only through a `train` link.
+`ExerciseLink.relation` decides evidence eligibility — `assess` admits evidence,
+`train` and `maintain` do not — so such a row is **not applicable** rather than
+excluded. See `content/CONTRACT.md`; the case is
+`fixtures/train-link-not-evidence.json`, which is additional to §15's original
+seventeen because it postdates the role lock.
 
 ## Registering the evaluator (P6a)
 

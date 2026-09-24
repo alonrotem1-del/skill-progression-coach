@@ -1,0 +1,130 @@
+{
+  "name": "train-link-not-evidence",
+  "description": "The locked ExerciseLink role semantics. Two exercises record the same attribute at the same holder and differ only in their relation. A 30-second hold of the train-linked exercise clears the threshold and still does not satisfy the Criterion, while a 20-second hold of the assess-linked one does. TRAIN DOES NOT IMPLY EVIDENCE ELIGIBILITY, and there is no 'harder than' exception: the longer hold loses to the shorter one because eligibility is a content decision, not a comparison. The train row is not excluded either - exclusion reasons in Technical Schema v1.1 §7 are all reasons a piece of evidence was set aside, and this row was never evidence about this Criterion, exactly like an observation of an exercise that does not record the attribute at all. This case is additional to §15's original seventeen, which were written before the role was load-bearing.",
+  "bundle": "mini-role",
+  "semantics": [
+    1
+  ],
+  "commitments": {
+    "athleteGoals": [],
+    "constraints": [],
+    "preferences": {}
+  },
+  "ledger": [
+    {
+      "seq": 1,
+      "occurredAt": "2026-09-01T10:00:00.000Z",
+      "recordedAt": "2026-09-01T10:00:00.000Z",
+      "exerciseId": "r_trained",
+      "side": null,
+      "attributes": {
+        "seconds": 30
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    },
+    {
+      "seq": 2,
+      "occurredAt": "2026-09-02T10:00:00.000Z",
+      "recordedAt": "2026-09-02T10:00:00.000Z",
+      "exerciseId": "r_assessed",
+      "side": null,
+      "attributes": {
+        "seconds": 20
+      },
+      "provenance": "demonstrated",
+      "provenanceSource": "in_session",
+      "sourceWorkoutItem": {
+        "workoutId": "w_fixture",
+        "itemIndex": 0
+      },
+      "sequenceInItem": 1,
+      "context": {
+        "readiness": {},
+        "accommodationInForce": null,
+        "unmetDependencies": [],
+        "prescribedDose": null,
+        "contextId": "ctx_1"
+      }
+    }
+  ],
+  "expected": {
+    "evaluations": {
+      "r_hold_20|combined|ctx_1": {
+        "status": "satisfied",
+        "satisfiedBy": [
+          2
+        ],
+        "excluded": [],
+        "bestObservation": {
+          "seq": 2,
+          "attribute": "seconds",
+          "value": 20
+        }
+      }
+    },
+    "holders": {
+      "progression:r_prog|combined": {
+        "status": "satisfied"
+      }
+    }
+  },
+  "alternates": [
+    {
+      "note": "Only the train-linked exercise was performed, well past the threshold. The Criterion is unsatisfied and cites nothing.",
+      "ledger": [
+        {
+          "seq": 1,
+          "occurredAt": "2026-09-01T10:00:00.000Z",
+          "recordedAt": "2026-09-01T10:00:00.000Z",
+          "exerciseId": "r_trained",
+          "side": null,
+          "attributes": {
+            "seconds": 45
+          },
+          "provenance": "demonstrated",
+          "provenanceSource": "in_session",
+          "sourceWorkoutItem": {
+            "workoutId": "w_fixture",
+            "itemIndex": 0
+          },
+          "sequenceInItem": 1,
+          "context": {
+            "readiness": {},
+            "accommodationInForce": null,
+            "unmetDependencies": [],
+            "prescribedDose": null,
+            "contextId": "ctx_1"
+          }
+        }
+      ],
+      "expected": {
+        "evaluations": {
+          "r_hold_20|combined|ctx_1": {
+            "status": "unsatisfied",
+            "satisfiedBy": [],
+            "excluded": [],
+            "shortfall": "no observation of an assess-linked exercise records seconds"
+          }
+        },
+        "holders": {
+          "progression:r_prog|combined": {
+            "status": "unsatisfied"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "v20-assess-link-with-wrong-side-scope",
+  "rule": "V20",
+  "reason": "The pistol assesses a per-side terminal, so a combined-scope assess link claims an assessment that sideAggregation forbids: a bilateral measurement can never satisfy a per-side Criterion.",
+  "expect": { "level": "error", "includes": "side scope" },
+  "ops": [
+    { "op": "set", "path": "bundle.exerciseLinks[@exerciseId=pistol&relation=assess].sideScope", "value": "combined" }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "mini-role",
+  "version": 1,
+  "note": "A minimal bundle for the locked ExerciseLink role semantics. Two exercises record the same attribute at the same holder; one is linked assess and the other train. Everything about them is identical except the role, so the only thing the case can be proving is that the role decides evidence eligibility. Bundle 1 has several such pairs (a bar dead hang beside a false-grip ring hang), but there the apparatus differs too, and a fixture should isolate one variable.",
+  "requiresSemanticsAtLeast": 1,
+  "attributes": [
+    { "id": "seconds", "label": "Duration", "type": "quantity", "unit": "seconds" }
+  ],
+  "exercises": [
+    { "id": "r_assessed", "name": "The Measured Hold", "unilateral": false, "producesAttributes": ["seconds"], "loadDimensions": { "push": 1 }, "defaultDose": { "scheme": "hold", "sets": 3, "seconds": 20 } },
+    { "id": "r_trained", "name": "The Training Hold", "unilateral": false, "producesAttributes": ["seconds"], "loadDimensions": { "push": 1 }, "defaultDose": { "scheme": "hold", "sets": 3, "seconds": 30 } }
+  ],
+  "criteria": [
+    { "id": "r_hold_20", "label": "Hold the measured position for 20 seconds", "primaryAttribute": "seconds", "sideScope": "combined", "conditions": [ { "attribute": "seconds", "op": "gte", "value": 20 } ], "demonstration": { "occasions": 1, "distinctDays": false } }
+  ],
+  "progressions": [
+    { "id": "r_prog", "name": "Mini Role Progression", "athleteFacingName": "The Hold", "form": "DIRECT", "requirement": { "criterion": "r_hold_20" } }
+  ],
+  "goals": [],
+  "dependencies": [],
+  "exerciseLinks": [
+    { "exerciseId": "r_assessed", "target": { "kind": "progression", "progressionId": "r_prog" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
+    { "exerciseId": "r_trained", "target": { "kind": "progression", "progressionId": "r_prog" }, "relation": "train", "rank": 2, "sideScope": "combined" }
+  ]
+}
