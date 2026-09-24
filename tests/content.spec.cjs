@@ -157,6 +157,86 @@ test.describe('P4 content — shipped content', () => {
   });
 });
 
+// The two authoring rules the bundle's own note states. Both were review
+// findings, so they are tests now rather than paragraphs: nothing in the schema
+// makes a `train` link less evidential than an `assess` link, and nothing stops
+// a Dependency from invalidating evidence, so content has to hold the line.
+test.describe('P4 content — evidence discipline', () => {
+  const B = CONTENT.bundles[0];
+  const exById = {}; B.exercises.forEach((e) => (exById[e.id] = e));
+  const crById = {}; B.criteria.forEach((c) => (crById[c.id] = c));
+  const holderKey = (t) => t.kind === 'stage' ? 'stage:' + t.stageId
+    : t.kind === 'progression' ? 'progression:' + t.progressionId : 'goalTerminal:' + t.goalId;
+
+  const holders = {};
+  B.progressions.forEach((p) => {
+    if (p.form === 'DIRECT') holders['progression:' + p.id] = V.leafCriteria(p.requirement);
+    (p.stages || []).forEach((st) => (holders['stage:' + st.id] = V.leafCriteria(st.requirement)));
+  });
+  B.goals.forEach((g) => (holders['goalTerminal:' + g.id] = V.leafCriteria(g.terminalRequirement)));
+  const linksByHolder = {};
+  B.exerciseLinks.forEach((l) => {
+    (linksByHolder[holderKey(l.target)] = linksByHolder[holderKey(l.target)] || []).push(l);
+  });
+
+  // A train link whose exercise could satisfy the holder's criterion, allowed
+  // only where the substitution is strictly harder than what it stands in for.
+  const ALLOWED_TRAIN_EVIDENCE = {
+    'stage:rmu_pull_s3/rmu_pull_10/weighted_pullup':
+      'Ten clean weighted pull-ups are strictly harder than the ten bodyweight reps the criterion asks for.'
+  };
+
+  test('15 no train link can satisfy a criterion it was only meant to develop', () => {
+    const offenders = [];
+    Object.keys(holders).forEach((h) => {
+      holders[h].forEach((cid) => {
+        const need = crById[cid].conditions.map((cd) => cd.attribute);
+        (linksByHolder[h] || []).forEach((l) => {
+          if (l.relation !== 'train') return;
+          const produces = exById[l.exerciseId].producesAttributes || [];
+          if (!need.every((a) => produces.indexOf(a) >= 0)) return;      // not evidence about this criterion
+          const key = h + '/' + cid + '/' + l.exerciseId;
+          if (!ALLOWED_TRAIN_EVIDENCE[key]) offenders.push(key);
+        });
+      });
+    });
+    expect(offenders, 'a bar drill must not silently satisfy a ring criterion').toEqual([]);
+  });
+
+  test('16 every holder is assessable, and only by an assess link', () => {
+    Object.keys(holders).forEach((h) => {
+      const assess = (linksByHolder[h] || []).filter((l) => l.relation === 'assess');
+      expect(assess.length, h + ' has no assess link').toBeGreaterThan(0);
+      holders[h].forEach((cid) => {
+        const need = crById[cid].conditions.map((cd) => cd.attribute);
+        const covered = assess.some((l) => need.every((a) => (exById[l.exerciseId].producesAttributes || []).indexOf(a) >= 0));
+        expect(covered, h + ' / ' + cid + ' is not covered by any assess link').toBe(true);
+      });
+    });
+  });
+
+  test('17 no dependency constrains evidence_validity: a proxy never overrules a demonstration', () => {
+    const offenders = B.dependencies
+      .filter((d) => (d.constrains || []).indexOf('evidence_validity') >= 0)
+      .map((d) => d.id);
+    expect(offenders).toEqual([]);
+  });
+
+  test('18 no goal terminal is gated by a hard dependency on a supporting capability', () => {
+    const hardOnTerminal = B.dependencies.filter((d) =>
+      d.subject.kind === 'goalTerminal' && d.severity === 'hard').map((d) => d.id);
+    expect(hardOnTerminal, 'a clean terminal performance is the evidence for the Goal').toEqual([]);
+  });
+
+  test('19 every hard dependency offers an accommodation, since it changes what is prescribed', () => {
+    B.dependencies.filter((d) => d.severity === 'hard').forEach((d) => {
+      expect(d.accommodation, d.id).toBeTruthy();
+      expect(exById[d.accommodation.exerciseId], d.id + ' accommodation exercise').toBeTruthy();
+      expect(d.accommodation.doseNote.length, d.id).toBeGreaterThan(20);
+    });
+  });
+});
+
 test.describe('P4 content — exercise-id continuity (V15)', () => {
   test('07 every exercise id the app cites is defined in bundle 1', () => {
     const defined = new Set(CONTENT.bundles[0].exercises.map((e) => e.id));
@@ -183,7 +263,7 @@ test.describe('P4 content — exercise-id continuity (V15)', () => {
     expect(authored.sort()).toEqual([
       'banded_ring_transition', 'box_pistol', 'c2r_pullup', 'deep_squat_hold', 'fg_hang',
       'knee_wall', 'lowring_transition', 'pistol_heel', 'ring_dip', 'ring_transition',
-      'rmu_attempt', 'rto_support', 'sl_balance'
+      'rmu_attempt', 'rto_support'
     ].sort());
   });
 });

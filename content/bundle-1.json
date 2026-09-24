@@ -2,7 +2,7 @@
   "version": 1,
   "publishedAt": "2026-09-24",
   "requiresSemanticsAtLeast": 1,
-  "note": "Content Bundle 1. Two canonical Goals: Ring Muscle-Up and Pistol Squat. Criteria and exerciseLinks are top-level arrays so each is defined exactly once and referenced by id; Technical Schema v1.1 §4 states its shapes are illustrative of what must exist, not a serialisation format. Contains no evaluation rule of any kind - thresholds, scales, structure and references only.",
+  "note": "Content Bundle 1. Two canonical Goals: Ring Muscle-Up and Pistol Squat. Criteria and exerciseLinks are top-level arrays so each is defined exactly once and referenced by id; Technical Schema v1.1 §4 states its shapes are illustrative of what must exist, not a serialisation format. Contains no evaluation rule of any kind - thresholds, scales, structure and references only. Two authoring rules this bundle holds to. (1) An exercise is linked to a holder only when an observation of it would be admissible evidence for that holder's Criteria - a bar drill may be excellent training for a ring Stage, but it is not linked there, because nothing in the schema makes a train link less evidential than an assess link. (2) No Dependency constrains evidence_validity: an unmet Dependency changes what is prescribed and what is opened up, never what a clean demonstration means, because a proxy capability must not overrule the performance it is a proxy for.",
 
   "attributes": [
     { "id": "reps", "label": "Repetitions", "type": "quantity", "unit": "reps" },
@@ -10,7 +10,6 @@
     { "id": "kg", "label": "Added load", "type": "quantity", "unit": "kg" },
     { "id": "cm", "label": "Distance", "type": "quantity", "unit": "cm" },
     { "id": "kip", "label": "Kipped", "type": "flag" },
-    { "id": "lateral_shift", "label": "Hip dropped or shifted", "type": "flag" },
     { "id": "catch_quality", "label": "Catch quality", "type": "grade", "scale": ["uncontrolled", "assisted", "controlled"] },
     { "id": "depth", "label": "Depth reached", "type": "grade", "scale": ["above_parallel", "parallel", "below_parallel"] },
     { "id": "execution", "label": "Execution quality", "type": "grade", "scale": ["uncontrolled", "assisted", "controlled"] }
@@ -49,7 +48,6 @@
     { "id": "box_pistol", "name": "Box Pistol Squat", "unilateral": true, "producesAttributes": ["reps", "depth"], "loadDimensions": { "legs": 2 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 5 } },
     { "id": "pistol_heel", "name": "Heel-Elevated Pistol Squat", "unilateral": true, "producesAttributes": ["reps", "depth", "execution"], "loadDimensions": { "legs": 2 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 3 } },
     { "id": "deep_squat_hold", "name": "Deep Bodyweight Squat Hold", "unilateral": false, "producesAttributes": ["seconds", "depth"], "loadDimensions": { "legs": 1 }, "defaultDose": { "scheme": "hold", "sets": 3, "seconds": 30 } },
-    { "id": "sl_balance", "name": "Single-Leg Stance", "unilateral": true, "producesAttributes": ["seconds", "lateral_shift"], "loadDimensions": { "legs": 1 }, "defaultDose": { "scheme": "hold", "sets": 2, "seconds": 30 } },
     { "id": "knee_wall", "name": "Knee-to-Wall Ankle Test", "unilateral": true, "producesAttributes": ["cm"], "loadDimensions": {}, "defaultDose": { "scheme": "assessment", "sets": 1 } },
 
     { "id": "bouldering", "name": "Bouldering", "unilateral": false, "producesAttributes": [], "loadDimensions": { "pull": 2, "grip": 2, "elbow": 1, "shoulder": 1, "explosive": 1 }, "defaultDose": null },
@@ -93,7 +91,6 @@
 
     { "id": "deepsquat_30", "label": "Hold a full-depth bodyweight squat for 30 seconds", "primaryAttribute": "seconds", "sideScope": "combined", "conditions": [ { "attribute": "seconds", "op": "gte", "value": 30 }, { "attribute": "depth", "op": "gte", "value": "below_parallel" } ], "demonstration": { "occasions": 1, "distinctDays": false } },
 
-    { "id": "slbal_30", "label": "Stand on one leg for 30 seconds without the hip dropping", "primaryAttribute": "seconds", "sideScope": "each", "conditions": [ { "attribute": "seconds", "op": "gte", "value": 30 }, { "attribute": "lateral_shift", "op": "eq", "value": false } ], "demonstration": { "occasions": 1, "distinctDays": false } },
 
     { "id": "ankle_9", "label": "Reach 9 cm knee-to-wall on each ankle", "primaryAttribute": "cm", "sideScope": "each", "conditions": [ { "attribute": "cm", "op": "gte", "value": 9 } ], "demonstration": { "occasions": 1, "distinctDays": false } },
     { "id": "ankle_12", "label": "Reach 12 cm knee-to-wall on each ankle", "primaryAttribute": "cm", "sideScope": "each", "conditions": [ { "attribute": "cm", "op": "gte", "value": 12 } ], "demonstration": { "occasions": 1, "distinctDays": false } },
@@ -181,13 +178,6 @@
       "requirement": { "criterion": "deepsquat_30" }
     },
     {
-      "id": "pistol_balance",
-      "name": "Single-Leg Balance and Control",
-      "athleteFacingName": "Balance",
-      "form": "DIRECT",
-      "requirement": { "criterion": "slbal_30" }
-    },
-    {
       "id": "pistol_ankle_mobility",
       "name": "Ankle Dorsiflexion",
       "athleteFacingName": "Ankle Mobility",
@@ -222,7 +212,6 @@
       "coordinates": [
         { "progressionId": "pistol_sl_strength", "role": "strength", "required": true },
         { "progressionId": "pistol_deep_squat", "role": "capacity", "required": true },
-        { "progressionId": "pistol_balance", "role": "control", "required": true },
         { "progressionId": "pistol_ankle_mobility", "role": "mobility", "required": true }
       ]
     }
@@ -234,10 +223,10 @@
       "subject": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s3" },
       "requires": { "kind": "stage", "progressionId": "rmu_ring_support", "stageId": "rmu_sup_s2" },
       "sideRule": "any",
-      "constrains": ["prescription", "unlocking", "evidence_validity"],
+      "constrains": ["prescription", "unlocking"],
       "severity": "hard",
       "accommodation": { "exerciseId": "lowring_transition", "doseNote": "Keep working the low-ring transition with your feet assisting until the rings-turned-out support hold is there." },
-      "rationale": "An unassisted transition finishes in a rings-turned-out support. Without that hold there is nothing to catch, so the attempt collapses at the bottom rather than teaching the movement."
+      "rationale": "An unassisted transition finishes in a rings-turned-out support. Without that hold there is nothing to catch, so the attempt collapses at the bottom rather than teaching the movement. It gates what the plan asks for and what it opens up, not what a clean rep means if the athlete does one anyway."
     },
     {
       "id": "dep_rmu_needs_false_grip",
@@ -253,19 +242,29 @@
       "subject": { "kind": "goalTerminal", "goalId": "pistol_squat" },
       "requires": { "kind": "stage", "progressionId": "pistol_ankle_mobility", "stageId": "pistol_ankle_s1" },
       "sideRule": "mirror",
-      "constrains": ["prescription", "unlocking", "evidence_validity"],
-      "severity": "hard",
+      "constrains": ["prescription"],
+      "severity": "soft",
       "accommodation": { "exerciseId": "pistol_heel", "doseNote": "Elevate the heel while dorsiflexion is short; it removes the ankle limit without changing the rest of the movement." },
-      "rationale": "A full-depth pistol needs the shin to travel forward over the foot. If the ankle cannot reach that range, the depth has to come from somewhere else - usually the lower back - and the rep stops being the movement it looks like."
+      "rationale": "A full-depth pistol needs the shin to travel forward over the foot, so short dorsiflexion changes what to prescribe and argues for elevating the heel. It does not decide whether a pistol happened: the terminal Criterion measures depth and control directly, and a measured proxy must not overrule the performance it is a proxy for."
     },
     {
       "id": "dep_pistol_needs_deep_squat",
-      "subject": { "kind": "goalTerminal", "goalId": "pistol_squat" },
+      "subject": { "kind": "stage", "progressionId": "pistol_sl_strength", "stageId": "pistol_str_s2" },
       "requires": { "kind": "progression", "progressionId": "pistol_deep_squat" },
+      "sideRule": "any",
+      "constrains": ["prescription"],
+      "severity": "soft",
+      "rationale": "Below-parallel work on one leg presupposes the bottom position on two. If the bilateral squat hold is not there, that is the thing to train first - which is prescription advice, not grounds for refusing a rep that happened."
+    },
+    {
+      "id": "dep_ring_dip_needs_ring_support",
+      "subject": { "kind": "stage", "progressionId": "rmu_dip_press", "stageId": "rmu_dip_s2" },
+      "requires": { "kind": "stage", "progressionId": "rmu_ring_support", "stageId": "rmu_sup_s1" },
       "sideRule": "any",
       "constrains": ["prescription", "unlocking"],
       "severity": "hard",
-      "rationale": "A pistol is a full-depth squat on one leg. If the position is not available on two legs, one leg will not find it either."
+      "accommodation": { "exerciseId": "dip", "doseNote": "Keep the pressing work on a fixed bar until the ring support is steady." },
+      "rationale": "A ring dip is a dip performed in a position the rings will not hold for you. Prescribing one before the ring support is steady trains a collapse rather than a press, so the plan works the support first and offers bar dips meanwhile."
     }
   ],
 
@@ -279,8 +278,6 @@
     { "exerciseId": "lockoff", "target": { "kind": "stage", "progressionId": "rmu_pull_strength", "stageId": "rmu_pull_s2" }, "relation": "train", "rank": 2, "sideScope": "combined" },
 
     { "exerciseId": "fg_hang", "target": { "kind": "progression", "progressionId": "rmu_false_grip" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
-    { "exerciseId": "deadhang", "target": { "kind": "progression", "progressionId": "rmu_false_grip" }, "relation": "train", "rank": 2, "sideScope": "combined" },
-    { "exerciseId": "activehang", "target": { "kind": "progression", "progressionId": "rmu_false_grip" }, "relation": "train", "rank": 3, "sideScope": "combined" },
 
     { "exerciseId": "fastpull", "target": { "kind": "stage", "progressionId": "rmu_explosive_pull", "stageId": "rmu_exp_s1" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
     { "exerciseId": "c2b", "target": { "kind": "stage", "progressionId": "rmu_explosive_pull", "stageId": "rmu_exp_s2" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
@@ -290,14 +287,10 @@
     { "exerciseId": "rto_support", "target": { "kind": "stage", "progressionId": "rmu_ring_support", "stageId": "rmu_sup_s2" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
 
     { "exerciseId": "lowring_transition", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s1" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
-    { "exerciseId": "lowtrans", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s1" }, "relation": "train", "rank": 2, "sideScope": "combined" },
     { "exerciseId": "banded_ring_transition", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s2" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
     { "exerciseId": "ring_transition", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s3" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
-    { "exerciseId": "negmu", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s3" }, "relation": "train", "rank": 2, "sideScope": "combined" },
-    { "exerciseId": "transition", "target": { "kind": "stage", "progressionId": "rmu_transition", "stageId": "rmu_trans_s2" }, "relation": "train", "rank": 3, "sideScope": "combined" },
 
     { "exerciseId": "dip", "target": { "kind": "stage", "progressionId": "rmu_dip_press", "stageId": "rmu_dip_s1" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
-    { "exerciseId": "pbdip", "target": { "kind": "stage", "progressionId": "rmu_dip_press", "stageId": "rmu_dip_s1" }, "relation": "train", "rank": 2, "sideScope": "combined" },
     { "exerciseId": "ring_dip", "target": { "kind": "stage", "progressionId": "rmu_dip_press", "stageId": "rmu_dip_s2" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
 
     { "exerciseId": "rmu_attempt", "target": { "kind": "goalTerminal", "goalId": "ring_muscle_up" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
@@ -309,12 +302,10 @@
 
     { "exerciseId": "deep_squat_hold", "target": { "kind": "progression", "progressionId": "pistol_deep_squat" }, "relation": "assess", "rank": 1, "sideScope": "combined" },
 
-    { "exerciseId": "sl_balance", "target": { "kind": "progression", "progressionId": "pistol_balance" }, "relation": "assess", "rank": 1, "sideScope": "each" },
 
     { "exerciseId": "knee_wall", "target": { "kind": "stage", "progressionId": "pistol_ankle_mobility", "stageId": "pistol_ankle_s1" }, "relation": "assess", "rank": 1, "sideScope": "each" },
     { "exerciseId": "knee_wall", "target": { "kind": "stage", "progressionId": "pistol_ankle_mobility", "stageId": "pistol_ankle_s2" }, "relation": "assess", "rank": 1, "sideScope": "each" },
 
-    { "exerciseId": "pistol", "target": { "kind": "goalTerminal", "goalId": "pistol_squat" }, "relation": "assess", "rank": 1, "sideScope": "each" },
-    { "exerciseId": "pistol_heel", "target": { "kind": "goalTerminal", "goalId": "pistol_squat" }, "relation": "train", "rank": 2, "sideScope": "each" }
+    { "exerciseId": "pistol", "target": { "kind": "goalTerminal", "goalId": "pistol_squat" }, "relation": "assess", "rank": 1, "sideScope": "each" }
   ]
 }

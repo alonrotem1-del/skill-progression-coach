@@ -1,0 +1,42 @@
+{
+  "id": "mini-dep",
+  "version": 1,
+  "note": "A minimal bundle for the one case that needs a Dependency constraining evidence_validity. Content bundle 1 deliberately ships none: there, an unmet Dependency shapes prescription and unlocking but never overrules a clean demonstration. The mechanism still has to be pinned, because the schema provides it and a later bundle may need it, so it is exercised here on a deliberately abstract per-side goal modelled on Technical Schema v1.1 §6's pistol example.",
+  "requiresSemanticsAtLeast": 1,
+  "attributes": [
+    { "id": "reps", "label": "Repetitions", "type": "quantity", "unit": "reps" },
+    { "id": "cm", "label": "Distance", "type": "quantity", "unit": "cm" },
+    { "id": "depth", "label": "Depth reached", "type": "grade", "scale": ["above_parallel", "parallel", "below_parallel"] },
+    { "id": "execution", "label": "Execution quality", "type": "grade", "scale": ["uncontrolled", "assisted", "controlled"] }
+  ],
+  "exercises": [
+    { "id": "d_lift", "name": "Mini Single-Leg Lift", "unilateral": true, "producesAttributes": ["reps", "depth", "execution"], "loadDimensions": { "legs": 2 }, "defaultDose": { "scheme": "sets", "sets": 3, "reps": 3 } },
+    { "id": "d_range", "name": "Mini Range Test", "unilateral": true, "producesAttributes": ["cm"], "loadDimensions": {}, "defaultDose": { "scheme": "assessment", "sets": 1 } }
+  ],
+  "criteria": [
+    { "id": "d_range_9", "label": "Reach 9 cm on each side", "primaryAttribute": "cm", "sideScope": "each", "conditions": [ { "attribute": "cm", "op": "gte", "value": 9 } ], "demonstration": { "occasions": 1, "distinctDays": false } },
+    { "id": "d_terminal", "label": "One controlled full-depth lift on each side", "primaryAttribute": "reps", "sideScope": "each", "conditions": [ { "attribute": "reps", "op": "gte", "value": 1 }, { "attribute": "depth", "op": "gte", "value": "below_parallel" }, { "attribute": "execution", "op": "gte", "value": "controlled" } ], "demonstration": { "occasions": 1, "distinctDays": false } }
+  ],
+  "progressions": [
+    { "id": "d_range_prog", "name": "Mini Range", "athleteFacingName": "Range", "form": "DIRECT", "requirement": { "criterion": "d_range_9" } }
+  ],
+  "goals": [
+    { "id": "d_goal", "name": "Mini Per-Side Goal", "athleteFacingName": "Mini Goal", "terminalRequirement": { "criterion": "d_terminal" },
+      "coordinates": [ { "progressionId": "d_range_prog", "role": "mobility", "required": true } ] }
+  ],
+  "dependencies": [
+    {
+      "id": "d_dep",
+      "subject": { "kind": "goalTerminal", "goalId": "d_goal" },
+      "requires": { "kind": "progression", "progressionId": "d_range_prog" },
+      "sideRule": "mirror",
+      "constrains": ["prescription", "unlocking", "evidence_validity"],
+      "severity": "hard",
+      "rationale": "Fixture-only. States that a lift recorded on a side whose range is unmet does not mean what it appears to mean, so the mechanism can be tested."
+    }
+  ],
+  "exerciseLinks": [
+    { "exerciseId": "d_lift", "target": { "kind": "goalTerminal", "goalId": "d_goal" }, "relation": "assess", "rank": 1, "sideScope": "each" },
+    { "exerciseId": "d_range", "target": { "kind": "progression", "progressionId": "d_range_prog" }, "relation": "assess", "rank": 1, "sideScope": "each" }
+  ]
+}

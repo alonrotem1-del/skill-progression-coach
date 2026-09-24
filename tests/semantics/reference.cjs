@@ -97,20 +97,20 @@ var HAND_COMPUTED = {
   ],
 
   'dependency-unmet-excluded': [
-    ['crit pistol_terminal|left => unsatisfied ex 1:dependency_unmet(dep_pistol_needs_ankle)',
-     'crit pistol_terminal|right => unsatisfied ex 1:wrong_side',
-     'holder goalTerminal:pistol_squat|left => unsatisfied',
-     'holder goalTerminal:pistol_squat|right => unsatisfied',
-     'dep dep_pistol_needs_ankle|left => unmet',
-     'dep dep_pistol_needs_ankle|right => unmet'],
-    ['crit ankle_9|left => satisfied by 1 ex 2:wrong_side',
-     'crit ankle_9|right => satisfied by 2 ex 1:wrong_side',
-     'crit pistol_terminal|left => satisfied by 3',
-     'crit pistol_terminal|right => unsatisfied ex 3:wrong_side',
-     'holder goalTerminal:pistol_squat|left => satisfied',
-     'holder goalTerminal:pistol_squat|right => unsatisfied',
-     'dep dep_pistol_needs_ankle|left => met',
-     'dep dep_pistol_needs_ankle|right => met']
+    ['crit d_terminal|left => unsatisfied ex 1:dependency_unmet(d_dep)',
+     'crit d_terminal|right => unsatisfied ex 1:wrong_side',
+     'holder goalTerminal:d_goal|left => unsatisfied',
+     'holder goalTerminal:d_goal|right => unsatisfied',
+     'dep d_dep|left => unmet',
+     'dep d_dep|right => unmet'],
+    ['crit d_range_9|left => satisfied by 1 ex 2:wrong_side',
+     'crit d_range_9|right => satisfied by 2 ex 1:wrong_side',
+     'crit d_terminal|left => satisfied by 3',
+     'crit d_terminal|right => unsatisfied ex 3:wrong_side',
+     'holder goalTerminal:d_goal|left => satisfied',
+     'holder goalTerminal:d_goal|right => unsatisfied',
+     'dep d_dep|left => met',
+     'dep d_dep|right => met']
   ],
 
   'side-each-independent': [
