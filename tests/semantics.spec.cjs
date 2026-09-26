@@ -1,24 +1,24 @@
 /*
- * P4 — behaviour-preservation harness (Implementation Plan §15).
+ * Behaviour-preservation harness (Implementation Plan §15) — driving the real
+ * evaluator since P6a.
  *
- * The evaluator does not exist yet. What ships here is the thing the evaluator
- * will be built against:
+ * Three independent things assert the same verdicts, written in three different
+ * notations so none can be quietly edited into agreement with the others:
  *
- *   · 17 named cases, each a ledger plus the verdicts semantics 1 must produce;
- *   · a hand-computed reference table in a different notation (reference.cjs),
- *     cross-checked against every fixture, so neither half can be quietly
- *     edited into agreement with the other;
- *   · a consistency checker that re-derives, from the bundle and the semantics-1
- *     policy values alone, WHICH observations may be cited for a criterion and
- *     which must be excluded and why — so "expected" cannot assert a verdict the
- *     content and the policies do not support.
+ *   1. the fixtures — 18 cases, each a ledger plus the verdicts semantics 1 must
+ *      produce;
+ *   2. the hand-computed reference table in reference.cjs, written before the
+ *      evaluator existed and kept as ORACLE DATA rather than as an
+ *      implementation (test 08 compares it to the fixtures directly);
+ *   3. evaluator.js, which is now the thing under test: the registered evaluator
+ *      answers every fixture's questions and the answers are compared to the
+ *      fixture, scenario by scenario (test 16).
  *
- * The checker is a fixture checker, not the evaluator. It decides admissibility
- * and condition-meeting for a single observation, which is exactly what
- * criterionComposition, missingAttribute, sideAggregation, claimedEligibility,
- * claimedAtGoalTerminal and dependencyInvalidEvidence pin down. It deliberately
- * does not compute stage selection, limiters or expression combination from the
- * ledger; for those it checks the fixture's own declarations against each other.
+ * The fixture consistency checker below stays. It re-derives, from the bundle and
+ * the semantics-1 policy values alone, WHICH observations may be cited for a
+ * criterion and which must be excluded and why — a second opinion written
+ * independently of the engine, so a bug that agreed with itself in both the
+ * engine and the fixtures would still be caught.
  */
 const { test, expect } = require('@playwright/test');
 const fs = require('fs');
@@ -27,6 +27,7 @@ const path = require('path');
 const REPO = path.resolve(__dirname, '..');
 const V = require(path.join(REPO, 'tools', 'validate-content.cjs'));
 const REF = require(path.join(__dirname, 'semantics', 'reference.cjs'));
+const Evaluator = require(path.join(REPO, 'evaluator.js'));
 
 const CONTENT = V.loadContentDir(path.join(REPO, 'content'));
 const POLICIES = CONTENT.semantics[0].policies;
@@ -207,6 +208,44 @@ function combineStrict(m, expr, statusOf) {
   return 'unsatisfied';
 }
 
+// ---- the P6a cutover ------------------------------------------------------
+// A context package built from what the fixture names, in the shape P5 stores
+// one, and a query built from the questions the fixture asks. The evaluator
+// supplies only the answers; it is never told what they should be.
+function packageFor(fixtureBundle, semanticsVersion) {
+  const semantics = CONTENT.semantics.filter((s) => s.version === semanticsVersion)[0];
+  if (!semantics) throw new Error('no published semantics version ' + semanticsVersion);
+  const bundle = resolveBundle(fixtureBundle);
+  return {
+    contextId: 'ctx_1',
+    manifest: { id: 'ctx_1', contentBundleVersion: bundle.version, evaluationSemanticsVersion: semantics.version },
+    contentBundle: bundle,
+    evaluationSemantics: semantics,
+    vocabularyVersionAtWrite: CONTENT.vocabulary.vocabularyVersion,
+    writtenAt: '2026-09-24T00:00:00.000Z'
+  };
+}
+
+function queryFor(expected, fixture) {
+  const q = {};
+  ['evaluations', 'holders', 'currentStage', 'limiters', 'dependencies'].forEach((section) => {
+    if (expected[section]) q[section] = Object.keys(expected[section]);
+  });
+  if (fixture.scopeProgressions) q.scopeProgressions = fixture.scopeProgressions;
+  return q;
+}
+
+const realEvaluator = (fixture, semanticsVersion, scenarioIndex) => {
+  const scenario = scenarios(fixture)[scenarioIndex || 0];
+  return Evaluator.interpret(
+    scenario.ledger,
+    fixture.commitments,
+    packageFor(fixture.bundle, semanticsVersion),
+    queryFor(scenario.expected, fixture)
+  );
+};
+REF.registerEvaluator(realEvaluator);
+
 // Each fixture yields one scenario per ledger it declares.
 function scenarios(fx) {
   return [{ index: 0, note: 'primary', ledger: fx.ledger, expected: fx.expected }].concat(
@@ -236,7 +275,9 @@ test.describe('P4 semantics harness — the fixture set', () => {
     expect(text).not.toContain('stale(');
   });
 
-  test('04 the validator loads the fixtures and reports its evaluative half as pending, not passing', () => {
+  test('04 the validator still reports PENDING when no evaluator is handed to it', () => {
+    // The seam itself: V18's evaluative half must never silently pass because
+    // nobody supplied an engine. Test 05 covers the opposite case.
     const rep = V.validate({
       ...CONTENT,
       continuity: V.loadContinuity(REPO),
@@ -249,29 +290,40 @@ test.describe('P4 semantics harness — the fixture set', () => {
     expect(v18).toContain('18 behaviour-preservation fixtures');
   });
 
-  test('05 the evaluator seam is unregistered, so interpret() serves the hand-computed table', () => {
-    expect(REF.evaluatorRegistered()).toBe(false);
+  test('05 the real evaluator is registered, so interpret() is a test of evaluator.js', () => {
+    expect(REF.evaluatorRegistered()).toBe(true);
     const got = REF.interpret(FIXTURES.find((f) => f.name === 'freshness-none'), 1, 0);
     expect(got.evaluations['fg_hang_30|combined'].status).toBe('satisfied');
   });
 
-  test('06 a registered evaluator is the thing under test, and a wrong one fails', () => {
+  test('06 a wrong evaluator fails the harness, so passing it means something', () => {
     const fx = FIXTURES.find((f) => f.name === 'freshness-none');
     REF.registerEvaluator(() => ({ evaluations: { 'fg_hang_30|combined|ctx_1': { status: 'unsatisfied', satisfiedBy: [], excluded: [] } } }));
     try {
-      expect(REF.evaluatorRegistered()).toBe(true);
       expect(REF.interpret(fx, 1, 0).evaluations['fg_hang_30|combined'].status).toBe('unsatisfied');
       expect(REF.interpret(fx, 1, 0)).not.toEqual(REF.projectExpected(fx.expected));
     } finally {
-      REF.registerEvaluator(null);
+      REF.registerEvaluator(realEvaluator);
     }
-    expect(REF.evaluatorRegistered()).toBe(false);
+    expect(REF.interpret(fx, 1, 0)).toEqual(REF.projectExpected(fx.expected));
   });
 
   test('07 the reference table covers every case and every scenario, and nothing else', () => {
     expect(Object.keys(REF.HAND_COMPUTED).sort()).toEqual(NAMED_CASES.slice().sort());
     FIXTURES.forEach((f) => {
       expect(REF.HAND_COMPUTED[f.name].length, f.name + ' scenario count').toBe(scenarios(f).length);
+    });
+  });
+
+  test('08 the hand-computed oracle still agrees with every fixture, independently of the engine', () => {
+    // Read straight from the table rather than through interpret(), which since
+    // P6a runs evaluator.js. This keeps the pre-evaluator oracle as a third
+    // opinion instead of letting the engine become its own authority.
+    FIXTURES.forEach((f) => {
+      scenarios(f).forEach((s) => {
+        expect(REF.projectReference(REF.HAND_COMPUTED[f.name][s.index]),
+          f.name + ' / ' + s.note).toEqual(REF.projectExpected(s.expected));
+      });
     });
   });
 });
@@ -488,7 +540,7 @@ for (const fx of FIXTURES) {
       });
     });
 
-    test(`16 ${fx.name} — the hand-computed reference agrees with the fixture, scenario by scenario`, () => {
+    test(`16 ${fx.name} — evaluator.js produces the fixture's verdicts, scenario by scenario`, () => {
       scenarios(fx).forEach((s) => {
         fx.semantics.forEach((version) => {
           const reference = REF.interpret(fx, version, s.index);

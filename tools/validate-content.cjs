@@ -715,9 +715,71 @@ function v17(contexts, bundles, semanticsList, rep) {
 // Two halves. The structural half runs now: a vocabulary extension cannot ship
 // without a behaviour-preserving default, and every retained semantics version
 // must resolve every dimension. The evaluative half — running the §15 fixtures
-// through the evaluator and comparing verdicts — needs an evaluator, which does
-// not exist until P6a; until one is registered it is reported as PENDING, never
-// as a pass.
+// through the evaluator and comparing verdicts — needs an evaluator, and since
+// P6a evaluator.js supplies one, so both halves run. A tree without that module
+// still validates: the evaluative half then reports PENDING, never a pass.
+
+// Compares only what a fixture declares. A fixture states the questions and the
+// answers it expects; an evaluator may return more detail (a bestObservation, a
+// shortfall) without that counting as a changed verdict.
+function verdictDifference(got, want) {
+  got = got || {};
+  function at(section, key, field, g, w) {
+    return section + '[' + key + ']' + (field ? '.' + field : '') +
+      ' expected ' + JSON.stringify(w) + ', got ' + JSON.stringify(g);
+  }
+  function cmpFields(section, key, g, w, fields) {
+    if (!g) return at(section, key, null, g, w);
+    for (var i = 0; i < fields.length; i++) {
+      var f = fields[i];
+      if (!(f in w)) continue;
+      if (JSON.stringify(normaliseField(f, g[f])) !== JSON.stringify(normaliseField(f, w[f]))) {
+        return at(section, key, f, g[f], w[f]);
+      }
+    }
+    return null;
+  }
+  function normaliseField(field, value) {
+    if (field === 'satisfiedBy' && Array.isArray(value)) {
+      return value.slice().sort(function (a, b) { return a - b; });
+    }
+    if (field === 'excluded' && Array.isArray(value)) {
+      return value.map(function (x) { return x.seq + ':' + x.reason; }).sort();
+    }
+    if (field === 'blocks' && Array.isArray(value)) return value.slice().sort();
+    return value;
+  }
+  var sections = [
+    ['evaluations', ['status', 'satisfiedBy', 'excluded']],
+    ['holders', ['status']],
+    ['dependencies', ['met', 'blocks']]
+  ];
+  for (var i = 0; i < sections.length; i++) {
+    var name = sections[i][0], fields = sections[i][1];
+    var w = want[name];
+    if (!w) continue;
+    var g = got[name] || {};
+    var keys = Object.keys(w);
+    for (var j = 0; j < keys.length; j++) {
+      var diff = cmpFields(name, keys[j], g[keys[j]], w[keys[j]], fields);
+      if (diff) return diff;
+    }
+  }
+  // Plain-valued sections.
+  var plain = ['currentStage', 'limiters'];
+  for (var k = 0; k < plain.length; k++) {
+    var pw = want[plain[k]];
+    if (!pw) continue;
+    var pg = got[plain[k]] || {};
+    var pkeys = Object.keys(pw);
+    for (var m = 0; m < pkeys.length; m++) {
+      if (JSON.stringify(pg[pkeys[m]]) !== JSON.stringify(pw[pkeys[m]])) {
+        return at(plain[k], pkeys[m], null, pg[pkeys[m]], pw[pkeys[m]]);
+      }
+    }
+  }
+  return null;
+}
 
 function v18(vocabulary, semanticsList, options, rep) {
   var vocabVersion = vocabulary.vocabularyVersion;
@@ -752,18 +814,31 @@ function v18(vocabulary, semanticsList, options, rep) {
       });
     });
     if (options.evaluator) {
+      var checked = 0;
       fixtures.forEach(function (f) {
+        var scenarios = [{ i: 0, note: 'primary', expected: f.expected }].concat(
+          (f.alternates || []).map(function (a, i) {
+            return { i: i + 1, note: a.note || ('alternate ' + (i + 1)), expected: a.expected };
+          }));
         (f.semantics || []).forEach(function (v) {
-          var got, want = f.expected;
-          try { got = options.evaluator(f, v); } catch (e) {
-            rep.err('V18', 'fixture ' + f.name, 'evaluator threw under semantics ' + v + ': ' + e.message);
-            return;
-          }
-          if (JSON.stringify(got) !== JSON.stringify(want)) {
-            rep.err('V18', 'fixture ' + f.name, 'verdict changed under semantics ' + v);
-          }
+          scenarios.forEach(function (sc) {
+            var got;
+            try { got = options.evaluator(f, v, sc.i); } catch (e) {
+              rep.err('V18', 'fixture ' + f.name + ' / ' + sc.note,
+                'evaluator threw under semantics ' + v + ': ' + e.message);
+              return;
+            }
+            var diff = verdictDifference(got, sc.expected);
+            checked++;
+            if (diff) {
+              rep.err('V18', 'fixture ' + f.name + ' / ' + sc.note,
+                'verdict changed under semantics ' + v + ': ' + diff);
+            }
+          });
         });
       });
+      rep.note('V18', 'behaviour preservation verified: ' + checked +
+        ' fixture scenario(s) reproduced by the registered evaluator');
     } else {
       rep.note('V18', 'evaluative half PENDING: ' + fixtures.length + ' behaviour-preservation fixtures are loaded and internally checked, but no evaluator is registered. It activates at P6a; until then V18 proves the fixtures and the vocabulary, not the verdicts.');
     }
@@ -939,6 +1014,52 @@ function loadContinuity(repoRoot) {
   return out;
 }
 
+/**
+ * The P6a evaluator, adapted to the shape V18 calls: given a fixture, a
+ * semantics version and a scenario index, answer the questions that fixture
+ * asks. Returns null when evaluator.js is absent, so the validator still runs
+ * (and reports V18's evaluative half as PENDING) in a tree without it.
+ */
+function loadEvaluator(repoRoot, contentDir) {
+  var Evaluator;
+  try { Evaluator = require(path.join(path.resolve(repoRoot), 'evaluator.js')); }
+  catch (e) { return null; }
+  var bundleDir = path.join(path.resolve(repoRoot), 'tests', 'semantics', 'bundles');
+
+  function bundleFor(ref) {
+    if (/^bundle-\d+$/.test(ref)) return readJson(path.join(contentDir, ref + '.json'));
+    return readJson(path.join(bundleDir, ref + '.json'));
+  }
+  function semanticsFor(version) {
+    return readJson(path.join(contentDir, 'semantics-' + version + '.json'));
+  }
+  function vocabularyVersion() {
+    return readJson(path.join(contentDir, 'vocabulary.json')).vocabularyVersion;
+  }
+
+  return function (fixture, semanticsVersion, scenarioIndex) {
+    var scenarios = [fixture].concat(fixture.alternates || []);
+    var scenario = scenarios[scenarioIndex || 0];
+    if (!scenario) throw new Error('no scenario ' + scenarioIndex + ' in ' + fixture.name);
+    var bundle = bundleFor(fixture.bundle);
+    var semantics = semanticsFor(semanticsVersion);
+    var pkg = {
+      contextId: 'ctx_1',
+      manifest: { id: 'ctx_1', contentBundleVersion: bundle.version, evaluationSemanticsVersion: semantics.version },
+      contentBundle: bundle,
+      evaluationSemantics: semantics,
+      vocabularyVersionAtWrite: vocabularyVersion(),
+      writtenAt: '2026-09-24T00:00:00.000Z'
+    };
+    var query = {};
+    ['evaluations', 'holders', 'currentStage', 'limiters', 'dependencies'].forEach(function (section) {
+      if (scenario.expected && scenario.expected[section]) query[section] = Object.keys(scenario.expected[section]);
+    });
+    if (fixture.scopeProgressions) query.scopeProgressions = fixture.scopeProgressions;
+    return Evaluator.interpret(scenario.ledger, fixture.commitments, pkg, query);
+  };
+}
+
 function loadSemanticsFixtures(dir) {
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir).filter(function (f) { return /\.json$/.test(f); }).sort()
@@ -969,7 +1090,9 @@ function main(argv) {
     set = loadContentDir(dir);
     set.continuity = continuity ? loadContinuity(repoRoot) : null;
     set.semanticsFixtures = loadSemanticsFixtures(path.join(repoRoot, 'tests', 'semantics', 'fixtures'));
-    set.evaluator = null;   // registered at P6a
+    // P6a: the real evaluator, when the module is present. V18's evaluative half
+    // reports PENDING rather than passing if it is not.
+    set.evaluator = loadEvaluator(repoRoot, dir);
   } catch (e) {
     process.stderr.write('content validator: ' + e.message + '\n');
     return 2;
@@ -1005,6 +1128,8 @@ module.exports = {
   loadContentDir: loadContentDir,
   loadContinuity: loadContinuity,
   loadSemanticsFixtures: loadSemanticsFixtures,
+  loadEvaluator: loadEvaluator,
+  verdictDifference: verdictDifference,
   leafCriteria: leafCriteria,
   expressionDepth: expressionDepth,
   LOAD_DIMENSIONS: LOAD_DIMENSIONS
