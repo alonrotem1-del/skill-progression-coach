@@ -624,21 +624,34 @@ test.describe('P6a evaluator — purity', () => {
 
 // ── no authority ──────────────────────────────────────────────────────────
 test.describe('P6a evaluator — no authority', () => {
-  test('47 nothing in the app references the evaluator, and the shell does not load it', () => {
+  test('47 only the evidence tap consults the evaluator; no decision path does', () => {
     const fs = require('fs');
-    ['app.js', 'week.js', 'engine.js', 'progress.js', 'daily.js', 'store.js',
+    // P3 wires the evaluator into the runtime for ONE purpose: telling a new
+    // observation which Dependencies were unmet when it was recorded. Every
+    // module that decides what the athlete sees must still be unable to reach
+    // it — that is what "not authoritative" means once it is loaded.
+    ['week.js', 'engine.js', 'progress.js', 'daily.js', 'store.js',
       'settings.js', 'adapt.js', 'duration.js', 'data.js', 'backup.js', 'idb.js', 'context.js']
       .forEach((f) => {
         const src = fs.readFileSync(path.join(REPO, f), 'utf8');
         expect(src, f).not.toContain('CoachEvaluator');
         expect(src, f).not.toContain('evaluator.js');
       });
-    // P6a is deliberately outside the production shell: P3 wires it in when the
-    // evidence tap needs it, and not before.
+    // In app.js the single reference is inside the evidence tap, and it calls
+    // exactly one thing: the Dependency question.
+    const app = fs.readFileSync(path.join(REPO, 'app.js'), 'utf8');
+    const uses = app.match(/CoachEvaluator/g) || [];
+    expect(uses.length).toBe(1);
+    expect(app).toContain('E.unmetDependencies(');
+    ['CoachEvaluator.interpret', 'CoachEvaluator.currentStage', 'CoachEvaluator.limiter',
+      'CoachEvaluator.evaluateHolder', 'CoachEvaluator.isHolderSatisfied',
+      'CoachEvaluator.evaluateCriterion']
+      .forEach((n) => expect(app, n).not.toContain(n));
+    // The shell loads it, because the tap runs in the shell.
     const html = fs.readFileSync(path.join(REPO, 'index.html'), 'utf8');
-    expect(html).not.toContain('evaluator.js');
+    expect(html).toContain('evaluator.js');
     const sw = fs.readFileSync(path.join(REPO, 'sw.js'), 'utf8');
-    expect(sw).not.toContain('evaluator.js');
+    expect(sw).toContain('./evaluator.js');
   });
 
   test('48 the evaluator writes nothing: no store, no cache, no state', () => {

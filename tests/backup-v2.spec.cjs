@@ -150,7 +150,10 @@ test.describe('Backup v2 — format rules (pure module)', () => {
     expect(env.formatVersion).toBe(2);
     expect(Backup.FORMAT_VERSION).toBe(2);
     expect(Object.keys(env.storage.stores).sort()).toEqual(DURABLE.slice().sort());
-    expect(env.storage.schemaVersion).toBe(1);
+    // The storage-schema axis moves independently of the format version: the
+    // envelope shape is unchanged at format 2 while the layout inside it is 2.
+    expect(env.storage.schemaVersion).toBe(2);
+    expect(Backup.STORAGE_SCHEMA_VERSION).toBe(2);
   });
 
   test('02 — both version 1 and version 2 are importable', () => {
@@ -233,7 +236,7 @@ test.describe('Backup v2 — export completeness', () => {
     expect(env.format).toBe('spc-backup');
     expect(env.app).toBe('skill-progression-coach');
     expect(typeof env.exportedAt).toBe('string');
-    expect(env.storage.schemaVersion).toBe(1);
+    expect(env.storage.schemaVersion).toBe(2);
 
     // localStorage, key for key, byte for byte.
     LS_KEYS.forEach(k => {
@@ -249,7 +252,7 @@ test.describe('Backup v2 — export completeness', () => {
     expect(env.storage.stores.events[1]).toEqual({ seq: 4, kind: 'plan_disposition', date: '2026-09-02', tag: 'exported' });
     expect(env.storage.stores.artifacts).toEqual([{ id: 'wk_1', kind: 'workout', date: '2026-09-01', rationale: 'as rendered', tag: 'exported' }]);
     expect(env.storage.stores.commitments).toEqual([{ id: 'goal_1', kind: 'athlete_goal', goalId: 'ring_muscle_up', tag: 'exported' }]);
-    expect(env.storage.stores.athlete).toEqual([{ id: 'athlete', storageSchemaVersion: 1, displayName: 'Alon', tag: 'exported' }]);
+    expect(env.storage.stores.athlete).toEqual([{ id: 'athlete', storageSchemaVersion: 2, displayName: 'Alon', tag: 'exported' }]);
     expect(env.storage.stores.contextPackages).toEqual([{ contextId: 'ctx_1', manifest: { contentBundleVersion: 1, evaluationSemanticsVersion: 1 }, tag: 'exported' }]);
 
     // cache is absent entirely — not empty, absent.
@@ -623,11 +626,13 @@ test.describe('Backup v2 — Backup v1 files remain importable, and restore cohe
     });
 
     expect(r.stores).toEqual(DURABLE.concat(['cache']).sort());
-    expect(r.version).toBe(1);
+    expect(r.version).toBe(2);
     expect(r.ok).toBe(true);
     // Only the storage metadata a clean device would have — no invented
-    // evidence, no fabricated adoption, no athlete-owned fields.
-    expect(r.athlete).toEqual({ id: 'athlete', storageSchemaVersion: 1 });
+    // evidence, no fabricated adoption, no athlete-owned fields. A v1-era
+    // payload restores onto THIS build's layout, so the marker reads 2: the
+    // schema axis describes the database, never the file it came from.
+    expect(r.athlete).toEqual({ id: 'athlete', storageSchemaVersion: 2 });
     // And the store is immediately usable. The sequence does NOT restart at 1:
     // clearing a store leaves its key generator alone, which is exactly what
     // Technical Schema §3 requires ("it must never be reset or reused"), so a
@@ -671,11 +676,12 @@ test.describe('Backup v2 — the append-only API is not weakened by restore supp
     });
     expect(r.errors.ledger).toMatch(/append-only/);
     expect(r.errors.events).toMatch(/append-only/);
-    // The public function surface adds only appendIfNone since Phase 2 — an
-    // append with a uniqueness precondition, which can still only ever add a
-    // row. The restore mechanism stays in its own namespace, off the normal API.
-    expect(r.api).toEqual(['_applySchema', '_reset', 'allByIndex', 'append', 'appendIfNone',
-      'count', 'get', 'init', 'open', 'put', 'status']);
+    // The public function surface has gained only appends and reads since
+    // Phase 2: appendIfNone and appendUnique are appends the database may
+    // refuse, and `all` reads. None can change a row. The restore mechanism
+    // stays in its own namespace, off the normal API.
+    expect(r.api).toEqual(['_applySchema', '_reset', 'all', 'allByIndex', 'append', 'appendIfNone',
+      'appendUnique', 'count', 'get', 'init', 'open', 'put', 'status']);
     expect(r.api).not.toContain('delete');
     expect(r.api).not.toContain('clear');
     expect(r.restoreIsSeparate).toBe(true);
@@ -737,7 +743,7 @@ test.describe('Backup v2 — PWA / offline', () => {
       };
     });
     expect(r.keys).not.toContain('skill-progression-coach-v17');
-    expect(r.keys).toContain('skill-progression-coach-v20');
+    expect(r.keys).toContain('skill-progression-coach-v21');
     expect(r.hasIdb).toBe(true);
     expect(r.hasBackup).toBe(true);
     expect(r.hasContext).toBe(true);

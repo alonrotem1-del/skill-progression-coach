@@ -20,6 +20,14 @@
  *
  * Upgrades create only what is missing and never delete an existing store or
  * index, so they are forward-only and idempotent in effect.
+ *
+ * SCHEMA 2 adds one index: a UNIQUE index on ledger.dedupeKey. That index is
+ * the whole duplicate-immunity mechanism for Evidence — the database itself
+ * refuses a second row for the same execution coordinate, so immunity survives
+ * a reload, a second tab and a re-render with no in-memory set anywhere. Rows
+ * written before schema 2, and rows that legitimately carry no dedupeKey, are
+ * simply not indexed: IndexedDB skips a record whose key path is absent, which
+ * is why adding a unique index to a populated store is safe here.
  */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) module.exports = factory();
@@ -28,15 +36,17 @@
   'use strict';
 
   var DB_NAME = 'spc';
-  var SCHEMA_VERSION = 1;
+  var SCHEMA_VERSION = 2;
 
   // The single row in `athlete` that carries device-local storage metadata.
   var ATHLETE_ID = 'athlete';
 
   // Technical Schema v1.1 §16, verbatim. Order is presentation only.
+  // An index is either a bare name (non-unique, keyPath === name) or
+  // { name, unique } when the database must enforce uniqueness itself.
   var STORES = [
     { name: 'ledger', keyPath: 'seq', autoIncrement: true,
-      indexes: ['exerciseId', 'occurredAt', 'kind'] },
+      indexes: ['exerciseId', 'occurredAt', 'kind', { name: 'dedupeKey', unique: true }] },
     { name: 'artifacts', keyPath: 'id', indexes: ['kind', 'date'] },
     { name: 'events', keyPath: 'seq', autoIncrement: true,
       indexes: ['kind', 'date'] },
@@ -57,6 +67,13 @@
   function defOf(name) {
     for (var i = 0; i < STORES.length; i++) if (STORES[i].name === name) return STORES[i];
     return null;
+  }
+  function indexNameOf(idx) { return (typeof idx === 'string') ? idx : idx.name; }
+  function indexNames(def) {
+    return (def.indexes || []).map(indexNameOf);
+  }
+  function hasIndex(def, indexName) {
+    return indexNames(def).indexOf(indexName) !== -1;
   }
 
   // ---- schema ---------------------------------------------------------------
@@ -80,7 +97,10 @@
       }
       for (var j = 0; j < def.indexes.length; j++) {
         var idx = def.indexes[j];
-        if (!store.indexNames.contains(idx)) store.createIndex(idx, idx);
+        var iname = indexNameOf(idx);
+        if (!store.indexNames.contains(iname)) {
+          store.createIndex(iname, iname, { unique: !!(idx && idx.unique) });
+        }
       }
     }
   }
@@ -176,7 +196,7 @@
   function allByIndex(storeName, indexName, query) {
     var def = defOf(storeName);
     if (!def) return Promise.reject(new Error('unknown object store: ' + storeName));
-    if (def.indexes.indexOf(indexName) === -1) {
+    if (!hasIndex(def, indexName)) {
       return Promise.reject(new Error(storeName + ' has no index: ' + indexName));
     }
     return run(storeName, 'readonly', function (store) {
@@ -195,7 +215,7 @@
     var bad = guard(storeName, true);
     if (bad) return Promise.reject(bad);
     var def = defOf(storeName);
-    if (def.indexes.indexOf(indexName) === -1) {
+    if (!hasIndex(def, indexName)) {
       return Promise.reject(new Error(storeName + ' has no index: ' + indexName));
     }
     return open().then(function (db) {
@@ -221,6 +241,60 @@
         }
       });
     });
+  }
+
+  /**
+   * Appends one record to an append-only store whose uniqueness a UNIQUE index
+   * enforces, and reports a collision as the benign duplicate it is.
+   *
+   * The distinction matters: a duplicate append is the NORMAL consequence of a
+   * reload, a resume or a second Finish tap, while a quota error or a closed
+   * connection is a real failure. Both arrive as a failed add(), so they are
+   * separated by the error's name and nothing else. A ConstraintError has its
+   * default prevented, which is what stops IndexedDB aborting the surrounding
+   * transaction — so a duplicate is not merely tolerated, it leaves no trace.
+   *
+   * One record per transaction, deliberately: a duplicate in the middle of a
+   * finished workout must not cost the rows around it.
+   */
+  function appendUnique(storeName, record) {
+    var bad = guard(storeName, true);
+    if (bad) return Promise.reject(bad);
+    return open().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx, out = { appended: false, duplicate: false, seq: null };
+        try { tx = db.transaction(storeName, 'readwrite'); }
+        catch (e) { reject(e); return; }
+        tx.oncomplete = function () { resolve(out); };
+        tx.onabort = function () { reject(tx.error || new Error('transaction aborted')); };
+        try {
+          var req = tx.objectStore(storeName).add(record);
+          req.onsuccess = function () { out.appended = true; out.seq = req.result; };
+          req.onerror = function (event) {
+            var err = req.error;
+            if (err && err.name === 'ConstraintError') {
+              out.duplicate = true;
+              // Keep the transaction alive: this row already exists, which is
+              // the correct end state, not an error to propagate.
+              if (event && event.preventDefault) event.preventDefault();
+              if (event && event.stopPropagation) event.stopPropagation();
+              return;
+            }
+            // Anything else is a real failure; let the abort handler reject.
+          };
+        } catch (e) {
+          try { tx.abort(); } catch (e2) {}
+          reject(e);
+        }
+      });
+    });
+  }
+
+  // Every record in a store, in primary-key order. For the ledger that is seq
+  // order, which is what the evaluator expects of a ledger.
+  function all(storeName) {
+    if (!defOf(storeName)) return Promise.reject(new Error('unknown object store: ' + storeName));
+    return run(storeName, 'readonly', function (store) { return store.getAll(); });
   }
 
   function count(storeName) {
@@ -376,8 +450,10 @@
 
     append: append,
     appendIfNone: appendIfNone,
+    appendUnique: appendUnique,
     put: put,
     get: get,
+    all: all,
     allByIndex: allByIndex,
     count: count,
 

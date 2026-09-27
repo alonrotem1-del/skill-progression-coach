@@ -57,15 +57,15 @@ async function seed(page, dayId) {
 
 // ── schema: the seven stores of Technical Schema v1.1 §16 ──────────────────
 test.describe('idb.js — schema', () => {
-  test('01 — open() creates database "spc" at storage-schema version 1', async ({ page }) => {
+  test('01 — open() creates database "spc" at the current storage-schema version', async ({ page }) => {
     await fresh(page);
     const info = await page.evaluate(async () => {
       const db = await window.CoachIDB.open();
       return { name: db.name, version: db.version, declared: window.CoachIDB.SCHEMA_VERSION };
     });
     expect(info.name).toBe('spc');
-    expect(info.version).toBe(1);
-    expect(info.declared).toBe(1);
+    expect(info.version).toBe(2);
+    expect(info.declared).toBe(2);
   });
 
   test('02 — all seven object stores exist, and no others', async ({ page }) => {
@@ -99,18 +99,24 @@ test.describe('idb.js — schema', () => {
     expect(shape.contextPackages).toEqual({ keyPath: 'contextId', autoIncrement: false });
   });
 
-  test('04 — ledger carries exerciseId / occurredAt / kind; artifacts and events carry kind / date', async ({ page }) => {
+  test('04 — ledger carries exerciseId / occurredAt / kind / dedupeKey; artifacts and events carry kind / date', async ({ page }) => {
     await fresh(page);
     const idx = await page.evaluate(async () => {
       const db = await window.CoachIDB.open();
       const tx = db.transaction(['ledger', 'artifacts', 'events'], 'readonly');
       return {
         ledger: Array.from(tx.objectStore('ledger').indexNames).sort(),
+        ledgerDedupeUnique: tx.objectStore('ledger').index('dedupeKey').unique,
+        ledgerExerciseUnique: tx.objectStore('ledger').index('exerciseId').unique,
         artifacts: Array.from(tx.objectStore('artifacts').indexNames).sort(),
         events: Array.from(tx.objectStore('events').indexNames).sort()
       };
     });
-    expect(idx.ledger).toEqual(['exerciseId', 'kind', 'occurredAt']);
+    expect(idx.ledger).toEqual(['dedupeKey', 'exerciseId', 'kind', 'occurredAt']);
+    // dedupeKey is the ONE unique index in the schema: it is what makes
+    // duplicate immunity a property of the database rather than of the caller.
+    expect(idx.ledgerDedupeUnique).toBe(true);
+    expect(idx.ledgerExerciseUnique).toBe(false);
     expect(idx.artifacts).toEqual(['date', 'kind']);
     expect(idx.events).toEqual(['date', 'kind']);
   });
@@ -126,7 +132,7 @@ test.describe('idb.js — schema', () => {
       // A second open at the same version must not trigger onupgradeneeded.
       let upgraded = false;
       await new Promise((res, rej) => {
-        const req = indexedDB.open('spc', 1);
+        const req = indexedDB.open('spc', window.CoachIDB.SCHEMA_VERSION);
         req.onupgradeneeded = () => { upgraded = true; };
         req.onsuccess = () => { req.result.close(); res(); };
         req.onerror = () => rej(req.error);
@@ -151,7 +157,7 @@ test.describe('idb.js — storage-schema version', () => {
     });
     expect(r.status.ok).toBe(true);
     expect(r.status.error).toBeNull();
-    expect(r.row.storageSchemaVersion).toBe(1);
+    expect(r.row.storageSchemaVersion).toBe(2);
   });
 
   test('07 — init() is idempotent: one athlete row, version unchanged', async ({ page }) => {
@@ -166,7 +172,7 @@ test.describe('idb.js — storage-schema version', () => {
       return { rows: await I.count('athlete'), row: await I.get('athlete', I.ATHLETE_ID) };
     });
     expect(r.rows).toBe(1);
-    expect(r.row.storageSchemaVersion).toBe(1);
+    expect(r.row.storageSchemaVersion).toBe(2);
   });
 
   test('08 — recording the version preserves unrelated fields already on the athlete row', async ({ page }) => {
@@ -180,7 +186,7 @@ test.describe('idb.js — storage-schema version', () => {
     });
     expect(row.displayName).toBe('Alon');
     expect(row.units).toBe('metric');
-    expect(row.storageSchemaVersion).toBe(1);
+    expect(row.storageSchemaVersion).toBe(2);
   });
 
   test('09 — the athlete row carries no capability or current-context field', async ({ page }) => {
@@ -292,8 +298,10 @@ test.describe('idb.js — append-only stores', () => {
     const api = await page.evaluate(() => Object.keys(window.CoachIDB).filter(k => typeof window.CoachIDB[k] === 'function'));
     // appendIfNone is an append with a uniqueness precondition, not an update:
     // it can only ever add a row, and only when the index key is absent.
-    expect(api.sort()).toEqual(['_applySchema', '_reset', 'allByIndex', 'append', 'appendIfNone',
-      'count', 'get', 'init', 'open', 'put', 'status']);
+    // appendUnique is the same in spirit — an append the database itself may
+    // refuse — and `all` only reads. None of the three can change a row.
+    expect(api.sort()).toEqual(['_applySchema', '_reset', 'all', 'allByIndex', 'append', 'appendIfNone',
+      'appendUnique', 'count', 'get', 'init', 'open', 'put', 'status']);
     expect(api).not.toContain('delete');
     expect(api).not.toContain('remove');
     expect(api).not.toContain('update');
@@ -520,8 +528,11 @@ test.describe('idb.js — schema upgrade', () => {
     });
     for (const s of STORES) expect(r.names).toContain(s);
     expect(r.names.length).toBe(7);
-    expect(r.idx).toEqual(['exerciseId', 'kind', 'occurredAt']);
-    // The pre-existing row survived the upgrade untouched.
+    expect(r.idx).toEqual(['dedupeKey', 'exerciseId', 'kind', 'occurredAt']);
+    // The pre-existing row survived the upgrade untouched — including through
+    // the addition of a UNIQUE index, which it is not indexed by because it
+    // carries no dedupeKey at all.
+    expect(r.row.dedupeKey).toBeUndefined();
     expect(r.row.precious).toBe('do not lose me');
     expect(r.row.seq).toBe(1);
   });
@@ -595,7 +606,7 @@ test.describe('idb.js — schema upgrade', () => {
     for (const pass of [r.second, r.third]) {
       expect(pass.threw).toBeNull();          // createIndex/createObjectStore never re-attempted
       expect(pass.names.length).toBe(7);
-      expect(pass.idx).toEqual(['exerciseId', 'kind', 'occurredAt']);
+      expect(pass.idx).toEqual(['dedupeKey', 'exerciseId', 'kind', 'occurredAt']);
       expect(pass.rows.length).toBe(1);
       expect(pass.rows[0].keep).toBe('yes');  // data untouched by repeated upgrades
     }
@@ -686,7 +697,7 @@ test.describe('idb.js — no source-of-truth cutover', () => {
     await seed(page, 2);
     await page.locator('[data-s="profile"]').click();
     await page.locator('[data-sview="data"]').click();
-    await expect(page.locator('[data-idb-status]')).toContainText(/ready \(schema v1/);
+    await expect(page.locator('[data-idb-status]')).toContainText(/ready \(schema v2/);
   });
 });
 
@@ -702,7 +713,7 @@ test.describe('idb.js — PWA / offline', () => {
       const cache = await window.caches.open(cacheName);
       return { cacheName, hasIdb: !!(await cache.match('./idb.js', { ignoreSearch: true })) };
     });
-    expect(cached.cacheName).toMatch(/skill-progression-coach-v20/);
+    expect(cached.cacheName).toMatch(/skill-progression-coach-v21/);
     expect(cached.hasIdb).toBe(true);
   });
 
@@ -738,7 +749,7 @@ test.describe('idb.js — PWA / offline', () => {
     await page.waitForTimeout(800); // let activate() prune obsolete caches
     const keys = await page.evaluate(() => window.caches.keys());
     expect(keys).not.toContain('skill-progression-coach-v17');
-    expect(keys).toContain('skill-progression-coach-v20');
+    expect(keys).toContain('skill-progression-coach-v21');
     // The live activation has idb.js, and the database still opens.
     const ok = await page.evaluate(async () => (await window.CoachIDB.init()).ok);
     expect(ok).toBe(true);

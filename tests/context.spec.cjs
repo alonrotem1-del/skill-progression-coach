@@ -580,7 +580,7 @@ test.describe('P5 context — delivery', () => {
       await page.waitForTimeout(250);
       cached = await read();
     }
-    expect(cached.name).toMatch(/skill-progression-coach-v20/);
+    expect(cached.name).toMatch(/skill-progression-coach-v21/);
     ['context.js', 'content/contexts.json', 'content/vocabulary.json',
       'content/bundle-1.json', 'content/semantics-1.json']
       .forEach((f) => expect(cached.urls.some((u) => u.indexOf(f) >= 0), f).toBe(true));

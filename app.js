@@ -139,6 +139,149 @@
       completed:completed,total:world.nodes.length};
   }
 
+  // ---- evidence tap (Technical Schema §6) -----------------------------------
+  // The one place the new model touches real execution. Every completed set
+  // becomes a PerformanceObservation in the durable ledger, ALONGSIDE the
+  // existing writes — node state, bench, sessions and history are written
+  // exactly as before, and nothing here is read by any decision the athlete
+  // sees. The legacy engine remains authoritative until the shadow comparison
+  // has earned the replacement its authority.
+  //
+  // Invariant 07 ("completing a workout writes observations and nothing else")
+  // becomes enforceable only when the legacy writes are severed at P8. Until
+  // then the duplicate paths coexist on purpose, in one direction each: the new
+  // model never derives truth from legacy state, and the legacy engine never
+  // consumes anything the new one concludes.
+
+  // Execution identity. Minted ONCE per real execution instance, at the single
+  // canonical creation point for each kind of session, and persisted with the
+  // runner snapshot — so a reload, a resume or a re-render reuses it rather than
+  // starting a second execution. It is not derived from the clock: startedAt
+  // records when the work began, while the identity is independent of it, so
+  // nothing that depends on the identity depends on a timestamp.
+  var _wid = 0;
+  function newExecutionId(prefix){
+    _wid++;
+    return prefix+'_'+Date.now().toString(36)+'_'+_wid.toString(36)+'_'+
+      Math.floor(Math.random()*1e9).toString(36);
+  }
+
+  // Resolved once the durable store and the interpretation context have
+  // finished their boot-time initialisation. The tap waits on it so a workout
+  // finished seconds after launch is not recorded as "no context adopted" —
+  // that would be a race reported as a fact. Set by the boot block at the
+  // bottom of this file; a plain resolved promise until then.
+  var newModelBoot = Promise.resolve();
+  function whenNewModelReady(){ return newModelBoot; }
+
+  // What the tap managed to do, for on-device diagnostics. Evidence is not
+  // athlete-facing authority yet, so a failure must never interrupt a finished
+  // workout — but it must not vanish either, so every attempt is counted and
+  // the last error is kept.
+  var evidenceLog = { attempted:0, appended:0, duplicates:0, failed:0, lastError:null, lastContextId:null };
+  function evidenceStatus(){
+    return {attempted:evidenceLog.attempted, appended:evidenceLog.appended,
+      duplicates:evidenceLog.duplicates, failed:evidenceLog.failed,
+      lastError:evidenceLog.lastError, lastContextId:evidenceLog.lastContextId};
+  }
+
+  /**
+   * Append evidence for one finished execution instance.
+   *
+   * THE ORDER IS THE POINT, and it is fixed:
+   *   1. read the athlete's current Interpretation Context (the adoption head)
+   *   2. read that context's durable package — never the network, never a cache
+   *   3. evaluate Dependency state against the ledger AS IT STANDS, before any
+   *      row of this workout exists in it
+   *   4. construct the observations with that context
+   *   5. append them
+   *
+   * Step 3 reads a ledger snapshot taken before step 5 writes anything, so a
+   * new row can never participate in the evaluation of its own pre-performance
+   * context. That is what keeps `context.unmetDependencies` from being
+   * circular, and it is why the ledger is read once rather than per row.
+   *
+   * Dependency state comes from the ledger, the durable package and the
+   * evaluator — never from spc_c_state, the bench, the current Map status or any
+   * other legacy value. An empty ledger therefore yields every Dependency
+   * unmet, which is the truth about this athlete under the new model.
+   *
+   * `build` is handed the context and returns rows. The caller has already
+   * captured whatever live state it needs, synchronously, so nothing here can
+   * observe a runner that has moved on.
+   */
+  function appendEvidence(build){
+    var I=window.CoachIDB, C=window.CoachContext, E=window.CoachEvaluator, EV=window.CoachEvidence;
+    if(!I||!C||!E||!EV){
+      evidenceLog.failed++; evidenceLog.lastError='evidence modules are not loaded';
+      return Promise.resolve(evidenceStatus());
+    }
+    return whenNewModelReady().then(function(){
+      return C.getCurrentContextPackage();
+    }).then(function(pkg){
+      if(!pkg) throw new Error('no interpretation context is adopted on this device');
+      return I.all('ledger').then(function(before){
+        var unmet=E.unmetDependencies(before||[],pkg).map(function(d){return d.dependencyId;});
+        // One entry per Dependency, whatever sides it was evaluated on: the row
+        // records WHICH Dependencies were unmet, not how many ways.
+        var seen={}, ids=[];
+        unmet.forEach(function(id){ if(!seen[id]){ seen[id]=true; ids.push(id); } });
+        var rows=build({contextId:pkg.contextId, bundle:pkg.contentBundle,
+          unmetDependencies:ids, now:new Date().toISOString()});
+        evidenceLog.lastContextId=pkg.contextId;
+        // Per row, so one duplicate cannot cost the rows around it.
+        return rows.reduce(function(chain,row){
+          return chain.then(function(){
+            evidenceLog.attempted++;
+            return I.appendUnique('ledger',row).then(function(res){
+              if(res.appended) evidenceLog.appended++;
+              else if(res.duplicate) evidenceLog.duplicates++;
+            },function(err){
+              evidenceLog.failed++;
+              evidenceLog.lastError=(err&&err.message)?err.message:String(err);
+            });
+          });
+        },Promise.resolve()).then(function(){ return evidenceStatus(); });
+      });
+    })['catch'](function(err){
+      evidenceLog.failed++;
+      evidenceLog.lastError=(err&&err.message)?err.message:String(err);
+      return evidenceStatus();
+    });
+  }
+
+  // Capture the live runner state SYNCHRONOUSLY, then append asynchronously.
+  //
+  // The snapshot is taken here, at the tap, because exerciseResult() and
+  // collectExResults() collapse it a few lines later — a ladder to a total and
+  // a best, plain sets to a total and a best, a pyramid's extras to a sum — and
+  // those summaries cannot be taken apart again. Copying rather than holding a
+  // reference means the rows describe the workout as it was at this instant,
+  // whatever the rest of completion does to it.
+  //
+  // The returned promise is deliberately ignored by the completion path: an
+  // evidence failure must not block, delay or undo a finished workout.
+  function tapWorkoutEvidence(w){
+    if(!w||!w.workoutId) return Promise.resolve(evidenceStatus());
+    var snapshot;
+    try{ snapshot=JSON.parse(JSON.stringify(w)); }catch(e){ return Promise.resolve(evidenceStatus()); }
+    return appendEvidence(function(ctx){
+      // The identity travels on the snapshot, and the runner knows no side, so
+      // none is claimed. See evidence.js.
+      return window.CoachEvidence.fromWorkout(snapshot,ctx);
+    });
+  }
+  function tapClimbEvidence(c,session){
+    if(!c||!c.workoutId) return Promise.resolve(evidenceStatus());
+    var snapshot;
+    try{ snapshot=JSON.parse(JSON.stringify(session)); }catch(e){ return Promise.resolve(evidenceStatus()); }
+    var workoutId=c.workoutId;
+    return appendEvidence(function(ctx){
+      ctx.workoutId=workoutId;
+      return window.CoachEvidence.fromClimb(snapshot,ctx);
+    });
+  }
+
   // ---- workout state persistence --------------------------------------------
   var WK_KEY = 'spc_c_workout';
   function saveWorkoutState(){
@@ -885,6 +1028,10 @@
     stopTimer(); var w=UI.workout, exId=w.dailyExId, world=worldsById(w.worldId);
     var daily=activeDaily(); var e=Daily.findEx(daily,exId);
     var bl=w.blocks[0];
+    // EVIDENCE TAP — before exerciseResult collapses the per-set actuals, and
+    // before anything else is written. Purely additive: everything below runs
+    // exactly as it did, whatever this does.
+    tapWorkoutEvidence(w);
     var result=exerciseResult(w,bl);
     // Apply node/benchmark progress for this single exercise — but never for a
     // Test/excluded ad-hoc workout (Part 13). Extra workouts DO progress.
@@ -1916,7 +2063,12 @@
         adaptEnabled:b.adaptEnabled!==false,
         sets:sets.map(function(s){return {target:s.target,actual:s.actual,unit:s.unit,amrap:!!s.amrap,doneFlag:false,adapted:''};})};
     });
+    // Execution identity, minted here and nowhere else for a strength session:
+    // buildWorkout is the canonical creation point, and the snapshot it returns
+    // is persisted whole, so resume reuses this id rather than minting a second
+    // one for the same real execution.
     return {templateId:rt.id,worldId:UI.worldId,name:rt.name,blocks:blocks,started:Date.now(),pain:false,
+      workoutId:newExecutionId('w'),startedAt:new Date().toISOString(),
       adaptations:[],lastRound:null,lastSet:null,lastPyramid:null,pendingOverride:null};
   }
   // "Last successfully completed Pyramid starting value" (Section 1, default
@@ -2832,6 +2984,9 @@
     // Day-assembled workouts use a synthetic template id (day_*) — fall back to
     // a plain strength descriptor so completion/summary still work.
     var t=Data.templates[w.templateId]||{id:w.templateId,type:'strength',difficulty:'Medium',name:'Workout'};
+    // EVIDENCE TAP — before collectExResults reduces every block to a best
+    // value per exercise.
+    tapWorkoutEvidence(w);
     var exRes=collectExResults(w);
     var ws=WS(w.worldId);
     var session={id:'cs_'+Date.now(),kind:'strength',templateId:t.id,worldId:w.worldId,date:new Date().toISOString(),
@@ -2853,7 +3008,10 @@
     opts=opts||{};
     var world=activeWorld(), ws=WS(UI.worldId), cm=contentMap(world);
     var techFocus=[ws.focus.primary,ws.focus.supporting].filter(Boolean).filter(function(id){var n=cm[id];return n&&(n.type==='skill'||n.type==='foundation'||n.type==='strength');});
-    UI.climb={templateId:t.id,worldId:UI.worldId,warm:false,problems:[],rpe:3,finger:2,skin:2,techFocus:techFocus,cur:{grade:'V2',style:null,result:null},dailyLinked:!!opts.dailyLinked};
+    // The canonical execution-start point for climbing, so the identity is
+    // minted here — once — and persisted with the snapshot for resume.
+    UI.climb={templateId:t.id,worldId:UI.worldId,warm:false,problems:[],rpe:3,finger:2,skin:2,techFocus:techFocus,cur:{grade:'V2',style:null,result:null},dailyLinked:!!opts.dailyLinked,
+      workoutId:newExecutionId('c'),startedAt:new Date().toISOString()};
     saveWorkoutState();
     window.scrollTo(0,0); // the Start button may have been below the fold — open at the top
     renderClimbing();
@@ -2908,6 +3066,9 @@
     var session={id:'cc_'+Date.now(),kind:'climbing',templateId:t.id,worldId:c.worldId,date:new Date().toISOString(),
       problems:c.problems,techniqueFocus:c.techFocus,targetNodeIds:[ws.focus.primary,ws.focus.supporting].filter(Boolean),
       rpe:c.rpe,finger:c.finger,skin:c.skin,hardPull:hardPull,difficulty:t.difficulty};
+    // EVIDENCE TAP — an ActivityObservation, not a PerformanceObservation: a
+    // climb produces real load but no criterion-bearing measurement.
+    tapClimbEvidence(c,session);
     var res=Progress.applyClimbing(world,ws.nodes,session);
     ws.nodes=res.states; recomputeFocus(world,ws); saveWS(c.worldId,ws);
     var sessions=Store.getSessions(); sessions.push(session); Store.setSessions(sessions);
@@ -3195,10 +3356,12 @@
       '<button class="btn danger" data-reset>Reset Coach Data (spc_c_*)</button>'+
       '<p class="footnote muted tiny">Reset only deletes coach data. Your Pull-Up Coach history and progress are untouched.</p>'+
       '<p class="footnote muted tiny" data-idb-status></p>'+
-      '<p class="footnote muted tiny" data-ctx-status></p>';
+      '<p class="footnote muted tiny" data-ctx-status></p>'+
+      '<p class="footnote muted tiny" data-evidence-status></p>';
     var wrap=shell(html,'profile'); wireSettingsBack(wrap);
     idbStatusLine(wrap);
     ctxStatusLine(wrap);
+    evidenceStatusLine(wrap);
     on('[data-install]','click',function(){
       var p=window.__spcInstallPrompt; if(!p) return;
       p.prompt(); if(p.userChoice) p.userChoice.then(function(){ window.__spcInstallPrompt=null; if(settingsView==='data') renderProfile(); });
@@ -3237,6 +3400,23 @@
         ? 'Interpretation context: '+s.contextId+' installed and adopted ('+s.adoptions+' adoption'+(s.adoptions===1?'':'s')+').'
         : 'Interpretation context: unavailable — '+(s.error||'unknown')+'. Your data is unaffected.';
     });
+  }
+
+  // Evidence diagnostics. Nothing the athlete sees is computed from the ledger
+  // yet, so this line is the only way to see on-device that the tap ran — and,
+  // more importantly, the only way an append failure becomes visible instead of
+  // being silently swallowed. A failure never interrupts a finished workout, so
+  // it has to surface somewhere, and this is that somewhere.
+  function evidenceStatusLine(wrap){
+    var el=wrap.querySelector('[data-evidence-status]');
+    if(!el) return;
+    if(!window.CoachEvidence){ el.textContent='Evidence: module not loaded.'; return; }
+    var st=evidenceStatus();
+    if(!st.attempted&&!st.failed){ el.textContent='Evidence: nothing recorded yet on this device.'; return; }
+    var txt='Evidence: '+st.appended+' recorded';
+    if(st.duplicates) txt+=', '+st.duplicates+' already present';
+    if(st.failed) txt+=', '+st.failed+' FAILED — '+(st.lastError||'unknown');
+    el.textContent=txt+'.';
   }
 
   // ---- raw backup storage access ---------------------------------------
@@ -3578,7 +3758,11 @@
   // settings screen, refresh it so the Install button appears.
   window.addEventListener('spc-installable',function(){ if(UI.screen==='profile'&&settingsView==='data') renderProfile(); });
 
-  window.CoachApp={boot:boot,_UI:UI};
+  // _evidence is a TEST SEAM, not an API: it exposes the tap so the ordering
+  // invariant can be asserted from a real page against real IndexedDB.
+  window.CoachApp={boot:boot,_UI:UI,
+    _evidence:{status:evidenceStatus,append:appendEvidence,
+      tapWorkout:tapWorkoutEvidence,tapClimb:tapClimbEvidence,newId:newExecutionId}};
   boot();
 
   // Stand up the durable store so it exists on the device (Technical Schema
@@ -3591,7 +3775,12 @@
   try{
     if(window.CoachIDB){
       var _idbBoot=window.CoachIDB.init();
-      if(window.CoachContext) _idbBoot.then(function(){ return window.CoachContext.init(); });
+      // Held so the evidence tap can wait for it rather than race it. Neither
+      // init rejects, and the ['catch'] is belt-and-braces: a tap must never
+      // fail because boot is still in flight, and never hang because it broke.
+      newModelBoot=window.CoachContext
+        ? _idbBoot.then(function(){ return window.CoachContext.init(); })['catch'](function(){})
+        : _idbBoot['catch'](function(){});
     }
   }catch(e){}
 })();

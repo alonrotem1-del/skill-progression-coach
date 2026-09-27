@@ -67,7 +67,13 @@
   // backup payload. A payload from a NEWER layout is refused: its stores may
   // mean something this build cannot honour. An older payload is accepted —
   // a store this build has but the payload lacks simply restores empty.
-  var STORAGE_SCHEMA_VERSION = 1;
+  //
+  // Moved to 2 when the ledger gained its unique dedupeKey index. The BACKUP
+  // FORMAT VERSION deliberately stays 2: an IndexedDB layout change is not a
+  // format change, the envelope is byte-identical in shape, and a schema-1
+  // payload remains restorable on this build. Conflating the two axes would
+  // make every future index a new file format.
+  var STORAGE_SCHEMA_VERSION = 2;
 
   // The single source of truth for what a backup covers. Additive-only: once
   // shipped, a key is never removed from this list, so an old backup file
