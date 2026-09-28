@@ -497,7 +497,17 @@
     return STATUS_UNSATISFIED;
   }
 
-  function evaluateHolder(holderRef, ledger, pkg, side, ix) {
+  /**
+   * LOCAL REQUIREMENT SATISFACTION. Has the athlete satisfied this holder's OWN
+   * RequirementExpression? Nothing else: no Dependency of any kind is applied
+   * here, so this answers a question about demonstration alone.
+   *
+   * This is deliberately NOT the same question as "is this holder established"
+   * — see evaluateEstablishment. Design Document v2.1 and LDM §10/§12 separate
+   * the two, and collapsing them is what lets an unmet unlock be bypassed by
+   * reading the upstream holder's criteria directly.
+   */
+  function evaluateRequirement(holderRef, ledger, pkg, side, ix) {
     ix = ix || index(pkg);
     var key = holderKeyOf(holderRef);
     var requirement = ix.requirement[key];
@@ -516,10 +526,130 @@
     return { holderKey: key, side: normSide(side), status: status, criteria: criteria };
   }
 
-  // The primary capability P3 needs. Satisfied means satisfied: a provisional
-  // holder is not satisfied.
-  function isHolderSatisfied(holderRef, ledgerRows, contextPackage, side) {
-    return evaluateHolder(holderRef, ledgerRows, contextPackage, side).status === STATUS_SATISFIED;
+  // Satisfied means satisfied: a provisional holder is not satisfied.
+  function isRequirementSatisfied(holderRef, ledgerRows, contextPackage, side) {
+    return evaluateRequirement(holderRef, ledgerRows, contextPackage, side).status === STATUS_SATISFIED;
+  }
+
+  // ---- COMPATIBILITY ALIASES — LOCAL SATISFACTION, NOT ESTABLISHMENT ------
+  // `holder satisfied` became ambiguous the moment establishment existed, so
+  // these two keep their ORIGINAL meaning — the holder's own requirement — and
+  // are not silently redefined. They exist so code written before the split
+  // keeps working and keeps meaning what it meant.
+  //
+  // MARKED FOR REMOVAL once every caller names which question it is asking.
+  // Anything deciding whether a holder is achieved or unlocked wants
+  // isHolderEstablished; anything asking what was demonstrated wants
+  // isRequirementSatisfied.
+  var evaluateHolder = evaluateRequirement;
+  var isHolderSatisfied = isRequirementSatisfied;
+
+  // ---- holder establishment ----------------------------------------------
+  /**
+   * HOLDER ESTABLISHMENT. Is this holder actually achieved/unlocked — its own
+   * requirement demonstrated AND every applicable unlocking Dependency met?
+   *
+   * Design Document v2.1 §3 (locked): a Dependency "references another
+   * Progression's ESTABLISHED state; it does not restate that Progression's
+   * metric", and it constrains prescription, unlocking and the interpretation
+   * of evidence. LDM §10 gives the output: `availability` and `blockedBy`.
+   * LDM §12: `requires` is "what must already be established".
+   *
+   * PROPAGATION IS CONDITIONAL, and `constrains` is the only thing that decides
+   * it. A Dependency gates establishment iff its `constrains` includes
+   * `unlocking`. One that constrains only `prescription` shapes what is
+   * programmed and blocks nothing, so it does not propagate. That is why a
+   * chain emerges through holder state rather than by copying any upstream
+   * Criterion — C references B, and never B's criteria.
+   *
+   * Recursion is safe because the authored dependency graph is acyclic: the
+   * content validator's V12 rejects cycles across holders. The runtime guard
+   * below is belt-and-braces, and it THROWS — a cycle is malformed content, not
+   * an athlete failing to satisfy something.
+   *
+   * `memo` carries both the cache and the on-stack set for one evaluation pass,
+   * keyed by (holderKey, side). It is an internal argument; callers omit it.
+   */
+  function establishmentSides(dep, side) {
+    // sideRule mirror means left-requires-left and right-requires-right, so the
+    // side being asked about is the side that must be established. Asked about
+    // a combined holder, a mirror Dependency requires BOTH sides.
+    if (dep.sideRule === 'mirror') {
+      var s = normSide(side);
+      return (s === COMBINED) ? ['left', 'right'] : [s];
+    }
+    return [COMBINED];
+  }
+
+  function evaluateEstablishment(holderRef, ledger, pkg, side, ix, memo) {
+    ix = ix || index(pkg);
+    memo = memo || { done: {}, stack: {} };
+    var key = holderKeyOf(holderRef);
+    var s = normSide(side);
+    var memoKey = key + '|' + s;
+    if (Object.prototype.hasOwnProperty.call(memo.done, memoKey)) return memo.done[memoKey];
+    if (memo.stack[memoKey]) {
+      throw new Error('dependency cycle through holder establishment at ' + memoKey);
+    }
+    memo.stack[memoKey] = true;
+
+    var out;
+    try {
+      var requirement = evaluateRequirement(holderRef, ledger, pkg, s, ix);
+      var blockedBy = [];
+      (ix.bundle.dependencies || []).forEach(function (dep) {
+        if (holderKeyOf(dep.subject) !== key) return;
+        if ((dep.constrains || []).indexOf('unlocking') < 0) return;   // does not gate the unlock
+        establishmentSides(dep, s).forEach(function (depSide) {
+          var res = evaluateDependency(dep.id, ledger, pkg, depSide, ix, memo);
+          if (!res.met) {
+            blockedBy.push({
+              dependencyId: dep.id, side: depSide, severity: dep.severity,
+              requires: holderKeyOf(dep.requires), reason: res.reason,
+              accommodation: dep.accommodation || null
+            });
+          }
+        });
+      });
+
+      var satisfied = requirement.status === STATUS_SATISFIED;
+      var established = satisfied && !blockedBy.length;
+      out = {
+        holderKey: key,
+        side: s,
+        established: established,
+        availability: availabilityOf(ix, holderRef, s, satisfied, blockedBy.length > 0),
+        requirement: requirement,
+        blockedBy: blockedBy
+      };
+    } finally {
+      delete memo.stack[memoKey];
+    }
+    memo.done[memoKey] = out;
+    return out;
+  }
+
+  // LDM §10's four values. `not_relevant` is a statement about SIDEDNESS, not
+  // about capability: a holder with no per-side Criterion has one answer, so a
+  // question about its left or right side has no separate answer to give. The
+  // `established` flag still carries that single answer, so a caller that asked
+  // per-side is not left without one.
+  function availabilityOf(ix, holderRef, side, satisfied, blocked) {
+    if (side !== COMBINED && !isSidedHolder(ix, holderRef)) return 'not_relevant';
+    if (blocked) return 'blocked';
+    return satisfied ? 'achieved' : 'available';
+  }
+
+  function isSidedHolder(ix, holderRef) {
+    var key = holderKeyOf(holderRef);
+    return leafCriteria(ix.requirement[key]).some(function (cid) {
+      var c = ix.criteria[cid];
+      return c && c.sideScope === 'each';
+    });
+  }
+
+  function isHolderEstablished(holderRef, ledgerRows, contextPackage, side) {
+    return evaluateEstablishment(holderRef, ledgerRows, contextPackage, side).established;
   }
 
   // ---- Dependencies -------------------------------------------------------
@@ -532,13 +662,18 @@
     return dep.sideRule === 'mirror' ? ['left', 'right'] : [COMBINED];
   }
 
-  function evaluateDependency(dependencyId, ledger, pkg, side, ix) {
+  function evaluateDependency(dependencyId, ledger, pkg, side, ix, memo) {
     ix = ix || index(pkg);
     var dep = ix.dependencies[dependencyId];
     if (!dep) throw new Error('unknown dependency: ' + dependencyId);
     var s = normSide(side);
-    var required = evaluateHolder(dep.requires, ledger, pkg, s, ix);
-    var met = required.status === STATUS_SATISFIED;
+    // The `requires` end resolves through ESTABLISHMENT, not through local
+    // satisfaction: Design Document v2.1 defines it as "what must already be
+    // established". So a prerequisite whose own unlock is blocked does not
+    // count as met, and a chain emerges without C ever naming B's criteria.
+    var establishment = evaluateEstablishment(dep.requires, ledger, pkg, s, ix, memo);
+    var required = establishment.requirement;
+    var met = establishment.established;
     var reason = null;
     if (!met) {
       // Admissible evidence exists when some Criterion found a best observation
@@ -548,11 +683,18 @@
       var anyEvidence = Object.keys(required.criteria).some(function (cid) {
         return required.criteria[cid].bestObservation !== null;
       });
-      // claimedAtHardDependency: refuse — a claim may not unblock a hard
-      // Dependency, and saying so is more useful than "no evidence".
-      reason = (required.status === STATUS_PROVISIONAL && dep.severity === 'hard')
-        ? 'claimed_not_eligible'
-        : (anyEvidence ? 'requirement_unsatisfied' : 'no_evidence');
+      if (required.status === STATUS_SATISFIED) {
+        // The prerequisite was demonstrated and is still not established: its
+        // OWN unlock is blocked. Distinct from "not demonstrated", because the
+        // athlete has nothing left to demonstrate here — the block is upstream.
+        reason = 'requires_blocked';
+      } else {
+        // claimedAtHardDependency: refuse — a claim may not unblock a hard
+        // Dependency, and saying so is more useful than "no evidence".
+        reason = (required.status === STATUS_PROVISIONAL && dep.severity === 'hard')
+          ? 'claimed_not_eligible'
+          : (anyEvidence ? 'requirement_unsatisfied' : 'no_evidence');
+      }
     }
     return {
       dependencyId: dependencyId,
@@ -562,6 +704,7 @@
       severity: dep.severity,
       constrains: (dep.constrains || []).slice(),
       requires: holderKeyOf(dep.requires),
+      requiresBlockedBy: establishment.blockedBy.map(function (b) { return b.dependencyId; }),
       blocks: met ? [] : [holderKeyOf(dep.subject)]
     };
   }
@@ -577,11 +720,14 @@
     var wantHolders = opts.holderKeys || null;
     var wantSide = opts.side === undefined ? null : normSide(opts.side);
     var out = [];
+    // One memo for the whole sweep: the same prerequisite is reached by several
+    // Dependencies, and establishing it twice would give the same answer twice.
+    var memo = { done: {}, stack: {} };
     (ix.bundle.dependencies || []).forEach(function (dep) {
       if (wantHolders && wantHolders.indexOf(holderKeyOf(dep.subject)) < 0) return;
       dependencySides(dep).forEach(function (s) {
         if (wantSide && s !== COMBINED && s !== wantSide) return;
-        var res = evaluateDependency(dep.id, ledger, pkg, s, ix);
+        var res = evaluateDependency(dep.id, ledger, pkg, s, ix, memo);
         if (!res.met) out.push({ dependencyId: dep.id, side: s, reason: res.reason, severity: dep.severity });
       });
     });
@@ -592,6 +738,13 @@
   // stageSelection: lowest_unsatisfied. The current Stage is the lowest-order
   // one that is not satisfied — a gap is not skipped because something above it
   // happens to be cleared. null means every Stage is satisfied.
+  //
+  // DELIBERATELY ON LOCAL SATISFACTION, not establishment. LDM §10 defines the
+  // current Stage as "the lowest-index Stage whose CRITERIA are not all
+  // satisfied". An unmet unlocking Dependency may leave a Stage blocked, but it
+  // must not move the athlete backwards to a Stage they have already
+  // demonstrated — being blocked is not being undone. `limiter` reads the same
+  // local question for the same reason.
 
   function currentStage(progressionId, ledger, pkg, side, ix) {
     ix = ix || index(pkg);
@@ -706,8 +859,19 @@
     COMBINED: COMBINED,
     POLICY_DEFAULTS: POLICY_DEFAULTS,
 
+    // Local requirement satisfaction — the holder's own RequirementExpression.
+    evaluateRequirement: evaluateRequirement,
+    isRequirementSatisfied: isRequirementSatisfied,
+
+    // Holder establishment — requirement satisfied AND unlocking Dependencies met.
+    evaluateEstablishment: evaluateEstablishment,
+    isHolderEstablished: isHolderEstablished,
+
+    // Compatibility aliases for the LOCAL question. See the note at their
+    // definition: same meaning as before the split, marked for removal.
     isHolderSatisfied: isHolderSatisfied,
     evaluateHolder: evaluateHolder,
+
     evaluateCriterion: evaluateCriterion,
     evaluateDependency: evaluateDependency,
     unmetDependencies: unmetDependencies,
