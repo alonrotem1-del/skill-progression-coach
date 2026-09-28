@@ -464,15 +464,28 @@
   // expressionStatusCombination: strict. allOf is satisfied iff every child is,
   // provisional if all are satisfied-or-provisional with at least one
   // provisional; anyOf is satisfied iff any child is, provisional if any is.
-  // The bounded vocabulary is a leaf, allOf and anyOf — nothing else, and depth
-  // is whatever the validator already permits.
+  // The bounded vocabulary is a leaf, allOf and anyOf — nothing else.
+  //
+  // Depth is bounded at 2 (invariant 22), and that bound is checked HERE as well
+  // as by the content validator. The validator is the right place to catch an
+  // authoring mistake, but it is not in the path of a package already on a
+  // device: an expression that nests deeper is a malformed model, and a
+  // malformed model must be an error rather than quietly evaluated. Answering a
+  // depth-3 expression would mean the engine had silently accepted a rule
+  // language one nesting level wider than the frozen one.
+  var MAX_EXPRESSION_DEPTH = 2;
 
-  function combine(expr, statusOf, pkg) {
+  function combine(expr, statusOf, pkg, depth) {
+    depth = depth || 1;
     if (!expr || typeof expr !== 'object') throw new Error('requirement is not an expression');
     if (typeof expr.criterion === 'string') return statusOf(expr.criterion);
     var op = Array.isArray(expr.allOf) ? 'allOf' : (Array.isArray(expr.anyOf) ? 'anyOf' : null);
     if (!op) throw new Error('requirement is neither a criterion leaf nor allOf/anyOf');
-    var kids = expr[op].map(function (child) { return combine(child, statusOf, pkg); });
+    if (depth > MAX_EXPRESSION_DEPTH) {
+      throw new Error('requirement expression nests deeper than the frozen maximum of ' +
+        MAX_EXPRESSION_DEPTH);
+    }
+    var kids = expr[op].map(function (child) { return combine(child, statusOf, pkg, depth + 1); });
     if (!kids.length) throw new Error('empty ' + op);
     if (op === 'allOf') {
       if (kids.every(function (x) { return x === STATUS_SATISFIED; })) return STATUS_SATISFIED;

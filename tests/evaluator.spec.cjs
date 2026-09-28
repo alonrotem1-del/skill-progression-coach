@@ -170,6 +170,43 @@ test.describe('P6a evaluator — RequirementExpressions', () => {
       .toThrow(/neither a criterion leaf nor allOf\/anyOf/);
   });
 
+  test('12b depth is bounded at 2 in the evaluator too, not only in the validator', () => {
+    // Invariant 22 bounds an expression at depth 2. The validator catches a
+    // deeper one at authoring time (V6), but the validator is not in the path of
+    // a package already installed on a device — so the engine refuses it as the
+    // malformed model it is rather than answering it. Silently evaluating depth 3
+    // would mean the engine had accepted a rule language wider than the frozen
+    // one, which is exactly how a bounded vocabulary stops being bounded.
+    const withReq = (req) => {
+      const bad = JSON.parse(JSON.stringify(BUNDLE));
+      bad.progressions.filter((p) => p.id === 'rmu_false_grip')[0].requirement = req;
+      return pkgWith(bad);
+    };
+    const holder = 'progression:rmu_false_grip';
+    // Depth 1 and 2 are the frozen shapes, and they still evaluate.
+    expect(() => E.evaluateHolder(holder, [], withReq({ criterion: 'fg_hang_30' }), null)).not.toThrow();
+    expect(() => E.evaluateHolder(holder, [], withReq(
+      { allOf: [{ criterion: 'fg_hang_30' }, { criterion: 'sup_rto_20' }] }), null)).not.toThrow();
+    expect(() => E.evaluateHolder(holder, [], withReq(
+      { allOf: [{ anyOf: [{ criterion: 'fg_hang_30' }, { criterion: 'sup_rto_20' }] },
+        { criterion: 'dip_bar_5' }] }), null)).not.toThrow();
+    // Depth 3 is refused, whichever operator does the nesting.
+    expect(() => E.evaluateHolder(holder, [], withReq(
+      { allOf: [{ anyOf: [{ allOf: [{ criterion: 'fg_hang_30' }, { criterion: 'sup_rto_20' }] },
+        { criterion: 'dip_bar_5' }] }] }), null)).toThrow(/deeper than the frozen maximum of 2/);
+    expect(() => E.evaluateHolder(holder, [], withReq(
+      { anyOf: [{ allOf: [{ anyOf: [{ criterion: 'fg_hang_30' }, { criterion: 'sup_rto_20' }] },
+        { criterion: 'dip_bar_5' }] }] }), null)).toThrow(/deeper than the frozen maximum of 2/);
+    // And the content validator agrees, so the two layers cannot drift apart.
+    const rep = V.validate({ ...CONTENT, bundles: [JSON.parse(JSON.stringify(BUNDLE))].map((b) => {
+      b.progressions.filter((p) => p.id === 'rmu_false_grip')[0].requirement =
+        { allOf: [{ anyOf: [{ allOf: [{ criterion: 'fg_hang_30' }, { criterion: 'sup_rto_20' }] },
+          { criterion: 'dip_bar_5' }] }] };
+      return b;
+    }) });
+    expect(rep.errors.some((e) => /depth 3 exceeds/.test(e.message))).toBe(true);
+  });
+
   test('13 provisional propagates through allOf and anyOf under expressionStatusCombination: strict', () => {
     const claimBoth = [
       obs('m_pull', { reps: 5 }, { seq: 1, provenance: 'claimed', provenanceSource: 'onboarding_claim' }),
