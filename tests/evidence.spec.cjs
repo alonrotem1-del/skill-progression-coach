@@ -287,7 +287,7 @@ test.describe('P3 evidence meets the evaluator', () => {
     const ev = Evaluator.evaluateCriterion('sup_ring_20', 'combined', ledgerOf(rows), PKG);
     expect(ev.status).toBe('satisfied');
     expect(ev.satisfiedBy).toEqual([1]);
-    expect(Evaluator.isHolderSatisfied('stage:rmu_sup_s1', ledgerOf(rows), PKG, null)).toBe(true);
+    expect(Evaluator.isRequirementSatisfied('stage:rmu_sup_s1', ledgerOf(rows), PKG, null)).toBe(true);
   });
 
   test('20 a train-linked movement never becomes progression evidence, however good', () => {
@@ -303,7 +303,7 @@ test.describe('P3 evidence meets the evaluator', () => {
     // Not excluded either — it is simply not applicable, which is a different
     // and more honest answer than "set aside for a reason".
     expect(ev.excluded).toEqual([]);
-    expect(Evaluator.isHolderSatisfied('progression:rmu_false_grip', ledgerOf(rows), PKG, null)).toBe(false);
+    expect(Evaluator.isRequirementSatisfied('progression:rmu_false_grip', ledgerOf(rows), PKG, null)).toBe(false);
   });
 
   test('21 nor does a maintain-linked movement, and the tap applies no gate of its own', () => {
@@ -767,7 +767,7 @@ test.describe('P3 a real workout, end to end', () => {
       const pkg = await window.CoachContext.getCurrentContextPackage();
       const ledger = await window.CoachIDB.all('ledger');
       return {
-        stage: window.CoachEvaluator.isHolderSatisfied('stage:rmu_dip_s1', ledger, pkg, null),
+        stage: window.CoachEvaluator.isRequirementSatisfied('stage:rmu_dip_s1', ledger, pkg, null),
         criterion: window.CoachEvaluator.evaluateCriterion('dip_bar_5', 'combined', ledger, pkg).status
       };
     });

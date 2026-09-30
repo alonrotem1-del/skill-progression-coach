@@ -643,9 +643,15 @@ test.describe('P6a evaluator — no authority', () => {
     const uses = app.match(/CoachEvaluator/g) || [];
     expect(uses.length).toBe(1);
     expect(app).toContain('E.unmetDependencies(');
+    // Establishment is the question "is this holder achieved/unlocked" — the one
+    // the legacy engine still owns until P8. P3 must not start answering it, so
+    // the establishment API is forbidden on any decision path alongside the
+    // rest. The evidence tap needs exactly one question and no other.
     ['CoachEvaluator.interpret', 'CoachEvaluator.currentStage', 'CoachEvaluator.limiter',
       'CoachEvaluator.evaluateHolder', 'CoachEvaluator.isHolderSatisfied',
-      'CoachEvaluator.evaluateCriterion']
+      'CoachEvaluator.evaluateCriterion',
+      'CoachEvaluator.isHolderEstablished', 'CoachEvaluator.evaluateEstablishment',
+      'CoachEvaluator.evaluateRequirement', 'CoachEvaluator.isRequirementSatisfied']
       .forEach((n) => expect(app, n).not.toContain(n));
     // The shell loads it, because the tap runs in the shell.
     const html = fs.readFileSync(path.join(REPO, 'index.html'), 'utf8');
