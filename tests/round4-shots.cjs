@@ -114,7 +114,7 @@ test('capture round 4 screenshots', async ({ page }) => {
       { id: 'legacyC', kind: 'strength', templateId: 'mu_strength', date: new Date(now - 9 * 864e5).toISOString(), exResults: { pullup: { bestReps: 8 } } }
     ]);
   });
-  await page.locator('.nav [data-s="progress"]').click();
+  await page.evaluate((s) => window.CoachApp._goto(s), 'progress');
 
   // 10 — Progress: weekly completion summary
   await page.locator('.progress-left').waitFor();

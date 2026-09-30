@@ -409,7 +409,7 @@ test.describe('Progress + History', () => {
         { id: 'legacyB', kind: 'strength', templateId: 'mu_strength', date: new Date(now - 3 * 864e5).toISOString(), exResults: { pullup: { bestReps: 8 } } }
       ]);
     });
-    await page.locator('.nav [data-s="progress"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'progress');
   }
 
   test('36 — the weekly summary card shows completion by exercise type', async ({ page }) => {

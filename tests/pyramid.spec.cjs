@@ -420,12 +420,12 @@ test.describe('Pull-Up Pyramid — backward compatibility', () => {
       });
       S.setSessions(sessions);
     });
-    await page.locator('.nav [data-s="progress"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'progress');
     await expect(page.locator('body')).not.toContainText('undefined');
     const err = [];
     page.on('pageerror', e => err.push(String(e)));
     await page.reload();
-    await page.locator('.nav [data-s="progress"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'progress');
     expect(err.length).toBe(0);
   });
 

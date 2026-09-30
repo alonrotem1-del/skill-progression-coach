@@ -100,7 +100,7 @@
   document.addEventListener('click',unlockAudio,{once:true});
 
   // ---- app/session state ----------------------------------------------------
-  var UI = { screen:'today', worldId:null, sheet:null, workout:null, climb:null, timer:null, timerPaused:false, timerLeft:0, readiness:null, readinessOpen:false, holdTicker:null };
+  var UI = { screen:'today', worldId:null, sheet:null, workout:null, climb:null, timer:null, timerPaused:false, timerLeft:0, readiness:null, readinessOpen:false, holdTicker:null, goalsView:null, goalId:null };
 
   function worldsById(id){return Data.worldsById[id];}
   function activeWorld(){return worldsById(UI.worldId);}
@@ -234,7 +234,9 @@
           return chain.then(function(){
             evidenceLog.attempted++;
             return I.appendUnique('ledger',row).then(function(res){
-              if(res.appended) evidenceLog.appended++;
+              // New evidence means the Goal view is out of date. It is a cache,
+              // so the only correct thing to do is drop it.
+              if(res.appended){ evidenceLog.appended++; invalidateGoals(); }
               else if(res.duplicate) evidenceLog.duplicates++;
             },function(err){
               evidenceLog.failed++;
@@ -397,11 +399,14 @@
     app.innerHTML='';
     var wrap=h('<div></div>');
     wrap.appendChild(h('<div class="scr">'+inner+'</div>'));
+    // Four destinations, one question each: what do I do today, what is the
+    // week, where am I on my goals, and everything else. The Skill Map and the
+    // separate Progress tab are gone as top-level concepts — a graph is not the
+    // product, and two screens answering "where am I" was one too many.
     var nav=h('<div class="nav">'+
       navBtn('today','Today',ICON.today,active)+
-      navBtn('week','Week',ICON.week,active)+
-      navBtn('map','Map',ICON.map,active)+
-      navBtn('progress','Progress',ICON.chart,active)+
+      navBtn('plan','Plan',ICON.week,active)+
+      navBtn('goals','Goals',ICON.chart,active)+
       navBtn('profile','Profile',ICON.person,active)+'</div>');
     wrap.appendChild(nav);
     app.appendChild(wrap);
@@ -415,7 +420,12 @@
     window.scrollTo(0,0); // a full screen swap always starts at the top — the
                            // browser does not reset scroll on innerHTML replacement
     if(name==='today') renderToday();
-    else if(name==='week') renderWeek();
+    else if(name==='plan'||name==='week') renderWeek();
+    else if(name==='goals') renderGoals();
+    else if(name==='goal') renderGoalDetail(UI.goalId);
+    // 'map' and 'progress' are no longer primary destinations. The routes stay
+    // callable so nothing that already links to them breaks, and History moved
+    // into Goals — but neither has an entry point in the shell any more.
     else if(name==='map') renderMap();
     else if(name==='progress') renderProgress();
     else if(name==='profile') renderProfile();
@@ -434,8 +444,11 @@
         '<div class="badge" style="background:rgba(56,189,248,.15);color:var(--accent);margin-bottom:10px">First Usable Version</div>'+
         '<h1>Skill Progression Coach</h1>'+
         '<p class="muted">Choose the goal you want to work toward. We\'ll build a progression map and a workout recommendation for today.</p></div>'+
-        '<div class="section">Choose a Goal World</div>'+
-        Data.worlds.map(function(w){return worldChoice(w);}).join('')+'</div>';
+        '<div class="section">Choose your goal</div>'+
+        // Climbing is external load in this product, not a goal to coach, so it
+        // is not offered. The world still exists in content and in storage.
+        Data.worlds.filter(function(w){return w.id!=='boulder';})
+          .map(function(w){return worldChoice(w);}).join('')+'</div>';
       app.appendChild(h(html));
       on('[data-world]','click',function(e){ OB.worldId=e.currentTarget.getAttribute('data-world'); renderOnboarding(1); });
     } else if(s===1){
@@ -550,19 +563,13 @@
     var res=Week.resolveDay(plan,dayId,ctx);
     var r=readiness();
     var greet=greeting();
-    var climbDay=res.climbing;
-    var rdWorld=climbDay?Data.worldsById.boulder:Data.worldsById.muscleup;
-    // Map-focus summary keeps Today and the Map reading from one canonical world
-    // state (same skills count + active focus) — see Part 10.
-    var pv=worldView(res.goal?res.goal.world:UI.worldId);
-    var focusSummary=pv.primary?
-      '<div class="path-summary"><span>'+pv.completed+'/'+pv.total+' skills</span> &middot; <b>Focus:</b> '+esc(pv.primary.name)+' ('+esc(Engine.progressText(pv.primary,pv.ws.nodes))+')</div>'
-      :'<div class="path-summary">Your weekly training plan</div>';
-
+    var rdWorld=Data.worldsById.muscleup;
+    // No skills count and no focus line. Today's job is "what should I do
+    // today"; a progress summary belongs on Goals, and having it here meant the
+    // athlete read two status lines before reaching the one button that matters.
     var left=''+
       '<div class="hero"><div class="between"><div><div class="goal">'+esc(res.day.label)+' &middot; '+esc(dayLabelOf(res).session)+'</div>'+
-      '<h1>'+greet+'</h1></div></div>'+
-      focusSummary+'</div>'+
+      '<h1>'+greet+'</h1></div></div></div>'+
       adhocResumeBanner()+
       scheduledCard(res,true)+
       adhocActionsCard();
@@ -575,8 +582,7 @@
     var right=''+
       altHtml+
       readinessCard(r,rdWorld)+
-      weekStripCard(plan,ctx,dayId)+
-      '<div class="card tight between"><div><div class="section" style="margin:0">Skill Map</div><div class="muted small">See how today connects to your goals</div></div><button class="btn sm primary" data-goto>View Map</button></div>';
+      weekStripCard(plan,ctx,dayId);
     var html='<div class="today-grid"><div class="today-left">'+left+'</div><div class="today-right">'+right+'</div></div>';
     var wrap=shell(html,'today');
     on('[data-rk]','click',function(e){var k=e.currentTarget.dataset.rk,v=e.currentTarget.dataset.rv;if(k==='pain'){r.pain=!r.pain;}else if(k==='time'){r.time=v;}else{r[k]=+v;}renderToday();},wrap);
@@ -594,9 +600,12 @@
     on('[data-daydetail]','click',function(e){ openDayDetail(+e.currentTarget.dataset.daydetail); },wrap);
     on('[data-useplanned]','click',function(e){ setDayOverride(+e.currentTarget.dataset.useplanned,'planned'); },wrap);
     on('[data-usealt]','click',function(e){ setDayOverride(+e.currentTarget.dataset.usealt,'alternative'); },wrap);
-    on('[data-goto]','click',function(){ setScreen('map'); },wrap);
-    on('[data-goweek]','click',function(){ setScreen('week'); },wrap);
+    on('[data-goweek]','click',function(){ setScreen('plan'); },wrap);
     on('[data-toggle-readiness]','click',function(){ UI.readinessOpen=!UI.readinessOpen; renderToday(); },wrap);
+    on('[data-whytoday]','click',function(e){
+      var b=e.currentTarget.parentNode.querySelector('.why-body');
+      if(b) b.hidden=!b.hidden;
+    },wrap);
     on('[data-exmeta]','click',function(e){ openExMetaSheet(e.currentTarget.dataset.exmeta); },wrap);
     on('[data-editwk]','click',function(e){ openWorkoutEditor(e.currentTarget.dataset.editwk,'today'); },wrap);
     on('[data-exdetail]','click',function(e){ openExerciseSheet(e.currentTarget.dataset.exdetail); },wrap);
@@ -617,6 +626,152 @@
     return '<div class="resume-banner"><div class="rb-h"><b>Extra workout in progress</b><span class="hist-badge">'+esc(a.classification==='test'?'Test':(a.classification==='apply'?'Applies to plan':'Extra'))+'</span></div>'+
       '<div class="muted small">'+esc(a.templateName||a.session)+' &middot; '+pg.done+' of '+pg.total+' done</div>'+
       '<div class="rb-acts"><button class="btn sm primary" data-resumeadhoc>Resume</button><button class="btn sm ghost" data-discardadhoc>Discard</button></div></div>';
+  }
+
+  // ---- Goals (the product renovation) --------------------------------------
+  // The screen that answers WHERE AM I and WHAT IS MISSING, for the two Goals
+  // this product is about. It reads the authored content through goals.js and
+  // shows short lines: an area, what the athlete has shown, what the bar is.
+  //
+  // It is DESCRIPTIVE ONLY. Nothing here prescribes, plans or writes state —
+  // the legacy engine still owns every decision until the P8 cutover, so a Goal
+  // page can be honest about capability without changing what the app does.
+  //
+  // The data is async (a durable context package and the Evidence ledger), and
+  // rendering is not, so the view is computed once and cached on UI. A workout
+  // completion clears it; nothing else needs to.
+  function invalidateGoals(){ UI.goalsView=null; }
+
+  function loadGoals(then){
+    if(UI.goalsView){ then(UI.goalsView); return; }
+    var C=window.CoachContext, I=window.CoachIDB, E=window.CoachEvaluator, G=window.CoachGoals;
+    if(!C||!I||!E||!G){ then({error:'not_loaded'}); return; }
+    var bench=Store.getBench()||{};
+    // Wait for the boot-time adoption rather than racing it, exactly as the
+    // evidence tap does. Without this, opening Goals during a cold start asks
+    // for a context that is still being adopted, gets none, and tells the
+    // athlete their goals are "still being set up" when they are not. The gate
+    // never rejects, so this can only delay the read, never break it.
+    whenNewModelReady().then(function(){
+      return C.getCurrentContextPackage();
+    }).then(function(pkg){
+      if(!pkg) return {error:'no_context'};
+      return I.all('ledger').then(function(rows){
+        var ledger=(rows||[]).filter(function(r){ return r.kind!=='ActivityObservation'; });
+        return { goals:G.view({evaluator:E,pkg:pkg,ledger:ledger,bench:bench}) };
+      });
+    })['catch'](function(){ return {error:'unavailable'}; })
+      // Only a real view is cached. A device that was not ready yet must be
+      // allowed to answer differently next time the athlete opens Goals —
+      // caching the failure is how "still being set up" becomes permanent.
+      .then(function(v){ if(v&&v.goals) UI.goalsView=v; then(v); });
+  }
+
+  function goalStateBar(a){
+    if(a.state==='done') return '<div class="ga-bar"><i class="done" style="width:100%"></i></div>';
+    var pct=(a.percent==null)?0:a.percent;
+    return '<div class="ga-bar"><i style="width:'+pct+'%"></i></div>';
+  }
+  // One area, one line. Name on the left, where they are on the right.
+  function goalAreaHtml(a){
+    var cls='ga'+(a.state==='done'?' is-done':'')+(a.state==='blocked'?' is-blocked':'');
+    if(a.perSide){
+      var side=function(x,label){
+        if(!x) return '';
+        var v=x.current?('<b>'+esc(x.current)+'</b>'):'—';
+        return label+' '+v;
+      };
+      var val=a.state==='done'?'done':(side(a.left,'L')+' &middot; '+side(a.right,'R')+(a.target?' / '+esc(a.target):''));
+      return '<div class="'+cls+'"><div class="ga-nm">'+esc(a.name)+'</div><div class="ga-val">'+val+'</div>'+
+        (a.left&&a.left.percent!=null?goalStateBar(a.left):'')+
+        (a.step?'<div class="ga-sub">'+esc(a.step)+'</div>':'')+'</div>';
+    }
+    var value=a.state==='done'?'done'
+      :(a.current?('<b>'+esc(a.current)+'</b>'+(a.target?' / '+esc(a.target):''))
+        :(a.target?'target '+esc(a.target):'—'));
+    var sub=[];
+    if(a.step) sub.push(a.step);
+    if(a.state==='blocked') sub.push('waiting on other work');
+    if(a.fromHistory) sub.push('from your earlier training');
+    if(!a.current&&a.state==='not_started') sub.push('not measured yet');
+    return '<div class="'+cls+'"><div class="ga-nm">'+esc(a.name)+'</div><div class="ga-val">'+value+'</div>'+
+      goalStateBar(a)+
+      (sub.length?'<div class="ga-sub">'+esc(sub.join(' &middot; ')).replace(/&amp;middot;/g,'&middot;')+'</div>':'')+'</div>';
+  }
+
+  function goalCardHtml(g,compact){
+    var next=g.complete?'<div class="gc-next"><span class="gc-lab">Done</span>Every area complete.</div>'
+      :'<div class="gc-next"><span class="gc-lab">Next up</span><b>'+esc(g.next||'')+'</b></div>';
+    return '<div class="goal-card" data-goal="'+esc(g.goalId)+'">'+
+      '<div class="gc-top"><h2>'+esc(g.name)+'</h2><span class="gc-count">'+g.areasDone+' of '+g.areasTotal+' areas</span></div>'+
+      next+
+      (compact?'':'<div class="gc-areas">'+g.areas.map(goalAreaHtml).join('')+'</div>')+
+      (compact?'<div class="why"><button data-goalopen="'+esc(g.goalId)+'">See the areas &rsaquo;</button></div>':'')+
+      '</div>';
+  }
+
+  // History lives here now rather than competing as its own conceptual system.
+  // Same data, same rows, same editing — one level down from the question the
+  // athlete actually arrived with.
+  function historySection(){
+    return '<div data-histwrap>'+historyHtml(Store.getSessions()||[])+'</div>';
+  }
+  function wireHistory(scope){
+    function again(){
+      var w=scope.querySelector('[data-histwrap]');
+      if(w){ w.innerHTML=historyHtml(Store.getSessions()||[]); wireHistory(scope); }
+    }
+    on('[data-hfilter]','click',function(e){ histFilter=e.currentTarget.dataset.hfilter; again(); },scope);
+    on('[data-htoggle]','click',function(e){ var id=e.currentTarget.dataset.htoggle; UI.histOpen=(UI.histOpen===id?null:id); again(); },scope);
+    on('[data-hdelete]','click',function(e){ deleteSession(e.currentTarget.dataset.hdelete); },scope);
+    on('[data-hexclude]','click',function(e){ toggleExclude(e.currentTarget.dataset.hexclude); },scope);
+    on('[data-htest]','click',function(e){ toggleTest(e.currentTarget.dataset.htest); },scope);
+  }
+
+  function goalsUnavailableHtml(v){
+    if(v&&v.error==='no_context') return '<div class="card tight"><div class="goal-empty">Your goals are still being set up on this device. Reopen the app in a moment.</div></div>';
+    return '<div class="card tight"><div class="goal-empty">Goal progress is unavailable on this device right now. Your training data is unaffected.</div></div>';
+  }
+
+  function renderGoals(){
+    var html='<div class="hero"><h1>Your goals</h1></div><div data-goalbody><div class="card tight"><div class="goal-empty">Loading…</div></div></div>';
+    var wrap=shell(html,'goals');
+    loadGoals(function(v){
+      if(UI.screen!=='goals') return;
+      var body=wrap.querySelector('[data-goalbody]');
+      if(!body) return;
+      var inner=(v&&v.goals&&v.goals.length)
+        ? v.goals.map(function(g){ return goalCardHtml(g,true); }).join('')
+        : goalsUnavailableHtml(v);
+      body.innerHTML=inner+historySection();
+      on('[data-goalopen]','click',function(e){ UI.goalId=e.currentTarget.dataset.goalopen; setScreen('goal'); },body);
+      wireHistory(body);
+    });
+  }
+
+  function renderGoalDetail(goalId){
+    var html='<div class="wk-top"><div class="between"><button class="link" data-back>&lsaquo; Goals</button><b></b><span></span></div></div>'+
+      '<div data-goalbody><div class="card tight"><div class="goal-empty">Loading…</div></div></div>';
+    var wrap=shell(html,'goals');
+    on('[data-back]','click',function(){ setScreen('goals'); },wrap);
+    loadGoals(function(v){
+      if(UI.screen!=='goal') return;
+      var body=wrap.querySelector('[data-goalbody]');
+      if(!body) return;
+      var g=(v&&v.goals||[]).filter(function(x){return x.goalId===goalId;})[0];
+      if(!g){ body.innerHTML=goalsUnavailableHtml(v); return; }
+      body.innerHTML=goalCardHtml(g,false)+
+        // Rationale lives behind a disclosure, never in the main path.
+        '<div class="card tight"><div class="why"><button data-why>Why these areas?</button>'+
+        '<div class="why-body" hidden>A ring muscle-up and a pistol squat each need several '+
+        'capabilities at once, developing at different rates. Each area above is one of them, '+
+        'with what you have shown and the bar you are working toward. The area named under '+
+        '&ldquo;Next up&rdquo; is the one currently holding the goal back.</div></div></div>';
+      on('[data-why]','click',function(e){
+        var b=e.currentTarget.parentNode.querySelector('.why-body');
+        if(b) b.hidden=!b.hidden;
+      },body);
+    });
   }
 
   // ---- Week screen (Part 9) -------------------------------------------------
@@ -663,7 +818,9 @@
   var PLAN_GROUP_TITLES={required:'Required',optional:'Optional',conditional:'Conditional',flex:'Flexible group-workout targets'};
   function renderEditPlan(){
     var req=UI.planEdit;
-    var ids=Object.keys(req).sort(function(a,b){return Week.reqIndex(a)-Week.reqIndex(b);});
+    // Climbing is not an area the athlete plans here any more.
+    function planVisible(exId){ return exId!==Week.CLIMB_EX||Week.climbingInProduct(); }
+    var ids=Object.keys(req).filter(planVisible).sort(function(a,b){return Week.reqIndex(a)-Week.reqIndex(b);});
     var view=UI.planEditView;
     var tabs='<div class="ep-tabs"><button class="ep-tab '+(view==='requirements'?'on':'')+'" data-eptab="requirements">Exercise Requirements</button>'+
       '<button class="ep-tab '+(view==='board'?'on':'')+'" data-eptab="board">Week Assignment Board</button></div>';
@@ -916,7 +1073,7 @@
   }
   function markDayDone(dayId){
     var p=getPlan(); p.dayLog=p.dayLog||{}; var log=p.dayLog[dayId]||{}; log.completed=true; p.dayLog[dayId]=log; savePlan(p);
-    var baseId=Week.climbsOn(p,dayId)?'bouldering':(Week.DAYS_BY_ID[dayId]&&Week.DAYS_BY_ID[dayId].type==='group'?'_group':null);
+    var baseId=Week.climbsVisibly(p,dayId)?'bouldering':(Week.DAYS_BY_ID[dayId]&&Week.DAYS_BY_ID[dayId].type==='group'?'_group':null);
     if(baseId) completeTodayBaseItem(dayId,baseId,{type:baseId==='bouldering'?'climbing':'group', name:baseId==='bouldering'?'Climbing Session':'Group Workout Log', actualText:'Marked completed'});
     closeSheet(); toast('Marked completed.'); if(UI.screen==='week') renderWeek(); else renderToday();
   }
@@ -1046,6 +1203,7 @@
       var bench=Store.getBench(); Object.keys(pr.bench||{}).forEach(function(k){bench[k]=Math.max(bench[k]||0,pr.bench[k]);}); Store.setBench(bench);
     }
     if(e){ e.state='completed'; e.result=result; }
+    invalidateGoals();
     daily.activeExId=null; persistDaily(daily);
     UI.workout=null; saveWorkoutState();
     renderExerciseComplete(exId,result,daily);
@@ -1581,7 +1739,10 @@
     var adaptHtml=res.adapted?
       '<div class="adapt-banner"><b>Adapted from your weekly plan</b>'+
       res.adaptations.map(function(a){return '<div class="adapt-cause">'+esc(a.cause)+'</div>';}).join('')+'</div>'
-      :'<div class="asplanned">&#10003; As planned</div>';
+      // Nothing is shown when the session is simply the plan. An adaptation is
+      // news; the absence of one is not, and saying so every day taught the
+      // athlete to read past the line that matters.
+      :'';
     var body, mainBtn;
     if(hasBase||hasExec){
       var daily=dailyForToday(res);
@@ -1608,9 +1769,11 @@
       '<div class="kick">Scheduled today</div>'+
       '<div class="name">'+esc(schedLbl.session)+(schedLbl.sub?' &middot; '+esc(schedLbl.sub):'')+'</div>'+
       (res.templateId&&Data.templates[res.templateId]?'<div class="meta"><span>'+durationText(Data.templates[res.templateId])+'</span><span>'+esc(Data.templates[res.templateId].difficulty||'')+'</span></div>':'')+
-      (res.goal?'<div class="sched-goal">Primary contribution: <b>'+esc(res.goal.name)+'</b></div>':'')+
-      (skillTags?'<div class="foci">'+skillTags+'</div>':'')+
-      (why?'<div class="why">'+esc(why)+'</div>':'')+
+      // No node name, no skill chips, no rationale prose in the main path. The
+      // athlete came here to start training; "Primary contribution: First
+      // Muscle-Up" is engine vocabulary, and the skill chips repeated the queue
+      // immediately below. The reason is still available, one tap away.
+      (why?'<div class="why"><button data-whytoday>Why this?</button><div class="why-body" hidden>'+esc(why)+'</div></div>':'')+
       adaptHtml+
       body+
       mainBtn+
@@ -1671,7 +1834,7 @@
     var rt=dayPrescription(res);
     var hasLadder=(rt.blocks||[]).some(function(b){return b.scheme==='ladder';});
     var modified=hasLadder&&Settings.isModifiedForToday(Data.templates.mu_strength,settings(),todayEdits.mu_strength);
-    return '<div class="exec-preview"><div class="section" style="margin-top:12px">Prescription detail &amp; ladder edit</div>'+
+    return '<div class="exec-preview"><div class="section" style="margin-top:12px">Adjust today&rsquo;s sets</div>'+
       (modified?'<div class="modified-flag">&#9679; Ladder modified for today &middot; <button class="link" data-resettoday="mu_strength">Reset to default</button></div>':'')+
       '<div class="wk-list">'+workoutExerciseList(rt)+'</div>'+
       (hasLadder?'<button class="btn ghost sm inline-edit" data-editwk="mu_strength">Edit Pull-Up Ladder</button>':'')+'</div>';
@@ -1694,9 +1857,14 @@
         (sub?'<div class="wk-ex-struct muted small">'+esc(sub)+'</div>':'')+'</div>';
     }).join('');
   }
-  function prioPill(p){ return '<span class="prio prio-'+esc(p)+'" title="Priority '+esc(p)+'">'+esc(p)+'</span>'; }
+  // Priority is an engine ordering concept. The athlete reads the queue in the
+  // order it is given, so the letter told them nothing they could act on.
+  function prioPill(){ return ''; }
   function statusChip(label){
     if(!label) return '';
+    // "Required" on every row is noise; the exceptions are what matter, because
+    // only they change what the athlete may do.
+    if(label==='Required') return '';
     var cls=label.toLowerCase();
     return '<span class="status-chip sc-'+cls+'">'+esc(label)+'</span>';
   }
@@ -2996,6 +3164,7 @@
     ws.nodes=res.states; recomputeFocus(world,ws); saveWS(w.worldId,ws);
     var bench=Store.getBench(); Object.keys(res.bench||{}).forEach(function(k){bench[k]=Math.max(bench[k]||0,res.bench[k]);}); Store.setBench(bench);
     var sessions=Store.getSessions(); sessions.push(session); Store.setSessions(sessions);
+    invalidateGoals();
     UI.workout=null; saveWorkoutState();
     showSummary(world,res,session);
   }
@@ -3760,7 +3929,15 @@
 
   // _evidence is a TEST SEAM, not an API: it exposes the tap so the ordering
   // invariant can be asserted from a real page against real IndexedDB.
-  window.CoachApp={boot:boot,_UI:UI,
+  // _goto is a TEST SEAM. The Skill Map and the old Progress screen are archived
+  // rather than deleted: the athlete has no route to either, but their rendering
+  // is still guarded by the suites that were written for them.
+  // _startClimbing joins _goto as a TEST SEAM. The climbing logger is archived
+  // from the athlete's experience, not removed, so its real behaviour — the
+  // execution identity, the resume path, the saved session — stays under test
+  // even though nothing in the product offers a way in.
+  window.CoachApp={boot:boot,_UI:UI,_goto:setScreen,
+    _startClimbing:function(tid){ startClimbing(Data.templates[tid||(Week.EX[Week.CLIMB_EX]&&Week.EX[Week.CLIMB_EX].templateId)]); },
     _evidence:{status:evidenceStatus,append:appendEvidence,
       tapWorkout:tapWorkoutEvidence,tapClimb:tapClimbEvidence,newId:newExecutionId}};
   boot();

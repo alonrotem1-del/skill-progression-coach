@@ -328,8 +328,38 @@
   // originally called the climbing day. `DAYS[].type === 'climbing'` is a
   // second static representation of the same fact and cannot follow an edit.
   var CLIMB_EX = 'bouldering';
+
+  // CLIMBING IS NOT A FIRST-CLASS DOMAIN IN THIS PRODUCT.
+  //
+  // The frozen philosophy treats climbing as external load affecting readiness,
+  // not as a progression to coach — so it is not a Goal, not a training area
+  // and not a destination. This flag hides it from the athlete's experience in
+  // ONE place: `resolveDay` stops reporting a climbing day, and with that the
+  // queue stops offering a climbing session, Today stops naming one and the day
+  // detail stops showing climbing options.
+  //
+  // It HIDES, it does not delete. `climbsOn` still answers the raw question
+  // about the plan, past climbing sessions stay in History, the world state and
+  // the logger are untouched, and nothing in storage changes — so climbing can
+  // come back as a Recovery input without recovering anything.
+  var CLIMBING_IN_PRODUCT = false;
+  function climbingInProduct() { return CLIMBING_IN_PRODUCT; }
+
   function climbsOn(plan, dayId) {
     return assignmentsForDay(plan, dayId).indexOf(CLIMB_EX) >= 0;
+  }
+  // What the athlete is shown for a day. The raw assignments are the plan's own
+  // record and stay untouched — `climbsOn` still reads them — but everything
+  // the product DESCRIBES or OFFERS goes through here, so hiding climbing takes
+  // it out of the day's name, its item list and its runnable set at once.
+  function visibleAssignmentsForDay(plan, dayId) {
+    var all = assignmentsForDay(plan, dayId);
+    if (CLIMBING_IN_PRODUCT) return all;
+    return all.filter(function (exId) { return exId !== CLIMB_EX; });
+  }
+  // What the PRODUCT should act on, as opposed to what the plan happens to say.
+  function climbsVisibly(plan, dayId) {
+    return CLIMBING_IN_PRODUCT && climbsOn(plan, dayId);
   }
   // The template that runs a climbing session, taken from the exercise itself
   // so it is the same wherever the athlete assigns it.
@@ -358,9 +388,15 @@
   function dayContentLabel(plan, dayId) {
     var day = DAYS_BY_ID[dayId];
     if (!day) return null;
-    var assigned = assignmentsForDay(plan, dayId);
+    var assigned = visibleAssignmentsForDay(plan, dayId);
     var describes = day.describes || [];
     var stale = describes.filter(function (exId) { return assigned.indexOf(exId) < 0; });
+    // A template name describing something the product no longer shows is as
+    // stale as one describing work that moved away — "Climbing · Bouldering" on
+    // a day with nothing in it would be the template talking, not the plan.
+    if (!CLIMBING_IN_PRODUCT && describes.indexOf(CLIMB_EX) >= 0 && stale.indexOf(CLIMB_EX) < 0) {
+      stale = stale.concat([CLIMB_EX]);
+    }
 
     if (!stale.length) return { session: day.session, sub: day.sub || '', derived: false };
 
@@ -536,7 +572,7 @@
     // workout) and attaches a status label + reason. Dead Hang is not assigned
     // by default — it appears only as an explained replacement for Toes-to-Bar.
     var reqMap = (plan && plan.requirements) || {};
-    var items = assignmentsForDay(plan, dayId).map(function (exId) {
+    var items = visibleAssignmentsForDay(plan, dayId).map(function (exId) {
       var meta = EX[exId], req = reqMap[exId] || {};
       return { exId: exId, ex: meta, priority: meta ? meta.priority : 'D',
         role: meta ? meta.role : ROLE.MAINT, status: req.status || 'required',
@@ -669,8 +705,8 @@
       contentLabel: dayContentLabel(plan, dayId),
       // Whether THIS day is a climbing day, per the plan, and the template that
       // runs it. Consumers must use these rather than day.type === 'climbing'.
-      climbing: climbsOn(plan, dayId),
-      climbTemplateId: climbsOn(plan, dayId) ? climbTemplateId(dayId) : null,
+      climbing: climbsVisibly(plan, dayId),
+      climbTemplateId: climbsVisibly(plan, dayId) ? climbTemplateId(dayId) : null,
       items: items, adaptations: adaptations, selections: selections,
       adapted: adaptations.length > 0, executable: executable,
       alternative: alternative, templateId: templateId, ladderRounds: ladderRounds,
@@ -756,6 +792,8 @@
     recommendationFor: recommendationFor, recRationale: recRationale,
     reqIndex: reqIndex, assignmentsForDay: assignmentsForDay, dayContentLabel: dayContentLabel,
     CLIMB_EX: CLIMB_EX, climbsOn: climbsOn, CLIMB_EMPHASIS: CLIMB_EMPHASIS,
+    climbingInProduct: climbingInProduct, climbsVisibly: climbsVisibly,
+    visibleAssignmentsForDay: visibleAssignmentsForDay,
     weeklyCounts: weeklyCounts,
     seedPlan: seedPlan, migratePlan: migratePlan, executablePrescription: executablePrescription,
     weeklyLoad: weeklyLoad, resolveDay: resolveDay,

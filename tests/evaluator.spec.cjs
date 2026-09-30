@@ -637,12 +637,22 @@ test.describe('P6a evaluator — no authority', () => {
         expect(src, f).not.toContain('CoachEvaluator');
         expect(src, f).not.toContain('evaluator.js');
       });
-    // In app.js the single reference is inside the evidence tap, and it calls
-    // exactly one thing: the Dependency question.
+    // app.js reaches the evaluator in exactly TWO places, and both only ask it
+    // to describe — neither lets it decide.
+    //
+    //   1. the evidence tap, for the one Dependency question P3 needs;
+    //   2. the Goals view, which reads progress to put it on screen.
+    //
+    // Two is the whole budget: a third would mean something new started
+    // consulting the engine, and that is the thing this test exists to catch.
     const app = fs.readFileSync(path.join(REPO, 'app.js'), 'utf8');
     const uses = app.match(/CoachEvaluator/g) || [];
-    expect(uses.length).toBe(1);
+    expect(uses.length).toBe(2);
     expect(app).toContain('E.unmetDependencies(');
+    // The Goals reference is a read for display and lives in the loader, which
+    // hands the evaluator straight to goals.js and keeps no verdict of its own.
+    expect(app).toContain('E=window.CoachEvaluator, G=window.CoachGoals');
+    expect(app).toContain('G.view({evaluator:E');
     // Establishment is the question "is this holder achieved/unlocked" — the one
     // the legacy engine still owns until P8. P3 must not start answering it, so
     // the establishment API is forbidden on any decision path alongside the

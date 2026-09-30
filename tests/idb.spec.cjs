@@ -641,9 +641,9 @@ test.describe('idb.js — no source-of-truth cutover', () => {
     await seed(page, 2);
     await page.evaluate(async () => { await window.CoachIDB.init(); });
     await expect(page.locator('.nav [data-s="today"]')).toBeVisible();
-    await page.locator('.nav [data-s="week"]').click();
+    await page.locator('.nav [data-s="plan"]').click();
     await expect(page.locator('.scr')).toBeVisible();
-    await page.locator('.nav [data-s="progress"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'progress');
     await expect(page.locator('.scr')).toBeVisible();
     await page.locator('.nav [data-s="today"]').click();
     await expect(page.locator('.scr')).toBeVisible();
@@ -665,7 +665,7 @@ test.describe('idb.js — no source-of-truth cutover', () => {
     await seed(page, 2);
     // The app is fully usable: Today rendered, nav works, a workout can start.
     await expect(page.locator('.nav [data-s="today"]')).toBeVisible();
-    await page.locator('.nav [data-s="week"]').click();
+    await page.locator('.nav [data-s="plan"]').click();
     await expect(page.locator('.scr')).toBeVisible();
     await page.locator('.nav [data-s="today"]').click();
     await expect(page.locator('.scr')).toBeVisible();
@@ -713,7 +713,7 @@ test.describe('idb.js — PWA / offline', () => {
       const cache = await window.caches.open(cacheName);
       return { cacheName, hasIdb: !!(await cache.match('./idb.js', { ignoreSearch: true })) };
     });
-    expect(cached.cacheName).toMatch(/skill-progression-coach-v21/);
+    expect(cached.cacheName).toMatch(/skill-progression-coach-v22/);
     expect(cached.hasIdb).toBe(true);
   });
 
@@ -749,7 +749,7 @@ test.describe('idb.js — PWA / offline', () => {
     await page.waitForTimeout(800); // let activate() prune obsolete caches
     const keys = await page.evaluate(() => window.caches.keys());
     expect(keys).not.toContain('skill-progression-coach-v17');
-    expect(keys).toContain('skill-progression-coach-v21');
+    expect(keys).toContain('skill-progression-coach-v22');
     // The live activation has idb.js, and the database still opens.
     const ok = await page.evaluate(async () => (await window.CoachIDB.init()).ok);
     expect(ok).toBe(true);

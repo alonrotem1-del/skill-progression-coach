@@ -74,7 +74,7 @@ async function finishOneExercise(page, exId) {
 }
 
 async function openEditPlan(page) {
-  await page.locator('.nav [data-s="week"]').click();
+  await page.locator('.nav [data-s="plan"]').click();
   await page.locator('[data-editplan]').click();
 }
 async function toggleDayChip(page, exerciseName, dayId) {
@@ -132,7 +132,7 @@ test.describe('Phase 1 verification — full round trip (Week / History / Progre
 
     // -- capture BEFORE snapshots (real rendered UI, not just storage) -----
     const weekBefore = await editPlanRowText(page, 'Toes-to-Bar');
-    await page.locator('.nav [data-s="progress"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'progress');
     const progressBefore = await page.locator('.scr').innerText(); // Progress screen embeds History
     const before = {
       week: weekBefore, progress: progressBefore,
@@ -171,7 +171,7 @@ test.describe('Phase 1 verification — full round trip (Week / History / Progre
 
     // Confirm the state genuinely changed before we restore over it.
     expect(await editPlanRowText(page, 'Toes-to-Bar')).not.toBe(before.week);
-    await page.locator('.nav [data-s="progress"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'progress');
     expect(await page.locator('.scr').innerText()).not.toBe(before.progress);
 
     // -- (D) restore --------------------------------------------------------
@@ -205,7 +205,7 @@ test.describe('Phase 1 verification — full round trip (Week / History / Progre
 
     expect(await editPlanRowText(page, 'Toes-to-Bar')).toBe(before.week);
 
-    await page.locator('.nav [data-s="progress"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'progress');
     const progressAfter = await page.locator('.scr').innerText();
     expect(progressAfter).toBe(before.progress);
     // explicit, human-readable check: the SECOND triceps completion is gone
@@ -473,7 +473,7 @@ test.describe('Phase 1 verification — service worker / offline availability', 
       const match = await cache.match('./backup.js', { ignoreSearch: true });
       return { cacheName, hasBackup: !!match };
     });
-    expect(cached.cacheName).toMatch(/skill-progression-coach-v21/);
+    expect(cached.cacheName).toMatch(/skill-progression-coach-v22/);
     expect(cached.hasBackup).toBe(true);
   });
 
@@ -522,7 +522,7 @@ test.describe('Phase 1 verification — service worker / offline availability', 
     await page.waitForTimeout(800); // let activate() prune obsolete caches
     const keys = await page.evaluate(() => window.caches.keys());
     expect(keys).not.toContain('skill-progression-coach-v17');
-    expect(keys).toContain('skill-progression-coach-v21');
+    expect(keys).toContain('skill-progression-coach-v22');
     // The live page (this activation) still has the current Backup UI.
     await page.locator('[data-s="profile"]').click();
     await page.locator('[data-sview="data"]').click();

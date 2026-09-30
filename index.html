@@ -637,6 +637,30 @@
       .settings-list .section{break-after:avoid-column;break-inside:avoid-column}
     }
 
+
+    /* ---- Goal-centric views (product renovation) ---------------------- */
+    .goal-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:10px}
+    .goal-card .gc-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+    .goal-card h2{margin:0;font-size:19px;letter-spacing:-.01em}
+    .gc-count{color:var(--muted);font-size:12px;white-space:nowrap}
+    .gc-next{margin-top:8px;font-size:14px;color:var(--text)}
+    .gc-next b{color:var(--accent)}
+    .gc-next .gc-lab{display:block;color:var(--muted);font-size:11px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:2px}
+    .gc-areas{margin-top:12px;display:flex;flex-direction:column;gap:9px}
+    .ga{display:grid;grid-template-columns:1fr auto;gap:2px 12px;align-items:baseline}
+    .ga-nm{font-size:14px;font-weight:600}
+    .ga-val{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+    .ga-val b{color:var(--text);font-weight:600}
+    .ga-bar{grid-column:1/-1;height:4px;background:var(--card2);border-radius:3px;overflow:hidden}
+    .ga-bar i{display:block;height:100%;background:var(--accent)}
+    .ga-bar i.done{background:var(--good)}
+    .ga-sub{grid-column:1/-1;font-size:11.5px;color:var(--muted)}
+    .ga.is-done .ga-nm:after{content:" \2713";color:var(--good)}
+    .ga.is-blocked .ga-val{color:var(--warn,#f0b429)}
+    .goal-empty{color:var(--muted);font-size:14px}
+    .why{margin-top:10px}
+    .why button{background:none;border:0;color:var(--accent);font-size:12.5px;padding:0;cursor:pointer}
+    .why-body{margin-top:6px;font-size:13px;color:var(--muted);line-height:1.5}
   </style>
 </head>
 <body>
@@ -661,20 +685,21 @@
       window.dispatchEvent(new Event('spc-installed'));
     });
   </script>
-  <script src="data.js?v=20260927a"></script>
-  <script src="week.js?v=20260927a"></script>
-  <script src="daily.js?v=20260927a"></script>
-  <script src="engine.js?v=20260927a"></script>
-  <script src="progress.js?v=20260927a"></script>
-  <script src="store.js?v=20260927a"></script>
-  <script src="duration.js?v=20260927a"></script>
-  <script src="adapt.js?v=20260927a"></script>
-  <script src="settings.js?v=20260927a"></script>
-  <script src="idb.js?v=20260927a"></script>
-  <script src="context.js?v=20260927a"></script>
-  <script src="evaluator.js?v=20260927a"></script>
-  <script src="evidence.js?v=20260927a"></script>
-  <script src="backup.js?v=20260927a"></script>
-  <script src="app.js?v=20260927a"></script>
+  <script src="data.js?v=20260930a"></script>
+  <script src="week.js?v=20260930a"></script>
+  <script src="daily.js?v=20260930a"></script>
+  <script src="engine.js?v=20260930a"></script>
+  <script src="progress.js?v=20260930a"></script>
+  <script src="store.js?v=20260930a"></script>
+  <script src="duration.js?v=20260930a"></script>
+  <script src="adapt.js?v=20260930a"></script>
+  <script src="settings.js?v=20260930a"></script>
+  <script src="idb.js?v=20260930a"></script>
+  <script src="context.js?v=20260930a"></script>
+  <script src="evaluator.js?v=20260930a"></script>
+  <script src="evidence.js?v=20260930a"></script>
+  <script src="goals.js?v=20260930a"></script>
+  <script src="backup.js?v=20260930a"></script>
+  <script src="app.js?v=20260930a"></script>
 </body>
 </html>

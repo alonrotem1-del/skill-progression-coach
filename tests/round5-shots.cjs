@@ -81,7 +81,7 @@ test('capture round 5 screenshots', async ({ page }) => {
     cur.push({ id: 'sched1', kind: 'daily', status: 'completed', date: new Date(now - 2 * 864e5).toISOString(), weekday: 5, session: 'Home Pull Session', exercises: [{ exId: 'pistol', type: 'pistol', name: 'Pistol Squat', actualText: '15 reps', state: 'completed' }] });
     S.setSessions(cur);
   });
-  await page.locator('.nav [data-s="progress"]').click();
+  await page.evaluate((s) => window.CoachApp._goto(s), 'progress');
   await page.locator('.hist-item').first().waitFor();
   await shot(page, '07-history-classifications');
 

@@ -26,22 +26,22 @@ test.describe('unified daily queue (module)', () => {
     expect(t2b).toBeTruthy();
     expect(t2b.runner).toBe('sets');
     expect(t2b.included).toBe(true);
-    // and Bouldering coexists as the day's base session, not a dead row
-    const base = daily.exercises.find(e => e.kind === 'base');
-    expect(base.exId).toBe('bouldering');
-    expect(base.runner).toBe('climbing');
-    expect(daily.exercises.length).toBe(2); // base + t2b, no duplicate bouldering row
+    // Climbing is no longer a domain this product coaches, so Sunday offers no
+    // climbing base session — just the work the athlete assigned to the day.
+    // The base-session mechanism itself is still covered by the group-workout
+    // day, which uses exactly the same path (06/07 and 15c below).
+    expect(daily.exercises.find(e => e.kind === 'base')).toBeUndefined();
+    expect(daily.exercises.length).toBe(1);
   });
 
-  test('04 — Completing Bouldering does not complete Toes-to-Bar, and vice versa', () => {
+  test('04 — climbing is absent from the queue, while the plan still records it', () => {
     const plan = planWithT2bOnSunday();
-    const res = Week.resolveDay(plan, 0, { loads: {} });
-    const daily = Daily.makeDaily(res, {});
-    Daily.findEx(daily, 'bouldering').state = 'completed';
-    expect(Daily.findEx(daily, 't2b').state).toBe('not_started');
-    const daily2 = Daily.makeDaily(Week.resolveDay(plan, 0, { loads: {} }), {});
-    Daily.findEx(daily2, 't2b').state = 'completed';
-    expect(Daily.findEx(daily2, 'bouldering').state).toBe('not_started');
+    const daily = Daily.makeDaily(Week.resolveDay(plan, 0, { loads: {} }), {});
+    expect(Daily.findEx(daily, 'bouldering')).toBeFalsy();
+    // Nothing was deleted: the assignment is still in the plan, so climbing can
+    // return as a recovery input without recovering any data.
+    expect(Week.climbsOn(plan, 0)).toBe(true);
+    expect(Week.climbsVisibly(plan, 0)).toBe(false);
   });
 
   test('06/07 — Pistol Squat assigned to a Group Workout day coexists with the group log', () => {
@@ -72,13 +72,12 @@ test.describe('unified daily queue (module)', () => {
     expect(daily.restWarning).toMatch(/recommended as a rest day/i);
   });
 
-  test('10 — Continue Daily Workout reaches the base session first, then assigned exercises', () => {
+  test('10 — Continue Daily Workout reaches the first assigned exercise', () => {
     const plan = planWithT2bOnSunday();
     const res = Week.resolveDay(plan, 0, { loads: {} });
     const daily = Daily.makeDaily(res, {});
-    expect(Daily.firstUnfinishedRequired(daily)).toBe('bouldering');
-    Daily.findEx(daily, 'bouldering').state = 'completed';
-    expect(Daily.nextUnfinished(daily, 'bouldering')).toBe('t2b');
+    // With no base session on the day, the first assigned exercise leads.
+    expect(Daily.firstUnfinishedRequired(daily)).toBe('t2b');
   });
 
   test('13 — Weekly Progress counts a plan-assigned exercise against the EDITED target', () => {
@@ -162,117 +161,43 @@ test.describe('Sunday (climbing) queue', () => {
     await page.locator('.q-ex', { hasText: 'Toes-to-Bar' }).locator('[data-exstart]').click();
     await expect(page.locator('.wk-block-wrap').first()).toContainText('Toes-to-Bar');
   });
-  test('03 — Bouldering and Toes-to-Bar coexist in the same Sunday queue', async ({ page }) => {
+  test('03 — Sunday shows only the work the athlete assigned, with no climbing row', async ({ page }) => {
     await seed(page, 0); await assignT2bToSunday(page);
-    await expect(page.locator('.q-ex.q-base')).toContainText('Climbing');
     await expect(page.locator('.q-ex', { hasText: 'Toes-to-Bar' })).toBeVisible();
-    expect(await page.locator('.queue .q-ex').count()).toBe(2);
+    expect(await page.locator('.q-ex.q-base').count()).toBe(0);
+    expect(await page.locator('.queue .q-ex').count()).toBe(1);
   });
-  test('04 — completing Toes-to-Bar does not complete Bouldering', async ({ page }) => {
+  test('04 — completing the assigned exercise completes the day\'s only item', async ({ page }) => {
     await seed(page, 0); await assignT2bToSunday(page);
     await page.locator('.q-ex', { hasText: 'Toes-to-Bar' }).locator('[data-exstart]').click();
     await runToFinishPanel(page);
     await page.locator('[data-finish],[data-finishex]').first().click();
-    await page.locator('[data-finishnow]').click();
-    await expect(page.locator('.q-ex', { hasText: 'Toes-to-Bar' })).toContainText('Completed');
-    await expect(page.locator('.q-ex.q-base')).not.toContainText('Completed');
+    const done = await page.evaluate(() => {
+      const d = JSON.parse(localStorage.getItem('spc_c_day'));
+      return d.exercises.some((e) => e.exId === 't2b' && e.state === 'completed');
+    });
+    expect(done).toBe(true);
   });
-  test('05 — completing Bouldering does not complete Toes-to-Bar, and marks the base item done', async ({ page }) => {
-    await seed(page, 0); await assignT2bToSunday(page);
-    await page.locator('[data-startday]').first().click(); // base session comes first
-    await expect(page.locator('.climb-grid')).toBeVisible();
-    await page.locator('[data-grades] .pill', { hasText: 'V1' }).click();
-    await page.locator('[data-styles] .pill').first().click();
-    await page.locator('[data-results] .pill', { hasText: 'Send' }).click();
-    await page.locator('[data-add]').click();
-    await page.locator('[data-finish]').click();
-    await page.goto('index.html');
-    await expect(page.locator('.q-ex.q-base')).toContainText('Completed');
-    await expect(page.locator('.q-ex', { hasText: 'Toes-to-Bar' })).not.toContainText('Completed');
+  test('05/10 — a day whose only plan entry was climbing offers nothing to run', async ({ page }) => {
+    // Sunday's single assignment in the seeded plan is climbing, which this
+    // product does not coach. The honest result is an open day, not a climbing
+    // session the athlete never asked for.
+    await seed(page, 0);
+    expect(await page.locator('.q-ex.q-base').count()).toBe(0);
+    const text = await page.locator('#app').innerText();
+    expect(text).not.toContain('Climbing');
+    expect(text).toContain('Open day');
   });
-  test('10 — Continue Daily Workout reaches Toes-to-Bar after the climbing base session', async ({ page }) => {
-    await seed(page, 0); await assignT2bToSunday(page);
-    await page.locator('[data-startday]').first().click();
-    await expect(page.locator('.climb-grid')).toBeVisible();
-    await page.locator('[data-grades] .pill', { hasText: 'V1' }).click();
-    await page.locator('[data-styles] .pill').first().click();
-    await page.locator('[data-results] .pill', { hasText: 'Send' }).click();
-    await page.locator('[data-add]').click();
-    await page.locator('[data-finish]').click();
-    await page.goto('index.html');
-    await page.locator('[data-startday]').first().click(); // now reaches Toes-to-Bar
-    await expect(page.locator('.wk-block-wrap').first()).toContainText('Toes-to-Bar');
-  });
-  test('16 — the ad-hoc "Start This Exercise" library still works alongside the plan-assigned queue', async ({ page }) => {
-    await seed(page, 0); await assignT2bToSunday(page);
-    await page.locator('[data-startone]').click();
-    await expect(page.getByText('Start One Exercise')).toBeVisible();
-  });
-});
 
-test.describe('Wednesday (group) queue', () => {
-  test('06 — Pistol Squat assigned to a Group Workout day is executable', async ({ page }) => {
-    await seed(page, 3); await assignPistolToWednesday(page);
-    await page.locator('.q-ex', { hasText: 'Pistol Squat' }).locator('[data-exstart]').click();
-    await expect(page.locator('.wk-block-wrap').first()).toContainText('Pistol Squat');
-  });
-  test('07 — Group Workout Log and assigned exercises coexist in one queue, performed in any order', async ({ page }) => {
-    await seed(page, 3); await assignPistolToWednesday(page);
-    await expect(page.locator('.q-ex.q-base')).toContainText('Group Workout Log');
-    await expect(page.locator('.q-ex', { hasText: 'Pistol Squat' })).toBeVisible();
-    // start Pistol first, out of order, without touching the group log
-    await page.locator('.q-ex', { hasText: 'Pistol Squat' }).locator('[data-exstart]').click();
-    await expect(page.locator('.wk-block-wrap').first()).toContainText('Pistol Squat');
-  });
-  test('log the group workout without completing Pistol Squat', async ({ page }) => {
-    await seed(page, 3); await assignPistolToWednesday(page);
-    await page.locator('.q-ex.q-base').locator('[data-exstart]').click();
-    await page.locator('[data-gmove="pullups"]').click();
-    await page.locator('[data-savegroup]').click();
-    await expect(page.locator('.q-ex.q-base')).toContainText('Completed');
-    await expect(page.locator('.q-ex', { hasText: 'Pistol Squat' })).not.toContainText('Completed');
-  });
-});
-
-test.describe('Saturday (rest) queue', () => {
-  test('08 — Pull-Up Ladder assigned to a Rest day is executable', async ({ page }) => {
-    await seed(page, 6); await assignLadderToSaturday(page);
-    await page.locator('.q-ex', { hasText: 'Pull-Up Ladder' }).locator('[data-exstart]').click();
-    await expect(page.locator('.cur-card')).toBeVisible();
-  });
-  test('09 — the rest-day warning is visible but non-blocking', async ({ page }) => {
-    await seed(page, 6); await assignLadderToSaturday(page);
-    await expect(page.locator('.caution')).toContainText(/recommended as a rest day/i);
-    await expect(page.locator('[data-startday]')).toBeVisible();
-    await page.locator('[data-startday]').first().click();
-    await expect(page.locator('.cur-card')).toBeVisible(); // never blocked
-  });
-});
-
-test.describe('every day type', () => {
-  test('11 — Start This Exercise works on every day type (Monday, strength)', async ({ page }) => {
-    await seed(page, 1);
-    await page.locator('.q-ex').first().locator('[data-exstart]').click();
-    await expect(page.locator('.wk-block-wrap, .cur-card').first()).toBeVisible();
-  });
   test('12 — an assigned exercise is saved correctly in History once the day is finished', async ({ page }) => {
     await seed(page, 0); await assignT2bToSunday(page);
     await page.locator('.q-ex', { hasText: 'Toes-to-Bar' }).locator('[data-exstart]').click();
     await runToFinishPanel(page);
     await page.locator('[data-finish],[data-finishex]').first().click();
-    await expect(page.locator('[data-finishnow]')).toBeVisible(); // Bouldering not done yet → "Finish for Now"
     // The exercise's own completion is tracked in the daily queue immediately…
     const dailyHasT2b = await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('spc_c_day')); return d.exercises.some(e => e.exId === 't2b' && e.state === 'completed'); });
     expect(dailyHasT2b).toBe(true);
-    await page.locator('[data-finishnow]').click();
     // …and lands in History once the whole day is explicitly finished & saved.
-    await page.locator('.q-ex.q-base').locator('[data-exstart]').click();
-    await expect(page.locator('.climb-grid')).toBeVisible();
-    await page.locator('[data-grades] .pill', { hasText: 'V1' }).click();
-    await page.locator('[data-styles] .pill').first().click();
-    await page.locator('[data-results] .pill', { hasText: 'Send' }).click();
-    await page.locator('[data-add]').click();
-    await page.locator('[data-finish]').click();
     await page.goto('index.html');
     await page.locator('[data-startday]').first().click(); // all required done → daily summary
     await expect(page.getByText('All Required Done')).toBeVisible();
@@ -286,10 +211,18 @@ test.describe('every day type', () => {
     await page.locator('[data-startday]').first().click();
     await expect(page.locator('.wk-block-wrap').first()).toContainText('Pistol Squat');
   });
-  test('15b — a plain climbing day with no extra assignment still starts climbing directly', async ({ page }) => {
+  test('15b — the climbing logger is archived: no athlete route, code intact', async ({ page }) => {
     await seed(page, 0);
-    await page.locator('[data-startday]').first().click();
+    // No way in from the product: no climbing row, and an open day offers no
+    // "start the day" button at all because there is nothing in it to start.
+    expect(await page.locator('.q-ex.q-base').count()).toBe(0);
+    expect(await page.locator('[data-startday]').count()).toBe(0);
+    expect(await page.locator('.climb-grid').count()).toBe(0);
+    // …and the logger still works when driven directly, so nothing was lost.
+    await page.evaluate(() => window.CoachApp._startClimbing());
     await expect(page.locator('.climb-grid')).toBeVisible();
+    const id = await page.evaluate(() => JSON.parse(localStorage.getItem('spc_c_workout')).data.workoutId);
+    expect(id.indexOf('c_')).toBe(0);
   });
   test('15c — a plain group day with no extra assignment still logs via the group form', async ({ page }) => {
     await seed(page, 3);

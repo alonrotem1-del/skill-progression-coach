@@ -70,11 +70,11 @@ WIDTHS.forEach(({ width, height }) => {
     test('Today, Week, Map, Progress all fit without horizontal scroll', async ({ page }) => {
       await seed(page);
       await noHorizontalOverflow(page);
-      await page.locator('.nav [data-s="week"]').click();
+      await page.locator('.nav [data-s="plan"]').click();
       await noHorizontalOverflow(page);
-      await page.locator('.nav [data-s="map"]').click();
+      await page.evaluate((s) => window.CoachApp._goto(s), 'map');
       await noHorizontalOverflow(page);
-      await page.locator('.nav [data-s="progress"]').click();
+      await page.evaluate((s) => window.CoachApp._goto(s), 'progress');
       await noHorizontalOverflow(page);
     });
   });
@@ -96,7 +96,7 @@ test.describe('8/10 — Week fits in portrait', () => {
 
   test('days stack as one vertical column', async ({ page }) => {
     await seed(page);
-    await page.locator('.nav [data-s="week"]').click();
+    await page.locator('.nav [data-s="plan"]').click();
     const cols = await page.locator('.week-grid').evaluate(el => getComputedStyle(el).gridTemplateColumns.trim().split(' ').length);
     expect(cols).toBe(1);
     await noHorizontalOverflow(page);
@@ -108,7 +108,7 @@ test.describe('9/10 — Edit Plan fits, all seven weekday chips stay selectable'
 
   test('frequency stepper and 7 day chips fit and can all be tapped', async ({ page }) => {
     await seed(page);
-    await page.locator('.nav [data-s="week"]').click();
+    await page.locator('.nav [data-s="plan"]').click();
     await page.locator('[data-editplan]').click();
     await noHorizontalOverflow(page);
     // Every weekday chip for the first exercise row is tappable and toggles.
@@ -138,7 +138,7 @@ test.describe('11/12/13 — Skill Map opens in portrait without triggering lands
       try { Object.defineProperty(window.screen, 'orientation', { configurable: true, get: () => orient }); } catch (e) {}
     });
     await seed(page);
-    await page.locator('.nav [data-s="map"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     await expect(page.locator('.map-frame')).toBeVisible();
     await expect(page.locator('.node.current')).toBeVisible();
     await page.locator('.node.current').click({ force: true });
@@ -154,7 +154,7 @@ test.describe('14/15 — Progress and History fit in portrait', () => {
 
   test('weekly summary, PRs and history rows stay within the viewport width', async ({ page }) => {
     await seed(page);
-    await page.locator('.nav [data-s="progress"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'progress');
     await noHorizontalOverflow(page);
     await allWithinViewportWidth(page, '.sum-row, .card');
   });
@@ -184,7 +184,7 @@ test.describe('17 — Pyramid runner fits in portrait', () => {
 
   test('pyramid target/stepper stay within the viewport', async ({ page }) => {
     await seed(page);
-    await page.locator('.nav [data-s="map"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     await page.locator('.node.current').click({ force: true });
     await page.locator('[data-start="mu_strength"]').click();
     await expect(page.locator('.cur-card')).toBeVisible();
@@ -232,8 +232,9 @@ test.describe('22 — Climbing base session fits in portrait', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
   test('the climbing logger stacks vertically', async ({ page }) => {
-    await seed(page, 0); // Sunday = climbing
-    await page.locator('[data-startday]').first().click();
+    await seed(page, 0);
+    // Archived from the product; driven directly so its layout stays guarded.
+    await page.evaluate(() => window.CoachApp._startClimbing());
     await expect(page.locator('.climb-left')).toBeVisible();
     await noHorizontalOverflow(page);
   });
@@ -255,7 +256,7 @@ test.describe('24/25 — modals/sheets fit and bottom nav is never obscured', ()
 
   test('a bottom sheet stays within the viewport and the nav bar is visible above it', async ({ page }) => {
     await seed(page);
-    await page.locator('.nav [data-s="map"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     await page.locator('.node.current').click({ force: true });
     const sheetBox = await page.locator('.sheet').boundingBox();
     const vp = page.viewportSize();

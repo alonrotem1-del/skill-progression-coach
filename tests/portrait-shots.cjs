@@ -44,13 +44,13 @@ test.describe('portrait screenshots @ 390x844', () => {
 
   test('2 — Week', async ({ page }) => {
     await seed(page);
-    await page.locator('.nav [data-s="week"]').click();
+    await page.locator('.nav [data-s="plan"]').click();
     await shot(page, '02-week');
   });
 
   test('3/14 — Edit Plan (with a warning)', async ({ page }) => {
     await seed(page);
-    await page.locator('.nav [data-s="week"]').click();
+    await page.locator('.nav [data-s="plan"]').click();
     await page.locator('[data-editplan]').click();
     await page.locator('[data-eptarget="1"][data-ex="t2b"]').click({ clickCount: 5 }); // push above recommended -> warning
     await shot(page, '03-14-edit-plan-warning');
@@ -58,7 +58,7 @@ test.describe('portrait screenshots @ 390x844', () => {
 
   test('4/5 — Skill Map overview + node detail', async ({ page }) => {
     await seed(page);
-    await page.locator('.nav [data-s="map"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     await shot(page, '04-map-overview');
     await page.locator('.node.current').click({ force: true });
     await shot(page, '05-node-detail');
@@ -66,7 +66,7 @@ test.describe('portrait screenshots @ 390x844', () => {
 
   test('6/7 — Progress + History', async ({ page }) => {
     await seed(page);
-    await page.locator('.nav [data-s="progress"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'progress');
     await shot(page, '06-progress');
     await page.mouse.wheel(0, 900);
     await shot(page, '07-history');

@@ -21,7 +21,7 @@ async function seed(page, active = 'muscleup', todayId) {
   }, { active });
   await page.reload();
 }
-async function openMap(page) { await page.locator('.nav [data-s="map"]').click(); await page.waitForTimeout(120); }
+async function openMap(page) { await page.evaluate((s) => window.CoachApp._goto(s), 'map'); await page.waitForTimeout(120); }
 
 // ───────────────────────── immersive Map (1–10) ──────────────────────────
 SAMSUNG.forEach(vp => {
@@ -123,7 +123,7 @@ test.describe('Edit Plan', () => {
 
   test('11/12/13/14/15 — editor opens with frequency targets and the approved defaults', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="week"]').click();
+    await page.locator('.nav [data-s="plan"]').click();
     await expect(page.locator('[data-editplan]')).toBeVisible();   // 11
     await page.locator('[data-editplan]').click();
     await expect(page.locator('.ep-tabs')).toBeVisible();
@@ -146,7 +146,7 @@ test.describe('Edit Plan', () => {
 
   test('16/17/18/19 — reassign via tap, counters update, Save persists, Cancel discards', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="week"]').click();
+    await page.locator('.nav [data-s="plan"]').click();
     await page.locator('[data-editplan]').click();
     const ring = page.locator('.ep-row', { hasText: 'Ring Support Hold' });
     // Ring Support is assigned Tue+Fri by default (target 1) → over-assigned.
@@ -171,7 +171,7 @@ test.describe('Edit Plan', () => {
     // Corrupt the plan first.
     await page.evaluate(() => { const S = window.CoachStore.makeStore(); const p = S.getPlan(); p.requirements.pistol.days = []; S.setPlan(p); });
     await page.reload();
-    await page.locator('.nav [data-s="week"]').click();
+    await page.locator('.nav [data-s="plan"]').click();
     await page.locator('[data-editplan]').click();
     page.once('dialog', d => d.accept());       // reset now confirms
     await page.locator('[data-epreset]').click();
@@ -201,7 +201,7 @@ test.describe('Edit Plan', () => {
     // Tuesday lists Top Hold by default.
     await expect(page.locator('.rec.sched .queue')).toContainText('Top Hold');
     // Unassign Top Hold from Tuesday (its only eligible day) and save.
-    await page.locator('.nav [data-s="week"]').click();
+    await page.locator('.nav [data-s="plan"]').click();
     await page.locator('[data-editplan]').click();
     await page.locator('.ep-row', { hasText: 'Top Hold' }).locator('[data-epday="2"]').click();
     await page.locator('[data-epsave]').click();
@@ -218,11 +218,14 @@ test.describe('Friday completeness', () => {
     await page.goto('index.html'); await seed(page, 'muscleup', 5);
     const names = await page.locator('.rec.sched .q-ex .q-name').allTextContents();
     expect(names).toEqual(['Pistol Squat', 'Pull-Up Ladder', 'Toes-to-Bar', 'Ring Support Hold', 'Wrist Roller']);
-    // status chips: Required×3, Optional (ring), Conditional (wrist).
+    // Only the EXCEPTIONS are labelled now: "Required" on every row was noise,
+    // while Optional and Conditional change what the athlete may do.
     const chips = await page.locator('.rec.sched .q-ex .status-chip').allTextContents();
     expect(chips).toContain('Optional');
     expect(chips).toContain('Conditional');
-    expect(chips.filter(c => c === 'Required').length).toBe(3);
+    expect(chips.filter((c) => c === 'Required').length).toBe(0);
+    // The three ordinary items are still there, unlabelled and in order.
+    expect(names.length).toBe(5);
   });
 
   test('25/28 — Start Workout matches the visible Friday list and the ladder stays 1–2–3 × 5', async ({ page }) => {

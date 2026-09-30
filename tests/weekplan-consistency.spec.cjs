@@ -15,6 +15,15 @@
 //
 // These tests assert the Week screen and Edit Plan can never disagree about
 // which days an exercise is assigned to — for climbing and for other items.
+//
+// SINCE THE RENOVATION, climbing is archived out of the product: the data, the
+// templates and the logger all still exist, but no screen renders climbing and
+// Edit Plan offers no row for it. That changes what these tests can observe,
+// not what they are for. The climbing cases now assert the stronger form of the
+// same invariant — no surface may name a day by a static template when the plan
+// is the authority, so a stored-but-hidden assignment must appear on no screen
+// while remaining perfectly intact in storage. The general form of the bug is
+// still exercised end to end, with visible exercises, by 03-05 and 08.
 const { test, expect } = require('@playwright/test');
 
 const DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -41,7 +50,7 @@ async function seed(page, dayId) {
 // One card per weekday, as the Week screen actually renders it: the session
 // description line plus the listed items.
 async function weekCards(page) {
-  await page.locator('.nav [data-s="week"]').click();
+  await page.locator('.nav [data-s="plan"]').click();
   await expect(page.locator('.wd-card').first()).toBeVisible();
   return await page.evaluate(() => Array.from(document.querySelectorAll('.wd-card')).map(c => ({
     day: (c.querySelector('.wd-day') || {}).textContent.replace(' Today', '').trim(),
@@ -59,7 +68,7 @@ function cardFor(cards, dayId) {
 }
 
 async function openDayDetail(page, dayId) {
-  await page.locator('.nav [data-s="week"]').click();
+  await page.locator('.nav [data-s="plan"]').click();
   await page.locator('[data-daydetail="' + dayId + '"]').click();
   await expect(page.locator('.sheet-back .sheet')).toBeVisible();
 }
@@ -71,7 +80,7 @@ async function closeDayDetail(page) {
 }
 
 async function openEditPlan(page) {
-  await page.locator('.nav [data-s="week"]').click();
+  await page.locator('.nav [data-s="plan"]').click();
   await page.locator('[data-editplan]').click();
   await expect(page.locator('[data-epsave]')).toBeVisible();
 }
@@ -105,62 +114,84 @@ async function persistedDays(page, exId) {
   }, exId);
 }
 
-// ── the reported bug ──────────────────────────────────────────────────────
-test.describe('Week ↔ Edit Plan — the reported Climbing/Bouldering case', () => {
-  test('01 — moving Climbing from Sunday to Mon+Tue+Wed is reflected on Week, survives reload, and matches the editor', async ({ page }) => {
+// Climbing is archived out of the product (see week.js CLIMBING_IN_PRODUCT), so
+// it no longer has an Edit Plan row to click. Its assignment is still the same
+// single authoritative value, so these tests write exactly the field the editor
+// used to write and reload — same key, same shape, same read path.
+async function setPlanDays(page, exId, days) {
+  await page.evaluate(({ id, d }) => {
+    const p = JSON.parse(localStorage.getItem('spc_c_plan') || '{}');
+    p.requirements = p.requirements || {};
+    p.requirements[id] = Object.assign({}, p.requirements[id], { days: d });
+    localStorage.setItem('spc_c_plan', JSON.stringify(p));
+  }, { id: exId, d: days });
+  await page.reload();
+}
+
+// Every day card's text, so "does any surface mention climbing" can be asked of
+// the whole week rather than one day at a time.
+function allCardText(cards) { return cards.map(c => c.text).join(' | '); }
+
+// ── the reported bug, after climbing was archived ─────────────────────────
+//
+// The bug above is fixed AND the vehicle that exposed it is now hidden: the
+// product no longer shows climbing anywhere (the renovation archived it rather
+// than deleting it). So the assertion changes shape without weakening — it is
+// no longer "Sunday stops advertising climbing once you move it", it is the
+// stronger "no day advertises climbing at all, while the athlete's stored
+// assignment is still there, intact, for whenever it comes back".
+test.describe('Week ↔ Edit Plan — the archived Climbing/Bouldering case', () => {
+  test('01 — the climbing assignment survives as data while no surface advertises it', async ({ page }) => {
     await seed(page, 2);
 
-    // Starting point: Climbing on Sunday, and Week says so.
+    // The stored value is untouched by the renovation: still Sunday.
     expect(await persistedDays(page, 'bouldering')).toEqual([0]);
+    // And the resolution layer still reports it as a plan fact.
+    expect(await page.evaluate(() => {
+      const plan = JSON.parse(localStorage.getItem('spc_c_plan'));
+      return { assigned: window.CoachWeek.assignmentsForDay(plan, 0), climbs: window.CoachWeek.climbsOn(plan, 0) };
+    })).toEqual({ assigned: ['bouldering'], climbs: true });
+
+    // Yet nothing on Week names it, on Sunday or anywhere else.
     let cards = await weekCards(page);
-    expect(cardFor(cards, 0).text).toContain('Bouldering');
-
-    await openEditPlan(page);
-    await setDays(page, 'bouldering', [1, 2, 3]);
-    await savePlan(page);
-
-    // The one authoritative value changed.
-    expect(await persistedDays(page, 'bouldering')).toEqual([1, 2, 3]);
-
-    // Week now agrees — on the new days, and nowhere else.
-    cards = await weekCards(page);
-    for (const d of [1, 2, 3]) expect(cardFor(cards, d).text, DOW[d]).toContain('Bouldering');
-    expect(cardFor(cards, 0).text).not.toContain('Bouldering');
-    expect(cardFor(cards, 0).text).not.toContain('Climbing');
-    // Sunday's header no longer advertises a session it does not hold.
+    expect(allCardText(cards)).not.toMatch(/Bouldering|Climbing/);
+    // Sunday does not advertise a session it does not show.
     expect(cardFor(cards, 0).session).not.toMatch(/Climbing/);
-    for (const d of [4, 5, 6]) expect(cardFor(cards, d).text, DOW[d]).not.toContain('Bouldering');
+    expect(cardFor(cards, 0).session).toMatch(/Open day/);
 
-    // A full reload — the real close/reopen the athlete did — changes nothing.
+    // A full reload — the real close/reopen the athlete did — changes neither.
     await page.reload();
     cards = await weekCards(page);
-    for (const d of [1, 2, 3]) expect(cardFor(cards, d).text, DOW[d]).toContain('Bouldering');
-    expect(cardFor(cards, 0).text).not.toContain('Bouldering');
-    expect(cardFor(cards, 0).text).not.toContain('Climbing');
-    expect(await persistedDays(page, 'bouldering')).toEqual([1, 2, 3]);
+    expect(allCardText(cards)).not.toMatch(/Bouldering|Climbing/);
+    expect(await persistedDays(page, 'bouldering')).toEqual([0]);
 
-    // And the editor shows the same thing Week does.
+    // The editor is why it cannot be moved: it offers no climbing row, rather
+    // than offering one that silently does nothing.
     await openEditPlan(page);
-    expect(await editorDays(page, 'bouldering')).toEqual([1, 2, 3]);
+    expect(await page.locator('[data-ex="bouldering"][data-epday]').count()).toBe(0);
+    // The rest of the plan is still fully editable.
+    expect(await page.locator('[data-ex="pullup_pyramid"][data-epday]').count()).toBeGreaterThan(0);
   });
 
-  test('02 — assigning Climbing back to Sunday as well restores it there, without losing the other days', async ({ page }) => {
+  test('02 — a climbing assignment on several days is equally preserved and equally invisible', async ({ page }) => {
     await seed(page, 2);
-    await openEditPlan(page);
-    await setDays(page, 'bouldering', [1, 2, 3]);
-    await savePlan(page);
-    await openEditPlan(page);
-    await setDays(page, 'bouldering', [0, 1, 2, 3]);
-    await savePlan(page);
+    await setPlanDays(page, 'bouldering', [0, 1, 2, 3]);
 
-    const cards = await weekCards(page);
-    for (const d of [0, 1, 2, 3]) expect(cardFor(cards, d).text, DOW[d]).toContain('Bouldering');
-    // Sunday is the climbing day again, so its own description is back.
-    expect(cardFor(cards, 0).session).toMatch(/Climbing/);
+    // Stored on four days.
     expect(await persistedDays(page, 'bouldering')).toEqual([0, 1, 2, 3]);
+    expect(await page.evaluate(() => {
+      const plan = JSON.parse(localStorage.getItem('spc_c_plan'));
+      const out = {};
+      for (let d = 0; d < 7; d++) out[d] = window.CoachWeek.climbsOn(plan, d);
+      return out;
+    })).toEqual({ 0: true, 1: true, 2: true, 3: true, 4: false, 5: false, 6: false });
+
+    // Visible on none of them, and the days that hold other work still show it.
+    const cards = await weekCards(page);
+    expect(allCardText(cards)).not.toMatch(/Bouldering|Climbing/);
+    expect(cardFor(cards, 1).text).toContain('High Pull');
   });
 });
-
 // ── is it climbing-specific, or general? ──────────────────────────────────
 test.describe('Week ↔ Edit Plan — the same consistency holds for non-climbing items', () => {
   test('03 — moving Pull-Up Pyramid off Tuesday to Mon+Thu is reflected on Week and survives reload', async ({ page }) => {
@@ -223,7 +254,6 @@ test.describe('Week ↔ Edit Plan — the same consistency holds for non-climbin
     expect(cardFor(cards, 4).text).toContain('Pistol Squat');
   });
 });
-
 // ── every surface keyed on "is this the climbing day" ─────────────────────
 //
 // A second round of device testing showed the Week CARDS were fixed but four
@@ -232,14 +262,12 @@ test.describe('Week ↔ Edit Plan — the same consistency holds for non-climbin
 // screen's "This Week" strip, the day-detail emphasis picker, Today's "Start
 // Climbing Session" button, and — worst — the daily queue, which fabricated a
 // bouldering session for a day it was not assigned to.
-test.describe('Week ↔ Edit Plan — the climbing day follows the assignment', () => {
-  async function moveClimbing(page, days) {
-    await openEditPlan(page);
-    await setDays(page, 'bouldering', days);
-    await savePlan(page);
-    await page.reload();
-  }
-
+//
+// All four are still the surfaces worth checking. Since climbing was archived
+// they must now show NO climbing on ANY day, assigned or not — which is the
+// same question ("does this surface follow the plan, or a static template?")
+// with the plan now answering "not in the product".
+test.describe('Week ↔ Edit Plan — no surface resurrects the archived climbing day', () => {
   async function weekStrip(page) {
     await page.locator('.nav [data-s="today"]').click();
     await expect(page.locator('.wk-strip')).toBeVisible();
@@ -249,121 +277,120 @@ test.describe('Week ↔ Edit Plan — the climbing day follows the assignment', 
     })));
   }
 
-  test('09 — the Today "This Week" strip labels the assigned days, not the template day', async ({ page }) => {
+  test('09 — the Today "This Week" strip labels no day Climb, including the assigned one', async ({ page }) => {
     await seed(page, 2);
+    // The default plan still assigns climbing to Sunday.
+    expect(await persistedDays(page, 'bouldering')).toEqual([0]);
+
     let strip = await weekStrip(page);
-    expect(strip[0]).toEqual({ day: 'Sun', label: 'Climb' }); // default plan
-
-    await moveClimbing(page, [1, 2, 3]);
-    strip = await weekStrip(page);
-    expect(strip[0].label).not.toBe('Climb');   // Sunday no longer claims it
-    expect(strip[1].label).toBe('Climb');
-    expect(strip[2].label).toBe('Climb');
-    expect(strip[3].label).toBe('Climb');
+    expect(strip.map(s => s.label)).not.toContain('Climb');
+    expect(strip[0].day).toBe('Sun');
     expect(strip[6].label).toBe('Rest');        // Saturday untouched
+
+    // Moving the stored assignment cannot make it reappear elsewhere either.
+    await setPlanDays(page, 'bouldering', [1, 2, 3]);
+    strip = await weekStrip(page);
+    expect(strip.map(s => s.label)).not.toContain('Climb');
+    expect(strip[6].label).toBe('Rest');
   });
 
-  test('10 — the emptied day drops the climbing emphasis picker, and the new day gains it', async ({ page }) => {
+  test('10 — the climbing emphasis picker is gone from every day, and every day still opens', async ({ page }) => {
     await seed(page, 2);
-    // Default plan: Sunday is the climbing day and offers the emphasis picker.
-    await openDayDetail(page, 0);
-    expect(await page.locator('[data-emph]').count()).toBeGreaterThan(0);
-    await closeDayDetail(page);
+    // Sunday holds the assignment and still offers no picker.
+    for (const d of [0, 1, 2, 3, 4, 5, 6]) {
+      await openDayDetail(page, d);
+      expect(await page.locator('.sheet-back [data-emph]').count(), 'day ' + d).toBe(0);
+      await closeDayDetail(page);
+    }
 
-    await moveClimbing(page, [1]);
-
-    // Sunday no longer offers it.
-    await openDayDetail(page, 0);
-    expect(await page.locator('[data-emph]').count()).toBe(0);
-    await closeDayDetail(page);
-
-    // Monday does — and opening it does not break, which it did when the
-    // emphasis options still lived on the Sunday row alone.
+    // And the day whose detail sheet used to crash when the emphasis options
+    // lived on the Sunday row alone still opens cleanly after a reload.
+    await setPlanDays(page, 'bouldering', [1]);
     await openDayDetail(page, 1);
-    expect(await page.locator('[data-emph]').count()).toBeGreaterThan(0);
-    await closeDayDetail(page);
-
-    await page.reload();
-    await openDayDetail(page, 1);
-    expect(await page.locator('[data-emph]').count()).toBeGreaterThan(0);
+    expect(await page.locator('.sheet-back [data-emph]').count()).toBe(0);
+    await expect(page.locator('.sheet-back .sheet')).toBeVisible();
   });
 
-  test('11 — Today on the emptied day offers no climbing session; the new day does', async ({ page }) => {
+  test('11 — Today offers no climbing session on any day, assigned or not', async ({ page }) => {
     await seed(page, 2);
-    await moveClimbing(page, [1]);
+    const offersClimbing = () => page.evaluate(() => !!Array.from(document.querySelectorAll('button'))
+      .find(b => /climbing session/i.test(b.textContent)));
 
-    // Sunday is today, and climbing is not assigned to it.
+    // Sunday is today, and climbing IS assigned to it by the default plan.
     await page.addInitScript(() => { window.__spcTodayId = 0; });
     await page.evaluate(() => localStorage.removeItem('spc_c_day'));
     await page.reload();
     await page.locator('.nav [data-s="today"]').click();
     await page.waitForTimeout(250);
-    expect(await page.evaluate(() => !!Array.from(document.querySelectorAll('button'))
-      .find(b => /climbing session/i.test(b.textContent)))).toBe(false);
+    expect(await offersClimbing()).toBe(false);
 
-    // Monday is today, and climbing IS assigned to it.
+    // Monday, which is not assigned it, likewise.
     await page.addInitScript(() => { window.__spcTodayId = 1; });
     await page.evaluate(() => localStorage.removeItem('spc_c_day'));
     await page.reload();
     await page.locator('.nav [data-s="today"]').click();
     await page.waitForTimeout(250);
-    expect(await page.evaluate(() => !!Array.from(document.querySelectorAll('button'))
-      .find(b => /climbing session/i.test(b.textContent)))).toBe(true);
+    expect(await offersClimbing()).toBe(false);
   });
 
-  test('12 — the daily queue no longer fabricates a climbing session for an unassigned day', async ({ page }) => {
+  test('12 — the daily queue fabricates nothing, on the assigned day least of all', async ({ page }) => {
     await seed(page, 2);
-    const before = await page.evaluate(() => {
+    const sunday = await page.evaluate(() => {
       const plan = JSON.parse(localStorage.getItem('spc_c_plan'));
       const res = window.CoachWeek.resolveDay(plan, 0, { todayId: 0, readiness: {} });
       const d = window.CoachDaily.makeDaily(res, { dateKey: '2026-09-20' });
-      return d.exercises.map(e => ({ exId: e.exId, kind: e.kind, runner: e.runner }));
-    });
-    // Default plan: Sunday genuinely is the climbing day.
-    expect(before[0]).toEqual({ exId: 'bouldering', kind: 'base', runner: 'climbing' });
-
-    await moveClimbing(page, [1, 2, 3]);
-    const after = await page.evaluate(() => {
-      const plan = JSON.parse(localStorage.getItem('spc_c_plan'));
-      const sun = window.CoachWeek.resolveDay(plan, 0, { todayId: 0, readiness: {} });
-      const mon = window.CoachWeek.resolveDay(plan, 1, { todayId: 1, readiness: {} });
-      const D = window.CoachDaily;
       return {
-        sunday: D.makeDaily(sun, { dateKey: '2026-09-20' }).exercises.map(e => e.exId),
-        monday: D.makeDaily(mon, { dateKey: '2026-09-21' }).exercises
-          .map(e => ({ exId: e.exId, kind: e.kind, runner: e.runner }))
+        queue: d.exercises.map(e => e.exId),
+        // The plan fact is unchanged underneath the empty queue.
+        stillAssigned: window.CoachWeek.assignmentsForDay(plan, 0),
+        resolvedClimbing: res.climbing,
+        climbTemplateId: res.climbTemplateId
       };
     });
-    // Sunday invents nothing.
-    expect(after.sunday).not.toContain('bouldering');
-    expect(after.sunday).toEqual([]);
-    // Monday gains a real, runnable climbing session — so the athlete's move
-    // actually took effect rather than leaving a dead row.
-    expect(after.monday[0]).toEqual({ exId: 'bouldering', kind: 'base', runner: 'climbing' });
-    // And it is not duplicated as a second, non-runnable exercise row.
-    expect(after.monday.filter(e => e.exId === 'bouldering').length).toBe(1);
+    // Sunday is the stored climbing day, and the queue invents nothing for it.
+    expect(sunday.stillAssigned).toEqual(['bouldering']);
+    expect(sunday.queue).toEqual([]);
+    expect(sunday.resolvedClimbing).toBe(false);
+    expect(sunday.climbTemplateId).toBe(null);
+
+    // Moving it does not conjure a row on the new day either.
+    await setPlanDays(page, 'bouldering', [1, 2, 3]);
+    const after = await page.evaluate(() => {
+      const plan = JSON.parse(localStorage.getItem('spc_c_plan'));
+      const mon = window.CoachWeek.resolveDay(plan, 1, { todayId: 1, readiness: {} });
+      return window.CoachDaily.makeDaily(mon, { dateKey: '2026-09-21' }).exercises.map(e => e.exId);
+    });
+    expect(after).not.toContain('bouldering');
+    // Monday's real work is still there — the filter removed climbing, not the day.
+    expect(after).toContain('highpull');
   });
 
-  test('13 — climbing assigned to two days gives each of them a runnable session', async ({ page }) => {
+  test('13 — climbing assigned to two days produces no session on either, and the plan still says so', async ({ page }) => {
     await seed(page, 2);
-    await moveClimbing(page, [2, 5]);
+    await setPlanDays(page, 'bouldering', [2, 5]);
     const r = await page.evaluate(() => {
       const plan = JSON.parse(localStorage.getItem('spc_c_plan'));
       const D = window.CoachDaily, W = window.CoachWeek;
-      const out = {};
+      const sessions = {}, stored = {};
       for (let d = 0; d < 7; d++) {
         const res = W.resolveDay(plan, d, { todayId: d, readiness: {} });
         const q = D.makeDaily(res, { dateKey: '2026-09-2' + d });
-        out[d] = q.exercises.filter(e => e.kind === 'base' && e.baseType === 'climbing').length;
+        sessions[d] = q.exercises.filter(e => e.kind === 'base' && e.baseType === 'climbing').length;
+        stored[d] = W.climbsOn(plan, d);
       }
-      return out;
+      return { sessions: sessions, stored: stored };
     });
-    expect(r).toEqual({ 0: 0, 1: 0, 2: 1, 3: 0, 4: 0, 5: 1, 6: 0 });
+    // Nothing runnable anywhere…
+    expect(r.sessions).toEqual({ 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 });
+    // …while the assignment the athlete made is still recorded on exactly those days.
+    expect(r.stored).toEqual({ 0: false, 1: false, 2: true, 3: false, 4: false, 5: true, 6: false });
   });
 
-  test('14 — a newly recorded day is named by what it holds, not by the template session', async ({ page }) => {
+  test('14 — a recorded day is named by what it holds, not by the template session', async ({ page }) => {
     await seed(page, 2);
-    await moveClimbing(page, [1]);
+    // Sunday still HOLDS the climbing assignment, and must still not be named
+    // by it, because the product does not show it — the template string is a
+    // second source either way.
     const names = await page.evaluate(() => {
       const plan = JSON.parse(localStorage.getItem('spc_c_plan'));
       const D = window.CoachDaily, W = window.CoachWeek;
@@ -379,31 +406,42 @@ test.describe('Week ↔ Edit Plan — the climbing day follows the assignment', 
 test.describe('Week ↔ Edit Plan — one authoritative day assignment', () => {
   test('06 — Week, the day detail sheet and Edit Plan all read the same persisted plan', async ({ page }) => {
     await seed(page, 2);
+    // Vehicle: a visible exercise, since the three surfaces can only be
+    // compared on something all three still show.
     await openEditPlan(page);
-    await setDays(page, 'bouldering', [1, 2, 3]);
+    await setDays(page, 'pullup_pyramid', [1, 2, 3]);
     await savePlan(page);
     await page.reload();
 
     // Week card.
     const cards = await weekCards(page);
-    expect(cardFor(cards, 1).text).toContain('Bouldering');
+    expect(cardFor(cards, 1).text).toContain('Pull-Up Pyramid');
 
     // Day detail sheet for Monday.
     await page.locator('[data-daydetail="1"]').click();
     await expect(page.locator('.sheet-back .sheet')).toBeVisible();
-    // Climbing was moved TO Monday, so Monday's sheet carries the climbing
-    // emphasis picker — the same surface Sunday lost.
-    expect(await page.locator('.sheet-back [data-emph]').count()).toBeGreaterThan(0);
-    expect(await page.evaluate(() => document.body.textContent)).toContain('Bouldering');
+    expect(await page.evaluate(() => document.body.textContent)).toContain('Pull-Up Pyramid');
+    await closeDayDetail(page);
 
-    // And the resolution layer itself, for every day, straight from the plan.
+    // Edit Plan, reopened, reads the same value.
+    await openEditPlan(page);
+    expect(await editorDays(page, 'pullup_pyramid')).toEqual([1, 2, 3]);
+
+    // And the resolution layer itself, for every day, straight from the plan —
+    // including for the archived climbing assignment, which is still a plan
+    // fact even though no screen renders it.
     const resolved = await page.evaluate(() => {
       const plan = JSON.parse(localStorage.getItem('spc_c_plan'));
-      const out = {};
-      for (let d = 0; d < 7; d++) out[d] = window.CoachWeek.assignmentsForDay(plan, d).indexOf('bouldering') >= 0;
+      const out = { pyramid: {}, bouldering: {} };
+      for (let d = 0; d < 7; d++) {
+        const a = window.CoachWeek.assignmentsForDay(plan, d);
+        out.pyramid[d] = a.indexOf('pullup_pyramid') >= 0;
+        out.bouldering[d] = a.indexOf('bouldering') >= 0;
+      }
       return out;
     });
-    expect(resolved).toEqual({ 0: false, 1: true, 2: true, 3: true, 4: false, 5: false, 6: false });
+    expect(resolved.pyramid).toEqual({ 0: false, 1: true, 2: true, 3: true, 4: false, 5: false, 6: false });
+    expect(resolved.bouldering).toEqual({ 0: true, 1: false, 2: false, 3: false, 4: false, 5: false, 6: false });
   });
 
   test('07 — the derived day description is a pure function of the plan, with no second source', async ({ page }) => {
@@ -418,16 +456,19 @@ test.describe('Week ↔ Edit Plan — one authoritative day assignment', () => {
       moved.requirements.bouldering.days = [1];
       return { intact, emptied: W.dayContentLabel(moved, 0), monday: W.dayContentLabel(moved, 1) };
     });
-    // Template description is reused verbatim while the day still holds it.
-    expect(labels.intact).toEqual({ session: 'Climbing', sub: 'Bouldering', derived: false });
-    // Emptied: described by the plan, not by the template.
+    // Sunday HOLDS climbing, but the product does not show climbing, so the
+    // template's "Climbing / Bouldering" is a second source describing content
+    // the athlete cannot see. The label is derived from what is shown.
+    expect(labels.intact.derived).toBe(true);
+    expect(labels.intact.session).not.toMatch(/Climbing/);
+    expect(labels.intact.sub).not.toMatch(/Bouldering/);
+    // Emptied of it entirely: still described by the plan, not the template.
     expect(labels.emptied.derived).toBe(true);
     expect(labels.emptied.session).not.toMatch(/Climbing/);
-    // A day that keeps its own content keeps its own description, so ordinary
-    // days are untouched by this fix.
+    // Moving it to Monday does not rename Monday either — a hidden item is not
+    // content, on any day.
     expect(labels.monday).toEqual({ session: 'Free Gym', sub: 'Push + Explosive Pull', derived: false });
   });
-
   test('08 — Rest day keeps its description, and gains the assigned item when one is added', async ({ page }) => {
     await seed(page, 2);
     let cards = await weekCards(page);

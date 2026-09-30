@@ -92,10 +92,10 @@ test.describe('5/6 — a physical landscape viewport remains usable (secondary, 
 
   test('Week uses the width (multi-column) and Map/workout still render', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="week"]').click();
+    await page.locator('.nav [data-s="plan"]').click();
     const wkCols = await page.locator('.week-grid').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length);
     expect(wkCols).toBeGreaterThan(1);
-    await page.locator('.nav [data-s="map"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     await expect(page.locator('.map-frame')).toBeVisible();
     await page.locator('.nav [data-s="today"]').click();
     await page.locator('.rec.sched [data-startday]').first().click();

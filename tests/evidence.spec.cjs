@@ -516,7 +516,11 @@ test.describe('P3 execution identity', () => {
 
   test('30 a climbing session has a stable execution identity across resume', async ({ page }) => {
     await seed(page, 0);
-    await page.locator('.q-ex.q-base').locator('[data-exstart]').click();
+    // The climbing logger is archived from the athlete's experience, so the test
+    // drives it through the router seam. Its behaviour is unchanged, which is
+    // what this test is about.
+    await page.evaluate(() => window.CoachApp._startClimbing());
+    await expect(page.locator('.climb-grid')).toBeVisible();
     const before = await page.evaluate(() => JSON.parse(localStorage.getItem('spc_c_workout')).data);
     expect(typeof before.workoutId).toBe('string');
     expect(before.workoutId.indexOf('c_')).toBe(0);
@@ -796,7 +800,8 @@ test.describe('P3 a real workout, end to end', () => {
 
   test('41 a real climbing session records one ActivityObservation', async ({ page }) => {
     await seed(page, 0);
-    await page.locator('.q-ex.q-base').locator('[data-exstart]').click();
+    await page.evaluate(() => window.CoachApp._startClimbing());
+    await expect(page.locator('.climb-grid')).toBeVisible();
     await page.locator('[data-results] .pill').first().click();
     await page.locator('[data-add]').click();
     await page.locator('[data-finish]').click();
@@ -869,13 +874,15 @@ test.describe('P3 a real workout, end to end', () => {
 });
 
 test.describe('P3 changes nothing the athlete sees', () => {
-  test('44 Today, Week, Map and Progress render exactly as before the tap ran', async ({ page }) => {
+  test('44 every screen renders exactly as before the tap ran', async ({ page }) => {
     await seed(page, 2); await assign(page, 'ringsupport', 2, 1);
+    // The product's own destinations, plus the two archived screens reached
+    // through the router — evidence must change none of them.
     const snap = async () => {
       const out = {};
-      for (const screen of ['today', 'week', 'map', 'progress']) {
-        await page.locator('.nav button[data-s="' + screen + '"]').click();
-        await page.waitForTimeout(120);
+      for (const screen of ['today', 'plan', 'goals', 'profile', 'map', 'progress']) {
+        await page.evaluate((s) => window.CoachApp._goto(s), screen);
+        await page.waitForTimeout(200);
         out[screen] = await page.locator('#app').innerHTML();
       }
       return out;
@@ -898,7 +905,7 @@ test.describe('P3 changes nothing the athlete sees', () => {
       }
     });
     const after = await snap();
-    for (const screen of ['today', 'week', 'map', 'progress']) {
+    for (const screen of ['today', 'plan', 'profile', 'map', 'progress']) {
       expect(after[screen], screen).toBe(before[screen]);
     }
     // The evidence really is there — this is not a vacuous comparison.

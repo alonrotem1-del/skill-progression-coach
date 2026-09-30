@@ -142,7 +142,7 @@ test.describe('relationship to the plan', () => {
     await expect(page.locator('.wk-block-wrap').first()).toContainText('Pull-Up Pyramid');
     await finishAdhocExercise(page);
     await page.locator('[data-save]').click();
-    await page.locator('.nav [data-s="progress"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'progress');
     await expect(page.locator('.hist-item', { hasText: 'Extra Workout' })).toBeVisible();
   });
   test('08 — an overlapping exercise asks how it should count', async ({ page }) => {
@@ -213,7 +213,7 @@ test.describe('extra load, test exclusion, templates, resume', () => {
     await page.locator('[data-fam]', { hasText: 'Pull-Up Max Test' }).click();
     await finishAdhocExercise(page);
     await page.locator('[data-save]').click();
-    await page.locator('.nav [data-s="progress"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'progress');
     await expect(page.locator('.hist-item').first()).toContainText(/Test/);
     // the test does not add pull reps to the weekly summary
     await expect(page.locator('.progress-left')).toContainText('0 pull-up reps');

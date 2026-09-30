@@ -195,7 +195,7 @@ async function seedPlan(page, todayId = 5, active = 'muscleup') {
 test.describe('weekly plan — UI', () => {
   test('9 — Week screen shows all seven approved days', async ({ page }) => {
     await page.goto('index.html'); await seedPlan(page);
-    await page.locator('.nav [data-s="week"]').click();
+    await page.locator('.nav [data-s="plan"]').click();
     await expect(page.locator('.wd-card')).toHaveCount(7);
     const text = await page.locator('.week-grid').textContent();
     ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].forEach(d => expect(text).toContain(d));
@@ -204,7 +204,11 @@ test.describe('weekly plan — UI', () => {
   test('10 — Today uses the scheduled session for the current day', async ({ page }) => {
     await page.goto('index.html'); await seedPlan(page, 5); // Friday
     await expect(page.locator('.rec.sched .name')).toContainText('Home Pull Session');
-    await expect(page.locator('.rec.sched')).toContainText('First Muscle-Up');
+    // The session is named; the engine's node name ("First Muscle-Up") is not.
+    // Which goal the work serves belongs on Goals, not in front of the athlete
+    // who came here to train.
+    await expect(page.locator('.rec.sched')).not.toContainText('First Muscle-Up');
+    await expect(page.locator('.rec.sched')).toContainText('Pistol Squat');
   });
 
   test('11 — the primary session is the scheduled plan, not an independent pick', async ({ page }) => {
@@ -254,11 +258,11 @@ test.describe('weekly plan — UI', () => {
     // Today scheduled session name…
     const todayName = await page.locator('.rec.sched .name').first().textContent();
     // …matches the Friday card on the Week screen.
-    await page.locator('.nav [data-s="week"]').click();
+    await page.locator('.nav [data-s="plan"]').click();
     const friCard = page.locator('.wd-card').nth(5);
     await expect(friCard).toContainText('Home Pull Session');
     // Map node detail surfaces the same plan (10 Pull-Ups trained Tue & Fri).
-    await page.locator('.nav [data-s="map"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     await page.locator('.node.current').click({ force: true });
     await expect(page.locator('.sheet')).toContainText('In your weekly plan');
     await expect(page.locator('.sheet')).toContainText('Tuesday');

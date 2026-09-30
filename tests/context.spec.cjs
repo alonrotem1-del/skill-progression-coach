@@ -523,7 +523,7 @@ test.describe('P5 context — no new engine behaviour', () => {
     });
     await seed(page, 2);
     await expect(page.locator('.nav [data-s="today"]')).toBeVisible();
-    await page.locator('.nav [data-s="week"]').click();
+    await page.locator('.nav [data-s="plan"]').click();
     await expect(page.locator('.scr')).toBeVisible();
     await page.locator('.nav [data-s="today"]').click();
     await expect(page.locator('.scr')).toBeVisible();
@@ -580,7 +580,7 @@ test.describe('P5 context — delivery', () => {
       await page.waitForTimeout(250);
       cached = await read();
     }
-    expect(cached.name).toMatch(/skill-progression-coach-v21/);
+    expect(cached.name).toMatch(/skill-progression-coach-v22/);
     ['context.js', 'content/contexts.json', 'content/vocabulary.json',
       'content/bundle-1.json', 'content/semantics-1.json']
       .forEach((f) => expect(cached.urls.some((u) => u.indexOf(f) >= 0), f).toBe(true));

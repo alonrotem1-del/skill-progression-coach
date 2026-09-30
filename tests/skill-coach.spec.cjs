@@ -23,7 +23,7 @@ const cmap = w => { const c = {}; w.nodes.forEach(n => (c[n.id] = n)); return c;
 // first) via the Skill Map node — a stable entry point for the ladder-runner
 // mechanics, independent of the multi-exercise Friday plan.
 async function startLadder(page) {
-  await page.locator('.nav [data-s="map"]').click();
+  await page.evaluate((s) => window.CoachApp._goto(s), 'map');
   await page.locator('.node.current').click({ force: true });
   await page.locator('.sheet [data-start="mu_strength"]').click();
   await expect(page.locator('.cur-card')).toBeVisible();
@@ -488,7 +488,7 @@ test.describe('app UI', () => {
     expect(meta).not.toContain('—');
   });
 
-  test('Today queue shows the scheduled plan exercises with priorities', async ({ page }) => {
+  test('Today queue shows the scheduled plan exercises in order', async ({ page }) => {
     // Today is now driven by the weekly plan (Friday = Home Pull Session), shown
     // as a per-exercise QUEUE rather than one whole-workout preview.
     await page.goto('index.html'); await seed(page);
@@ -496,8 +496,9 @@ test.describe('app UI', () => {
     const queue = await page.locator('.queue').first().textContent();
     expect(queue).toContain('Pistol Squat');   // Priority A main skill
     expect(queue).toContain('Pull-Up Ladder');  // Priority A main skill
-    // Priority pills are present on the queue items.
-    expect(await page.locator('.queue .prio-A').count()).toBeGreaterThan(0);
+    // Priority letters are gone: an engine ordering concept the athlete could
+    // not act on. The ORDER is what conveys it, and that is asserted below.
+    expect(await page.locator('.queue .prio').count()).toBe(0);
     expect(queue).toContain('Toes-to-Bar'); // required, not filtered out
     // "Start Daily Workout" begins the FIRST required exercise (Pistol Squat) —
     // one exercise at a time, never the whole workout as a single block.
@@ -507,7 +508,7 @@ test.describe('app UI', () => {
 
   test('map: world rail sits OUTSIDE the blue canvas; both worlds switch the tree', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="map"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     await expect(page.locator('#rail')).toBeVisible();
     expect(await page.locator('.canvas-wrap #rail').count()).toBe(0);
     await expect(page.locator('#rail .world-ic')).toHaveCount(2);
@@ -519,7 +520,7 @@ test.describe('app UI', () => {
 
   test('map: node states are distinct (aria + classes) with English labels', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="map"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     await expect(page.locator('.node.current')).toHaveCount(1);
     expect(await page.locator('.node.completed').count()).toBeGreaterThan(0);
     expect(await page.locator('.node.locked').count()).toBeGreaterThan(0);
@@ -530,13 +531,13 @@ test.describe('app UI', () => {
 
   test('map: center-on-focus button exists', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="map"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     await expect(page.locator('[data-center]')).toBeVisible();
   });
 
   test('map: path summary shows completed count and focus name', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="map"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     const summary = await page.locator('.path-summary').first().textContent();
     expect(summary).toMatch(/\d+\/\d+ skills/);
     expect(summary).toContain('Focus');
@@ -544,7 +545,7 @@ test.describe('app UI', () => {
 
   test('node detail sheet: locked nodes explain prerequisites', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="map"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     await page.locator('.node.locked').first().click();
     await expect(page.locator('.sheet')).toBeVisible();
     await expect(page.locator('.sheet .needs')).toBeVisible();
@@ -555,7 +556,7 @@ test.describe('app UI', () => {
 
   test('node detail sheet opens and shows mastery criteria', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="map"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     await page.locator('.node.current').click();
     await expect(page.locator('.sheet')).toBeVisible();
     await expect(page.locator('.sheet .section', { hasText: 'Mastery Criteria' })).toBeVisible();
@@ -596,7 +597,7 @@ test.describe('app UI', () => {
     await expect(page.locator('.node.completed', { hasText: '10 Pull-Ups' })).toBeVisible();
     // Persists across reload
     await page.reload();
-    await page.locator('.nav [data-s="map"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     await expect(page.locator('.node.completed', { hasText: '10 Pull-Ups' })).toBeVisible();
     // Legacy data untouched
     const puc = await page.evaluate(() => ({
@@ -661,7 +662,8 @@ test.describe('app UI', () => {
       S.setState(st);
     });
     await page.reload();
-    await page.locator('[data-start]').first().click();
+    await page.evaluate(() => window.CoachApp._startClimbing());
+    await expect(page.locator('.climb-grid')).toBeVisible();
     await expect(page.locator('[data-grades]')).toBeVisible();
     await page.locator('[data-grades] .pill', { hasText: 'V1' }).click();
     await page.locator('[data-styles] .pill').first().click();
@@ -672,7 +674,7 @@ test.describe('app UI', () => {
     await expect(page.locator('text=/Nice Work|Unlocked/')).toBeVisible();
     if (await page.locator('.unlock [data-ok]').count()) await page.locator('.unlock [data-ok]').click();
     await page.locator('[data-today]').click();
-    await page.locator('.nav [data-s="progress"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'progress');
     await expect(page.getByText('Skills Completed')).toBeVisible();
     await expect(page.locator('.chart .bar')).toHaveCount(1);
   });
@@ -698,17 +700,18 @@ test.describe('app UI', () => {
     expect(await page.locator('.cur-card .num').first().textContent()).toBe(numBefore);
   });
 
-  test('Today, Map, and Node Detail consume one canonical state (same focus for pmax=9)', async ({ page }) => {
+  test('the archived Map and Node Detail still consume one canonical state (pmax=9)', async ({ page }) => {
     await page.goto('index.html'); await seed(page, 'muscleup', { pullup_max: 9, dips_max: 6 });
-    // Today
-    const today = await page.locator('.path-summary').first().textContent();
-    expect(today).toMatch(/\d+\/16 skills/);
-    expect(today).toContain('10 Pull-Ups');
-    expect(today).toContain('9/10');
-    const todayCount = today.match(/(\d+)\/16 skills/)[1];
-    // Map — same completed count and same focus node
-    await page.locator('.nav [data-s="map"]').click();
+    // Today no longer carries a skills-count / focus summary: "where am I" is
+    // answered on Goals, and having it on Today too meant two screens answering
+    // one question — which is exactly what the renovation removed.
+    expect(await page.locator('.path-summary').count()).toBe(0);
+    // The archived Map still derives that state, and Node Detail agrees with it.
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     const map = await page.locator('.path-summary').first().textContent();
+    expect(map).toMatch(/\d+\/16 skills/);
+    expect(map).toContain('10 Pull-Ups');
+    const todayCount = map.match(/(\d+)\/16 skills/)[1];
     expect(map).toContain(`${todayCount}/16 skills`);
     expect(map).toContain('10 Pull-Ups');
     await expect(page.locator('.node.current .nm')).toHaveText('10 Pull-Ups');
@@ -728,10 +731,10 @@ test.describe('app UI', () => {
       S.setProfile({ onboarded: true, activeWorld: 'muscleup', days: [1, 3, 5], duration: 'normal' });
     });
     await page.reload();
-    // Today derives progress from the benchmark fixture...
-    await expect(page.locator('.path-summary').first()).toContainText('10 Pull-Ups');
-    // ...and the Map derives the SAME focus (not a zeroed "Active Dead Hang").
-    await page.locator('.nav [data-s="map"]').click();
+    // Today shows no such summary any more, so the derivation is checked where
+    // it still surfaces: the archived Map, which must not read a zeroed focus.
+    expect(await page.locator('.path-summary').count()).toBe(0);
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     await expect(page.locator('.node.current .nm')).toHaveText('10 Pull-Ups');
     await expect(page.locator('.path-summary').first()).not.toContainText('0/16');
   });
@@ -749,9 +752,9 @@ test.describe('app UI', () => {
     });
     await page.reload();
     // Navigate through screens that all call the canonical worldView().
-    await page.locator('.nav [data-s="map"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     await page.locator('.nav [data-s="today"]').click();
-    await page.locator('.nav [data-s="map"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     // The manually-completed node is still completed — not wiped by lazy seeding.
     await expect(page.locator('.node.completed', { hasText: 'Chest-to-Bar' })).toBeVisible();
   });
@@ -1073,7 +1076,7 @@ test.describe('settings UI', () => {
 
   test('the live app renders no V5 proposal nodes', async ({ page }) => {
     await page.goto('index.html'); await seed(page, 'boulder', {});
-    await page.locator('.nav [data-s="map"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     await expect(page.locator('.node').first()).toBeVisible();
     const nodeIds = await page.evaluate(() => Array.from(document.querySelectorAll('.node')).map(n => n.dataset.node));
     expect(nodeIds.some(id => id && id.indexOf('v5_') === 0)).toBe(false);

@@ -100,7 +100,7 @@ function defineLandscapeTests(viewport) {
 
     test('Skill Map keeps the world rail outside the canvas, centers on focus without clipping it, and keeps the center control visible', async ({ page }) => {
       await page.goto('index.html'); await seed(page);
-      await page.locator('.nav [data-s="map"]').click();
+      await page.evaluate((s) => window.CoachApp._goto(s), 'map');
       await expect(page.locator('#rail')).toBeVisible();
       expect(await page.locator('.canvas-wrap #rail').count()).toBe(0); // rail is outside the blue canvas
       await expect(page.locator('[data-center]')).toBeVisible();        // center-on-focus control visible
@@ -121,7 +121,7 @@ function defineLandscapeTests(viewport) {
 
     test('Node detail opens as a side panel, not a bottom sheet', async ({ page }) => {
       await page.goto('index.html'); await seed(page);
-      await page.locator('.nav [data-s="map"]').click();
+      await page.evaluate((s) => window.CoachApp._goto(s), 'map');
       await page.locator('.node.current').click({ force: true });
       await expect(page.locator('.sheet')).toBeVisible();
       const sheetBox = await page.locator('.sheet').boundingBox();
@@ -169,7 +169,9 @@ function defineLandscapeTests(viewport) {
 
     test('Climbing session keeps the objective and current-problem controls on the left, and the log/rest timer/checks on the right', async ({ page }) => {
       await page.goto('index.html'); await seedClimbing(page);
-      await page.locator('[data-start]').first().click();
+      // The climbing logger is archived from the product, so its layout is
+      // checked by driving it directly. The layout itself is unchanged.
+      await page.evaluate(() => window.CoachApp._startClimbing());
       await expect(page.locator('.climb-grid')).toBeVisible();
       const leftBox = await page.locator('.climb-left').boundingBox();
       const rightBox = await page.locator('.climb-right').boundingBox();
@@ -197,7 +199,7 @@ function defineLandscapeTests(viewport) {
       await page.locator('[data-sview="exercises"]').click();
       colCount = await page.locator('.settings-list').evaluate(el => getComputedStyle(el).columnCount);
       expect(Number(colCount)).toBeGreaterThan(1);
-      await page.locator('.nav [data-s="progress"]').click();
+      await page.evaluate((s) => window.CoachApp._goto(s), 'progress');
       await expect(page.locator('.progress-grid')).toBeVisible();
       await noHorizontalOverflow(page);
     });
@@ -239,7 +241,7 @@ test.describe('portrait is unaffected (regression guard)', () => {
 
   test('node detail is still a bottom sheet', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="map"]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     await page.locator('.node.current').click({ force: true });
     const sheetBox = await page.locator('.sheet').boundingBox();
     const vp = page.viewportSize();
@@ -259,7 +261,8 @@ test.describe('portrait is unaffected (regression guard)', () => {
 
   test('climbing session still stacks the logging form above the log', async ({ page }) => {
     await page.goto('index.html'); await seedClimbing(page);
-    await page.locator('[data-start]').first().click();
+    await page.evaluate(() => window.CoachApp._startClimbing());
+    await expect(page.locator('.climb-grid')).toBeVisible();
     const leftBox = await page.locator('.climb-left').boundingBox();
     const rightBox = await page.locator('.climb-right').boundingBox();
     expect(rightBox.y).toBeGreaterThanOrEqual(leftBox.y + leftBox.height - 5); // stacked, right below left

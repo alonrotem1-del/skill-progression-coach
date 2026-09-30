@@ -21,7 +21,7 @@ async function seed(page, dayId = 5) {
   await page.reload();
 }
 const row = (page, name) => page.locator('.ep-row', { hasText: name });
-async function openEditor(page) { await page.locator('.nav [data-s="week"]').click(); await page.locator('[data-editplan]').click(); }
+async function openEditor(page) { await page.locator('.nav [data-s="plan"]').click(); await page.locator('[data-editplan]').click(); }
 async function setTarget(page, name, to) {
   const cur = parseInt((await row(page, name).locator('.ep-target span').textContent()).trim(), 10);
   const btn = to > cur ? '[data-eptarget="1"]' : '[data-eptarget="-1"]';
@@ -60,7 +60,7 @@ test('capture edit-plan screenshots', async ({ page }) => {
   await page.locator('[data-epsave]').click();
 
   // 05 — saved Week view
-  await page.locator('.nav [data-s="week"]').click();
+  await page.locator('.nav [data-s="plan"]').click();
   await shot(page, '05-week-after-save');
 
   // 06 — Today after editing (Friday queue still includes T2B)
@@ -76,7 +76,7 @@ test('capture edit-plan screenshots', async ({ page }) => {
   await page.mouse.click(5, 200); // dismiss sheet
 
   // 08 — Progress denominator of seven
-  await page.locator('.nav [data-s="progress"]').click();
+  await page.evaluate((s) => window.CoachApp._goto(s), 'progress');
   await page.locator('.sum-row', { hasText: 'Toes-to-Bar' }).scrollIntoViewIfNeeded();
   await shot(page, '08-progress-denominator-seven');
 
