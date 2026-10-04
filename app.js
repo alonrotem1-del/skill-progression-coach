@@ -1743,32 +1743,59 @@
       // news; the absence of one is not, and saying so every day taught the
       // athlete to read past the line that matters.
       :'';
-    var body, mainBtn;
+    var body, mainBtn, solo=null;
     if(hasBase||hasExec){
       var daily=dailyForToday(res);
       var pg=Daily.progress(daily);
       var restNote=daily.restWarning?'<div class="caution">'+esc(daily.restWarning)+'</div>':'';
-      body=restNote+'<div class="queue">'+queueHtml(daily)+'</div>'+(!hasBase?execPreviewHtml(res):'');
+      // The queue is the ONE place a scheduled exercise is named. It used to be
+      // followed by "Adjust today's sets", which listed the same exercises again
+      // with the same prescription — so a one-exercise day printed that exercise
+      // twice and offered two different buttons to start it. Adjusting is a
+      // secondary action now, not a permanent second copy of the prescription.
+      solo=soloRunnable(daily);
+      body=restNote+'<div class="queue">'+queueHtml(daily,solo)+'</div>';
       var started=daily.exercises.some(function(e){return e.state==='completed'||e.state==='in_progress'||e.state==='skipped';});
       var allReqDone=Daily.isDayComplete(daily);
-      var label=allReqDone?'Review Today\'s Workout':(started?'Continue Daily Workout':'Start Daily Workout');
-      // Keep the day's own quick action available too (unchanged handlers) —
-      // both it and "Start/Continue Daily Workout" reach the same queue, since
-      // the base session is simply the queue's first required item.
-      var quickBtn=day.type==='group'
-        ?'<button class="btn ghost sm" data-groupday="'+day.id+'">'+(res.status==='completed'?'Edit Group Workout Log':'Log Group Workout')+'</button>'
-        :(res.climbing&&res.climbTemplateId?'<button class="btn ghost sm" data-start="'+esc(res.climbTemplateId)+'" data-day="'+day.id+'">Start Climbing Session</button>':'');
-      mainBtn='<button class="btn primary" data-startday="'+day.id+'">'+label+'</button>'+
-        (pg.requiredTotal?'<div class="muted small" style="text-align:center;margin-top:6px">'+pg.requiredDone+' of '+pg.requiredTotal+' required done'+(pg.total>pg.requiredTotal?' &middot; '+pg.done+'/'+pg.total+' total':'')+'</div>':'')+
-        quickBtn;
+      if(solo){
+        // One exercise today, so the primary action IS that exercise. Sending
+        // the athlete through "Review Today's Workout" to reach the only thing
+        // on the card was a detour, and on a day whose single item is optional
+        // the day already counts as complete, so that was the label they got.
+        mainBtn='<button class="btn primary" data-exstart="'+esc(solo.exId)+'">'+
+          esc((solo.state==='in_progress'?'Resume ':'Start ')+solo.name)+'</button>';
+      } else {
+        var label=allReqDone?'Review Today\'s Workout':(started?'Continue Daily Workout':'Start Daily Workout');
+        // Keep the day's own quick action available too (unchanged handlers) —
+        // both it and "Start/Continue Daily Workout" reach the same queue, since
+        // the base session is simply the queue's first required item.
+        var quickBtn=day.type==='group'
+          ?'<button class="btn ghost sm" data-groupday="'+day.id+'">'+(res.status==='completed'?'Edit Group Workout Log':'Log Group Workout')+'</button>'
+          :(res.climbing&&res.climbTemplateId?'<button class="btn ghost sm" data-start="'+esc(res.climbTemplateId)+'" data-day="'+day.id+'">Start Climbing Session</button>':'');
+        mainBtn='<button class="btn primary" data-startday="'+day.id+'">'+label+'</button>'+
+          (pg.requiredTotal?'<div class="muted small" style="text-align:center;margin-top:6px">'+pg.requiredDone+' of '+pg.requiredTotal+' required done'+(pg.total>pg.requiredTotal?' &middot; '+pg.done+'/'+pg.total+' total':'')+'</div>':'')+
+          quickBtn;
+      }
     } else {
       body='<div class="preview">'+planItemsHtml(res)+'</div>';
       mainBtn='<button class="btn" data-daydetail="'+day.id+'">View Session</button>';
     }
+    // An open day stays an open day. When the description is DERIVED from what
+    // the day happens to hold, repeating that content in the title both
+    // contradicts the day type — "Open day · Dead Hang" — and says the same
+    // thing as the queue directly below it. The day type alone is the honest
+    // title. "Nothing assigned" is kept, because an empty day has no queue to
+    // read instead.
+    var titleSub=(schedLbl.derived&&(hasBase||hasExec))?'':schedLbl.sub;
     return '<div class="rec sched">'+
       '<div class="kick">Scheduled today</div>'+
-      '<div class="name">'+esc(schedLbl.session)+(schedLbl.sub?' &middot; '+esc(schedLbl.sub):'')+'</div>'+
-      (res.templateId&&Data.templates[res.templateId]?'<div class="meta"><span>'+durationText(Data.templates[res.templateId])+'</span><span>'+esc(Data.templates[res.templateId].difficulty||'')+'</span></div>':'')+
+      '<div class="name">'+esc(schedLbl.session)+(titleSub?' &middot; '+esc(titleSub):'')+'</div>'+
+      // Duration and difficulty describe THE SESSION THE TEMPLATE PRESCRIBES.
+      // On a day whose description is derived, the template is not what the
+      // athlete is doing, so neither number is about them: an open day holding
+      // one optional hold was showing "— High", the duration-less difficulty of
+      // the archived climbing Project Session still attached to that weekday.
+      (!schedLbl.derived&&res.templateId&&Data.templates[res.templateId]?'<div class="meta"><span>'+durationText(Data.templates[res.templateId])+'</span><span>'+esc(Data.templates[res.templateId].difficulty||'')+'</span></div>':'')+
       // No node name, no skill chips, no rationale prose in the main path. The
       // athlete came here to start training; "Primary contribution: First
       // Muscle-Up" is engine vocabulary, and the skill chips repeated the queue
@@ -1777,14 +1804,59 @@
       adaptHtml+
       body+
       mainBtn+
-      '<button class="btn ghost sm" data-daydetail="'+day.id+'">Full day details</button>'+
+      adjustActionHtml(res,hasBase||hasExec)+
       '</div>';
+  }
+
+  // ONE secondary way to change what today prescribes, replacing both the
+  // duplicated "Adjust today's sets" list and the separate "Full day details"
+  // button that sat beside it. Nothing new is built: a day with a ladder opens
+  // the ladder editor that already existed here, and every other day opens the
+  // day detail sheet that the Plan screen opens too.
+  //
+  // A day with nothing scheduled has no sets to adjust, and its primary button
+  // is already that same day detail sheet — offering it twice under two names
+  // is the duplication this pass exists to remove.
+  function adjustActionHtml(res,hasContent){
+    if(res.day.type==='rest'||!hasContent) return '';
+    return ladderEditHtml(res)||('<button class="btn ghost sm" data-daydetail="'+res.day.id+'">Adjust</button>');
+  }
+  // A ladder is the one prescription the athlete can genuinely edit for today,
+  // so that editor stays reachable from Today. The modified flag stays with it,
+  // because a ladder changed for today is news rather than repetition.
+  function ladderEditHtml(res){
+    if(res.day.type==='group'||res.day.type==='rest'||!res.executable||!res.executable.length) return '';
+    var rt=dayPrescription(res);
+    if(!(rt.blocks||[]).some(function(b){return b.scheme==='ladder';})) return '';
+    var modified=Settings.isModifiedForToday(Data.templates.mu_strength,settings(),todayEdits.mu_strength);
+    return (modified?'<div class="modified-flag">&#9679; Ladder modified for today &middot; <button class="link" data-resettoday="mu_strength">Reset to default</button></div>':'')+
+      '<button class="btn ghost sm" data-editwk="mu_strength">Edit sets</button>';
+  }
+
+  // The single runnable exercise of a one-exercise day, or null. A base session
+  // (a climbing session, a group log) is never "the one exercise" — it carries
+  // its own action — and a day whose only item is already finished or skipped
+  // falls back to the ordinary review path.
+  function soloRunnable(daily){
+    var runnable=(daily.exercises||[]).filter(function(e){
+      return e.included&&e.runner!=='none'&&!e.removed&&!e.replaced;
+    });
+    if(runnable.length!==1) return null;
+    var e=runnable[0];
+    if(e.kind==='base'||e.state==='completed'||e.state==='skipped') return null;
+    return e;
   }
   // The daily exercise QUEUE (Part 4): every planned exercise with status,
   // prescription and its own Start / Resume / View+Redo / Skip actions.
-  function queueHtml(daily){
+  //
+  // `solo` is the day's single runnable exercise when it has exactly one. The
+  // card's primary button already starts that exercise by name, so the row does
+  // not repeat the start button — two buttons for the one thing on the screen
+  // is the "which do I press?" problem. Skip stays: it is a different action.
+  function queueHtml(daily,solo){
     var n=0;
     return daily.exercises.map(function(e){
+      var isSolo=!!(solo&&solo.exId===e.exId);
       var isBase=e.kind==='base';
       var runnable=e.included&&e.runner!=='none'&&!e.removed&&!e.replaced;
       if(runnable&&e.state!=='skipped') n++;
@@ -1803,11 +1875,14 @@
           '<button class="link" data-exredo="'+esc(e.exId)+'">'+redoLabel+'</button></div>';
       } else if(e.state==='in_progress'){
         var resumeLabel=isBase?(e.baseType==='climbing'?'Resume Climbing':'Continue Log'):'Resume';
-        actions='<div class="q-actions"><button class="btn sm primary" data-exstart="'+esc(e.exId)+'">'+resumeLabel+'</button></div>';
+        actions=isSolo?''
+          :'<div class="q-actions"><button class="btn sm primary" data-exstart="'+esc(e.exId)+'">'+resumeLabel+'</button></div>';
       } else {
         var startLabel=isBase?(e.baseType==='climbing'?'Start Climbing Session':'Log Group Workout'):'Start This Exercise';
-        actions='<div class="q-actions"><button class="btn sm" data-exstart="'+esc(e.exId)+'">'+startLabel+'</button>'+
-          (!e.required?'<button class="link" data-exskip="'+esc(e.exId)+'">Skip</button>':'')+'</div>';
+        var skipBtn=(!e.required?'<button class="link" data-exskip="'+esc(e.exId)+'">Skip</button>':'');
+        actions=isSolo
+          ? (skipBtn?'<div class="q-actions">'+skipBtn+'</div>':'')
+          : '<div class="q-actions"><button class="btn sm" data-exstart="'+esc(e.exId)+'">'+startLabel+'</button>'+skipBtn+'</div>';
       }
       var nameHtml=isBase?'<span class="q-name">'+esc(e.name)+'</span>':'<button class="q-name" data-exmeta="'+esc(e.exId)+'">'+esc(e.name)+'</button>';
       return '<div class="q-ex'+(runnable?'':' ex-off')+(e.state==='completed'?' q-done':'')+(isBase?' q-base':'')+'" >'+
@@ -1825,20 +1900,10 @@
     if(b.scheme==='amrap') return 'Max reps';
     return b.sets+' × '+b.reps+(m.unilateral?' each side':' reps');
   }
-  // For a day whose main practice maps to an executable strength workout, show
-  // the resolved workout (the actual sets/rounds the Start button will run) and
-  // let the user edit it for today only — the same editing surface as before,
-  // now anchored under the plan card.
-  function execPreviewHtml(res){
-    if(res.day.type==='group'||res.day.type==='rest'||!res.executable||!res.executable.length) return '';
-    var rt=dayPrescription(res);
-    var hasLadder=(rt.blocks||[]).some(function(b){return b.scheme==='ladder';});
-    var modified=hasLadder&&Settings.isModifiedForToday(Data.templates.mu_strength,settings(),todayEdits.mu_strength);
-    return '<div class="exec-preview"><div class="section" style="margin-top:12px">Adjust today&rsquo;s sets</div>'+
-      (modified?'<div class="modified-flag">&#9679; Ladder modified for today &middot; <button class="link" data-resettoday="mu_strength">Reset to default</button></div>':'')+
-      '<div class="wk-list">'+workoutExerciseList(rt)+'</div>'+
-      (hasLadder?'<button class="btn ghost sm inline-edit" data-editwk="mu_strength">Edit Pull-Up Ladder</button>':'')+'</div>';
-  }
+  // "Adjust today's sets" used to live here: a second rendering of the day's
+  // exercises, with the same prescription the queue above already gave, whose
+  // only unique affordance was the ladder editor. It is gone — ladderEditHtml
+  // keeps the editor, and the queue is the single place an exercise is named.
 
   // Plan exercise list — EVERY planned exercise for the day stays visible with a
   // clear status label (Required / Optional / Conditional / Replaced / Skipped /

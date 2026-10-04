@@ -122,6 +122,17 @@ async function seed(page, dayId) {
   });
   await page.reload();
 }
+// On a day holding ONE exercise the card's primary button starts that exercise
+// by name, and the queue row no longer repeats a start button of its own — two
+// buttons for the single thing on the screen was the duplication the Today
+// cleanup removed. The row still carries Skip and its prescription.
+async function startTheOnlyExercise(page, name) {
+  const primary = page.locator('.rec.sched > [data-exstart]');
+  await expect(primary).toHaveText(new RegExp('Start ' + name));
+  expect(await page.locator('.queue [data-exstart]').count()).toBe(0);
+  await primary.click();
+}
+
 async function assignT2bToSunday(page) {
   await page.evaluate(() => {
     const S = window.CoachStore.makeStore(); const p = S.getPlan();
@@ -156,9 +167,10 @@ async function runToFinishPanel(page) {
 }
 
 test.describe('Sunday (climbing) queue', () => {
-  test('02 — Toes-to-Bar assigned to Sunday is executable via Start This Exercise', async ({ page }) => {
+  test('02 — Toes-to-Bar assigned to Sunday is executable from the card\'s primary action', async ({ page }) => {
     await seed(page, 0); await assignT2bToSunday(page);
-    await page.locator('.q-ex', { hasText: 'Toes-to-Bar' }).locator('[data-exstart]').click();
+    // It is the day's only exercise, so the primary action names it.
+    await startTheOnlyExercise(page, 'Toes-to-Bar');
     await expect(page.locator('.wk-block-wrap').first()).toContainText('Toes-to-Bar');
   });
   test('03 — Sunday shows only the work the athlete assigned, with no climbing row', async ({ page }) => {
@@ -169,7 +181,7 @@ test.describe('Sunday (climbing) queue', () => {
   });
   test('04 — completing the assigned exercise completes the day\'s only item', async ({ page }) => {
     await seed(page, 0); await assignT2bToSunday(page);
-    await page.locator('.q-ex', { hasText: 'Toes-to-Bar' }).locator('[data-exstart]').click();
+    await startTheOnlyExercise(page, 'Toes-to-Bar');
     await runToFinishPanel(page);
     await page.locator('[data-finish],[data-finishex]').first().click();
     const done = await page.evaluate(() => {
@@ -191,7 +203,7 @@ test.describe('Sunday (climbing) queue', () => {
 
   test('12 — an assigned exercise is saved correctly in History once the day is finished', async ({ page }) => {
     await seed(page, 0); await assignT2bToSunday(page);
-    await page.locator('.q-ex', { hasText: 'Toes-to-Bar' }).locator('[data-exstart]').click();
+    await startTheOnlyExercise(page, 'Toes-to-Bar');
     await runToFinishPanel(page);
     await page.locator('[data-finish],[data-finishex]').first().click();
     // The exercise's own completion is tracked in the daily queue immediately…

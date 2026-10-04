@@ -967,17 +967,20 @@ test.describe('settings UI', () => {
       def.blocks[0].rounds = 4; s.workoutDefaults.mu_strength = def; S.setSettings(s);
     });
     await page.reload();
-    // Friday's Start-Workout preview runs the Pull-Up Ladder from the (edited)
-    // mu_strength default: 4 rounds.
-    const ladderEx = page.locator('.wk-ex', { hasText: 'Pull-Up Ladder' });
-    await expect(ladderEx).toContainText('× 4 complete');
+    // Friday's queue prescribes the Pull-Up Ladder from the (edited)
+    // mu_strength default: 4 rounds. The Today card used to print the resolved
+    // sets a second time under "Adjust today's sets"; the queue row's own
+    // prescription reads the same resolved prescription, so the edit is still
+    // visible on Today — once instead of twice.
+    const ladderRow = page.locator('.q-ex', { hasText: 'Pull-Up Ladder' });
+    await expect(ladderRow).toContainText('1–2–3 × 4 rounds');
     // Edit the Pull-Up Ladder for today only → 5 rounds.
     await page.locator('[data-editwk]').first().click();
     const rounds = page.locator('.ed-in[data-ed="rounds"][data-bi="0"]');
     await rounds.fill('5'); await rounds.dispatchEvent('change');
     await page.locator('[data-edsavetoday]').click();
-    // Today preview updates + shows the Modified flag...
-    await expect(page.locator('.wk-ex', { hasText: 'Pull-Up Ladder' })).toContainText('× 5 complete');
+    // Today updates + shows the Modified flag...
+    await expect(page.locator('.q-ex', { hasText: 'Pull-Up Ladder' })).toContainText('1–2–3 × 5 rounds');
     await expect(page.locator('.modified-flag')).toBeVisible();
     // ...but the saved default is still 4.
     const savedDefault = await page.evaluate(() => window.CoachStore.makeStore().getSettings().workoutDefaults.mu_strength.blocks[0].rounds);
