@@ -3591,11 +3591,14 @@
       '<p class="footnote muted tiny">Reset only deletes coach data. Your Pull-Up Coach history and progress are untouched.</p>'+
       '<p class="footnote muted tiny" data-idb-status></p>'+
       '<p class="footnote muted tiny" data-ctx-status></p>'+
-      '<p class="footnote muted tiny" data-evidence-status></p>';
+      '<p class="footnote muted tiny" data-evidence-status></p>'+
+      '<p class="footnote muted tiny" data-shadow-status></p>'+
+      '<div data-shadow-report></div>';
     var wrap=shell(html,'profile'); wireSettingsBack(wrap);
     idbStatusLine(wrap);
     ctxStatusLine(wrap);
     evidenceStatusLine(wrap);
+    shadowStatusLine(wrap);
     on('[data-install]','click',function(){
       var p=window.__spcInstallPrompt; if(!p) return;
       p.prompt(); if(p.userChoice) p.userChoice.then(function(){ window.__spcInstallPrompt=null; if(settingsView==='data') renderProfile(); });
@@ -3652,6 +3655,65 @@
     if(st.failed) txt+=', '+st.failed+' FAILED — '+(st.lastError||'unknown');
     el.textContent=txt+'.';
   }
+
+  // ---- P6b shadow evaluation (DIAGNOSTIC ONLY) ---------------------------
+  //
+  // Runs the new evaluator over the real ledger and prints how its conclusions
+  // compare with what the legacy product currently believes. It is the whole of
+  // P6b's athlete-visible surface, and it is deliberately a footnote in a
+  // developer panel rather than anything the athlete is asked to act on.
+  //
+  // NOTHING READS THIS BACK. The snapshot is rendered here and discarded; no
+  // planning, Today, Week or adaptation path can reach it, and the guardrail
+  // test enforces that. It also runs ONLY when this panel is opened, so normal
+  // use neither pays for it nor depends on it, and it writes nothing anywhere.
+  function shadowStatusLine(wrap){
+    var el=wrap.querySelector('[data-shadow-status]');
+    if(!el) return;
+    var C=window.CoachContext, I=window.CoachIDB, E=window.CoachEvaluator, SH=window.CoachShadow;
+    if(!C||!I||!E||!SH){ el.textContent='Shadow evaluation: module not loaded.'; return; }
+    el.textContent='Shadow evaluation: running\u2026';
+    whenNewModelReady().then(function(){
+      return C.getCurrentContextPackage();
+    }).then(function(pkg){
+      if(!pkg) throw new Error('no interpretation context is adopted on this device');
+      return I.all('ledger').then(function(rows){
+        var ledger=(rows||[]).filter(function(r){ return r.kind!=='ActivityObservation'; });
+        var world=Data.worldsById.muscleup;
+        // Read the legacy state WITHOUT WS(), which would create and save a
+        // world entry as a side effect. A diagnostic must not write.
+        var all=Store.getState()||{};
+        var ws=all[world.id]||{nodes:{}};
+        var snap=SH.snapshot({ evaluator:E, pkg:pkg, ledger:ledger,
+          legacy:{ nodes:contentMap(world), states:ws.nodes||{}, isComplete:Engine.isComplete } });
+        el.textContent='Shadow evaluation (diagnostic, not used by the app): '+SH.summarize(snap)+'.';
+        renderShadowReport(wrap,snap);
+      });
+    })['catch'](function(err){
+      el.textContent='Shadow evaluation: unavailable \u2014 '+((err&&err.message)||'unknown')+'. Your data is unaffected.';
+    });
+  }
+
+  function renderShadowReport(wrap,snap){
+    var box=wrap.querySelector('[data-shadow-report]');
+    if(!box) return;
+    var scored=snap.comparisons.filter(function(c){ return c.mappingStrength==='strong'; });
+    var rows=scored.map(function(c){
+      return '<div class="dd-kv"><span>'+esc(c.holderKey)+(c.side==='combined'?'':' ('+esc(c.side)+')')+'</span>'+
+        '<b>'+esc(c.classification)+(c.reason?' &middot; '+esc(c.reason):'')+'</b></div>';
+    }).join('');
+    box.innerHTML='<details class="why"><summary>Shadow detail ('+scored.length+' compared)</summary>'+
+      '<div class="why-body">'+
+      '<p class="muted tiny">Context '+esc(snap.contextId||'none')+' &middot; bundle '+esc(String(snap.contentBundleVersion))+
+      ' &middot; '+snap.ledgerRows+' observation'+(snap.ledgerRows===1?'':'s')+' read. '+
+      'This compares the migration engine with the legacy engine. The app still uses the legacy engine for everything.</p>'+
+      rows+
+      '<p class="muted tiny">'+snap.counts[SH_CLASS().NEW_ONLY]+' holders have no legacy counterpart; '+
+      snap.legacyOnly.length+' legacy nodes have no new-model counterpart. Neither is a fault.</p>'+
+      '</div></details>';
+    on('[data-shadow-report] summary','click',function(){},box);
+  }
+  function SH_CLASS(){ return window.CoachShadow.CLASS; }
 
   // ---- raw backup storage access ---------------------------------------
   // Deliberately bypasses Store (which refuses to read/write puc_* and

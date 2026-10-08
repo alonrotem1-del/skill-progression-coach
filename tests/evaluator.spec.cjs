@@ -637,17 +637,20 @@ test.describe('P6a evaluator — no authority', () => {
         expect(src, f).not.toContain('CoachEvaluator');
         expect(src, f).not.toContain('evaluator.js');
       });
-    // app.js reaches the evaluator in exactly TWO places, and both only ask it
-    // to describe — neither lets it decide.
+    // app.js reaches the evaluator in exactly THREE places, and all three only
+    // ask it to describe — none lets it decide.
     //
     //   1. the evidence tap, for the one Dependency question P3 needs;
-    //   2. the Goals view, which reads progress to put it on screen.
+    //   2. the Goals view, which reads progress to put it on screen;
+    //   3. P6b shadow evaluation, which compares the new model with the legacy
+    //      one inside the developer diagnostics panel and is read by nothing.
     //
-    // Two is the whole budget: a third would mean something new started
+    // Three is the whole budget: a fourth would mean something new started
     // consulting the engine, and that is the thing this test exists to catch.
     const app = fs.readFileSync(path.join(REPO, 'app.js'), 'utf8');
     const uses = app.match(/CoachEvaluator/g) || [];
-    expect(uses.length).toBe(2);
+    expect(uses.length).toBe(3);
+    expect(app).toContain('SH=window.CoachShadow');
     expect(app).toContain('E.unmetDependencies(');
     // The Goals reference is a read for display and lives in the loader, which
     // hands the evaluator straight to goals.js and keeps no verdict of its own.
