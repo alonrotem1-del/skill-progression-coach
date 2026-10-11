@@ -448,7 +448,11 @@ async function seed(page, active = 'muscleup', bench = { pullup_max: 9, dips_max
       state[w.id] = { nodes, focus: { primary: f.primary, supporting: f.supporting, manual: false } };
     });
     S.setBench(bench); S.setState(state);
-    S.setProfile({ onboarded: true, activeWorld: active, days: [0, 2, 4], duration: 'normal' });
+    // The athlete has already said which variant they do (E1 asks once, then remembers),
+    // so these tests, whose subject is not identity, start the runner as they always did.
+    // The question itself is covered in identity.spec.cjs.
+    S.setProfile({ onboarded: true, activeWorld: active, days: [0, 2, 4], duration: 'normal',
+      variants: { pistol: 'full', highpull: 'high_pull', transition_drill: 'low_bar' } });
   }, { active, bench });
   await page.reload();
 }

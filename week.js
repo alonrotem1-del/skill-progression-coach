@@ -177,6 +177,116 @@
     light_pullups: { exId: 'pullup', label: 'Light Pull-Ups', scheme: 'sets', sets: 4, reps: 2 }
   };
   Object.keys(BLOCKS).forEach(function (id) { if (EX[id]) EX[id].block = BLOCKS[id]; });
+
+  // ---- EVIDENCE IDENTITY --------------------------------------------------
+  //
+  // Which exercise in the content bundle each plan item IS, as actually
+  // performed. This is a different question from BLOCKS[id].exId, and the two
+  // must not be conflated.
+  //
+  //   BLOCKS[id].exId  is the RUNNER's identity. The legacy library reads it:
+  //                    Progress.applyStrength feeds nodes and benchmarks from
+  //                    it (`dip` sets dips_max, `fastpull` feeds mu_fastpull).
+  //                    It is deliberately left exactly as it was, because the
+  //                    legacy engine stays authoritative until cutover.
+  //
+  //   this table       is the identity WRITTEN INTO THE EVIDENCE LEDGER. The
+  //                    ledger is append-only, so a wrong identity cannot be
+  //                    corrected later; it has to be right at the moment of
+  //                    writing.
+  //
+  // The runner reused one block for several physical movements. Parallel Bar
+  // Dips ran as `dip` (the bundle's STRAIGHT-bar dip), and three plan items
+  // each stood for more than one exercise. Where an item is genuinely
+  // ambiguous the athlete says which one they did; nothing here is inferred
+  // from reps, load or anything else about the performance.
+  //
+  // Every mapping is explicit. There is no name matching, and no entry may be
+  // derived from another: tests pin each one against the bundle.
+  //
+  //   exerciseId   the item is exactly this exercise, always.
+  //   variants     the item stands for several exercises; the athlete chooses.
+  //                `label` is how the choice reads; `runnerLabel` is the bundle's
+  //                own name for the exercise, shown as the runner's title.
+  //   fromBlock    the athlete may replace the block's exercise with an approved
+  //                alternative in Workout Defaults, so the block's own id is the
+  //                truth. Only the Pull-Up Ladder can do this.
+  var EVIDENCE_IDENTITY = {
+    highpull: { question: 'Which are you doing?', variants: [
+      { id: 'high_pull', label: 'High pull', runnerLabel: 'High Pull (Explosive)', exerciseId: 'fastpull' },
+      { id: 'chest_to_bar', label: 'Chest-to-bar', runnerLabel: 'Chest-to-Bar Pull-Up', exerciseId: 'c2b' }
+    ] },
+    transition_drill: { question: 'Which transition are you doing?', variants: [
+      { id: 'low_bar', label: 'Low-bar drill', runnerLabel: 'Low-Bar Transition Drill', exerciseId: 'lowtrans' },
+      { id: 'low_ring', label: 'Low rings, feet assisting', runnerLabel: 'Low-Ring Transition, Feet Assisting', exerciseId: 'lowring_transition' },
+      { id: 'banded_ring', label: 'Banded, on rings', runnerLabel: 'Banded Ring Transition', exerciseId: 'banded_ring_transition' },
+      { id: 'ring', label: 'Unassisted, on rings', runnerLabel: 'Unassisted Ring Transition', exerciseId: 'ring_transition' }
+    ] },
+    pistol: { question: 'Which pistol squat are you doing?', variants: [
+      { id: 'box', label: 'Box pistol', runnerLabel: 'Box Pistol Squat', exerciseId: 'box_pistol' },
+      { id: 'heel', label: 'Heel-elevated pistol', runnerLabel: 'Heel-Elevated Pistol Squat', exerciseId: 'pistol_heel' },
+      { id: 'full', label: 'Full pistol squat', runnerLabel: 'Pistol Squat', exerciseId: 'pistol' }
+    ] },
+
+    // Parallel Bar Dips are the bundle's `pbdip`. They were recorded as `dip`.
+    pbdips: { exerciseId: 'pbdip' },
+
+    pullup_ladder: { fromBlock: true },
+
+    pullup_pyramid: { exerciseId: 'pullup' },
+    light_pullups: { exerciseId: 'pullup' },
+    tophold: { exerciseId: 'support' },
+    ringsupport: { exerciseId: 'ring_support' },
+    deadhang: { exerciseId: 'deadhang' },
+    t2b: { exerciseId: 't2b' },
+    wristroller: { exerciseId: 'wristroller' },
+    incline_press: { exerciseId: 'incline_press' },
+    chest_fly: { exerciseId: 'chest_fly' },
+    biceps: { exerciseId: 'biceps' },
+    triceps: { exerciseId: 'triceps' },
+    hip_abduction: { exerciseId: 'hip_abduction' },
+    bulgarian_split: { exerciseId: 'bulgarian_split' },
+    hip_thrust: { exerciseId: 'hip_thrust' },
+    deadlift_rdl: { exerciseId: 'deadlift_rdl' }
+  };
+
+  // The choices an ambiguous plan item offers, or null if it offers none.
+  function variantsOf(planItemId) {
+    var e = EVIDENCE_IDENTITY[planItemId];
+    return (e && e.variants) ? e.variants.map(function (v) {
+      return { id: v.id, label: v.label, runnerLabel: v.runnerLabel, exerciseId: v.exerciseId };
+    }) : null;
+  }
+  function variantQuestion(planItemId) {
+    var e = EVIDENCE_IDENTITY[planItemId];
+    return (e && e.question) || '';
+  }
+
+  // The identity to write for a plan item that was actually performed.
+  //
+  // Returns { exerciseId, variantId, runnerLabel } or { error }. It never
+  // guesses: an item that needs a choice and has none is an error, not a
+  // default, and an unknown choice is an error rather than a nearest match.
+  function evidenceIdentity(planItemId, blockExId, variantId) {
+    var e = EVIDENCE_IDENTITY[planItemId];
+    if (!e) return { error: 'unknown_item' };
+    if (e.variants) {
+      if (variantId === null || variantId === undefined || variantId === '') return { error: 'variant_required' };
+      for (var i = 0; i < e.variants.length; i++) {
+        if (e.variants[i].id === variantId) {
+          return { exerciseId: e.variants[i].exerciseId, variantId: e.variants[i].id,
+            runnerLabel: e.variants[i].runnerLabel };
+        }
+      }
+      return { error: 'unknown_variant' };
+    }
+    if (e.fromBlock) {
+      if (typeof blockExId !== 'string' || !blockExId) return { error: 'no_block_identity' };
+      return { exerciseId: blockExId, variantId: null, runnerLabel: null };
+    }
+    return { exerciseId: e.exerciseId, variantId: null, runnerLabel: null };
+  }
+
   // Build a runnable prescription (template-shaped) from a resolved day's
   // included exercises, honouring a Friday ladder-round reduction.
   function executablePrescription(res) {
@@ -796,6 +906,8 @@
     visibleAssignmentsForDay: visibleAssignmentsForDay,
     weeklyCounts: weeklyCounts,
     seedPlan: seedPlan, migratePlan: migratePlan, executablePrescription: executablePrescription,
+    EVIDENCE_IDENTITY: EVIDENCE_IDENTITY, variantsOf: variantsOf, variantQuestion: variantQuestion,
+    evidenceIdentity: evidenceIdentity,
     weeklyLoad: weeklyLoad, resolveDay: resolveDay,
     resolveWeek: resolveWeek, simplify: simplify, assessmentReady: assessmentReady,
     todayId: todayId

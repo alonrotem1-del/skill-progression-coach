@@ -748,7 +748,12 @@ test.describe('P3 the ordering invariant', () => {
 });
 
 test.describe('P3 a real workout, end to end', () => {
-  test('39 finishing a real Parallel Bar Dips set fills the ledger and satisfies its Stage', async ({ page }) => {
+  // CORRECTED BY E1. This test used to assert that a Parallel Bar Dips workout is
+  // recorded as `dip` and satisfies the straight-bar stage. That was the bug: the
+  // bundle's `dip` is the STRAIGHT-bar dip and `pbdip` is train-only, so the old
+  // assertion enshrined a false match. The ledger now says what was performed,
+  // and a parallel-bar set honestly no longer clears the straight-bar stage.
+  test('39 finishing a real Parallel Bar Dips set fills the ledger as `pbdip`, not as a straight-bar dip', async ({ page }) => {
     await seed(page, 2); await assign(page, 'pbdips', 2, 1);
     await page.locator('.q-ex', { hasText: 'Parallel Bar Dips' }).locator('[data-exstart]').click();
     await runToFinishPanel(page);
@@ -757,7 +762,7 @@ test.describe('P3 a real workout, end to end', () => {
     expect(rows.length).toBe(4);            // 4 x 6, one row per performed set
     rows.forEach((r) => {
       expect(r.kind).toBe('PerformanceObservation');
-      expect(r.exerciseId).toBe('dip');
+      expect(r.exerciseId).toBe('pbdip');
       expect(r.provenance).toBe('demonstrated');
       expect(r.provenanceSource).toBe('in_session');
       expect(r.context.contextId).toBe('ctx_1');
@@ -775,8 +780,10 @@ test.describe('P3 a real workout, end to end', () => {
         criterion: window.CoachEvaluator.evaluateCriterion('dip_bar_5', 'combined', ledger, pkg).status
       };
     });
-    expect(verdict.criterion).toBe('satisfied');
-    expect(verdict.stage).toBe(true);
+    // Truthful Evidence over a preserved false match: parallel-bar dips are a
+    // train link to this stage, so they are not evidence for it.
+    expect(verdict.criterion).toBe('unsatisfied');
+    expect(verdict.stage).toBe(false);
   });
 
   test('40 finishing the same workout twice appends nothing the second time', async ({ page }) => {

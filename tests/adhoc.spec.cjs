@@ -56,7 +56,11 @@ async function seed(page, dayId = 5, extraSessions = null) {
     const bench = { pullup_max: 9, dips_max: 6 }; const state = {};
     D.worlds.forEach(w => { const nodes = window.CoachStore.seedStates(w, bench); const f = E.autoFocus(w, nodes); state[w.id] = { nodes, focus: { primary: f.primary, supporting: f.supporting, manual: false } }; });
     S.setBench(bench); S.setState(state);
-    S.setProfile({ onboarded: true, activeWorld: 'muscleup', days: [0, 2, 4], duration: 'normal' });
+    // The athlete has already said which variant they do (E1 asks once, then remembers),
+    // so these tests, whose subject is not identity, start the runner as they always did.
+    // The question itself is covered in identity.spec.cjs.
+    S.setProfile({ onboarded: true, activeWorld: 'muscleup', days: [0, 2, 4], duration: 'normal',
+      variants: { pistol: 'full', highpull: 'high_pull', transition_drill: 'low_bar' } });
     ['spc_c_day', 'spc_c_workout', 'spc_c_adhoc', 'spc_c_templates'].forEach(k => localStorage.removeItem(k));
     S.setSessions(extra || []);
   }, extraSessions);
@@ -159,6 +163,9 @@ test.describe('relationship to the plan', () => {
     await page.locator('[data-startone]').click();
     await page.locator('[data-pick="pistol"]').click();
     await page.locator('[data-cl="apply"]').click();          // apply to plan
+    // Start One Exercise never showed which pistol variant is remembered, so it
+    // asks (E1). The athlete answers; the assertions below are about overlap.
+    await page.locator('[data-vpick="full"]').click();
     await finishAdhocExercise(page);
     await page.locator('[data-save]').click();
     // Friday's queue: Pistol complete, Ladder + T2B still not started.
@@ -171,6 +178,9 @@ test.describe('relationship to the plan', () => {
     await page.locator('[data-startone]').click();
     await page.locator('[data-pick="pistol"]').click();
     await page.locator('[data-cl="extra"]').click();
+    // Start One Exercise never showed which pistol variant is remembered, so it
+    // asks (E1). The athlete answers; the assertions below are about overlap.
+    await page.locator('[data-vpick="full"]').click();
     await finishAdhocExercise(page);
     await page.locator('[data-save]').click();
     await expect(page.locator('.q-ex', { hasText: 'Pistol Squat' })).not.toContainText(/Completed/);
@@ -180,6 +190,9 @@ test.describe('relationship to the plan', () => {
     await page.locator('[data-startone]').click();
     await page.locator('[data-pick="pistol"]').click();
     await page.locator('[data-cl="apply"]').click();
+    // Start One Exercise never showed which pistol variant is remembered, so it
+    // asks (E1). The athlete answers; the assertions below are about overlap.
+    await page.locator('[data-vpick="full"]').click();
     await finishAdhocExercise(page);
     await page.locator('[data-save]').click();
     const n = await page.evaluate(() => window.CoachStore.makeStore().getSessions().length);
@@ -190,6 +203,9 @@ test.describe('relationship to the plan', () => {
     await page.locator('[data-startone]').click();
     await page.locator('[data-pick="pistol"]').click();
     await page.locator('[data-cl="apply"]').click();
+    // Start One Exercise never showed which pistol variant is remembered, so it
+    // asks (E1). The athlete answers; the assertions below are about overlap.
+    await page.locator('[data-vpick="full"]').click();
     await finishAdhocExercise(page);
     await page.locator('[data-save]').click();
     const pistolSessions = await page.evaluate(() => window.CoachStore.makeStore().getSessions()

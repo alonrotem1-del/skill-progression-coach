@@ -252,6 +252,25 @@
     });
   }
 
+  // The exercise a block is recorded AS in the ledger. Three cases, in order:
+  //
+  //   1. startExercise stamped the block with the identity the athlete's own
+  //      choice resolved to. This is every workout started since identity was
+  //      recorded.
+  //   2. The workout has no plan item (it began from a legacy template, only
+  //      reachable from the archived Skill Map). Its block IS the exercise, and
+  //      its id was always honest.
+  //   3. A snapshot persisted BEFORE identity was recorded and resumed after.
+  //      Resolve only what needs no choice; never default one. A Parallel Bar
+  //      Dips workout becomes `pbdip`; a Pistol Squat workout, whose variant was
+  //      never asked, resolves to nothing.
+  function evidenceIdentityOfBlock(w,block){
+    if(block.evidenceExId) return block.evidenceExId;
+    if(!w.dailyExId) return block.exId||null;
+    var r=Week.evidenceIdentity(w.dailyExId,block.exId,null);
+    return r.error?null:r.exerciseId;
+  }
+
   // Capture the live runner state SYNCHRONOUSLY, then append asynchronously.
   //
   // The snapshot is taken here, at the tap, because exerciseResult() and
@@ -267,6 +286,22 @@
     if(!w||!w.workoutId) return Promise.resolve(evidenceStatus());
     var snapshot;
     try{ snapshot=JSON.parse(JSON.stringify(w)); }catch(e){ return Promise.resolve(evidenceStatus()); }
+    // Hand the pure module the identity each block is RECORDED as. The runner's
+    // own exId is left alone in the workout (legacy progress reads it); only
+    // this copy is retargeted, so nothing the athlete sees or the legacy engine
+    // does can change. A block whose identity cannot be established without a
+    // guess gets exId null, which the module skips: no row is better than a row
+    // under the wrong exercise, because the ledger cannot be corrected later.
+    var unresolved=[];
+    (snapshot.blocks||[]).forEach(function(b){
+      var id=evidenceIdentityOfBlock(snapshot,b);
+      if(!id) unresolved.push(b.label||b.exId||'an exercise');
+      b.exId=id;
+    });
+    if(unresolved.length){
+      evidenceLog.failed++;
+      evidenceLog.lastError='no exercise identity was recorded for '+unresolved.join(', ')+'; nothing was written for it';
+    }
     return appendEvidence(function(ctx){
       // The identity travels on the snapshot, and the runner knows no side, so
       // none is claimed. See evidence.js.
@@ -587,8 +622,11 @@
     var wrap=shell(html,'today');
     on('[data-rk]','click',function(e){var k=e.currentTarget.dataset.rk,v=e.currentTarget.dataset.rv;if(k==='pain'){r.pain=!r.pain;}else if(k==='time'){r.time=v;}else{r[k]=+v;}renderToday();},wrap);
     on('[data-start]','click',function(e){ var d=e.currentTarget.dataset.day; if(d!=null&&d!=='') startDaySession(+d); else startSession(e.currentTarget.dataset.start); },wrap);
-    on('[data-startday]','click',function(e){ startDaySession(+e.currentTarget.dataset.startday); },wrap);
-    on('[data-exstart]','click',function(e){ startExercise(e.currentTarget.dataset.exstart,{scheduled:true}); },wrap);
+    // Today's queue rows show which variant is remembered, so starting from
+    // them (or from the primary button above them) may reuse it.
+    on('[data-startday]','click',function(e){ startDaySession(+e.currentTarget.dataset.startday,true); },wrap);
+    on('[data-exstart]','click',function(e){ startExercise(e.currentTarget.dataset.exstart,{scheduled:true,variantSeen:true}); },wrap);
+    on('[data-exvariant]','click',function(e){ openVariantSheet(e.currentTarget.dataset.exvariant,function(){ renderToday(); }); },wrap);
     on('[data-exview]','click',function(e){ openExResult(e.currentTarget.dataset.exview); },wrap);
     on('[data-exredo]','click',function(e){ redoExercise(e.currentTarget.dataset.exredo); },wrap);
     on('[data-exskip]','click',function(e){ skipExercise(e.currentTarget.dataset.exskip); },wrap);
@@ -1135,22 +1173,80 @@
   // completed item. Every weekday resolves into ONE queue this way; climbing,
   // group and rest are never mutually-exclusive execution modes that gate out
   // the user's assigned exercises.
-  function startDaySession(dayId){
+  function startDaySession(dayId, variantSeen){
     var res=Week.resolveDay(getPlan(),dayId,weekCtx());
     if(res.goal) UI.worldId=res.goal.world;
     var daily=dailyForToday(res);
     // resume an active item if one is mid-flight
-    if(daily.activeExId){ var ae=Daily.findEx(daily,daily.activeExId); if(ae&&ae.state==='in_progress'){ startExercise(daily.activeExId); return; } }
+    if(daily.activeExId){ var ae=Daily.findEx(daily,daily.activeExId); if(ae&&ae.state==='in_progress'){ startExercise(daily.activeExId,{variantSeen:!!variantSeen}); return; } }
     // Start/Continue only ever auto-advances through REQUIRED items; once
     // every required one is done or skipped, it opens the review/summary rather
     // than forcing optional/conditional work.
     var next=Daily.firstUnfinishedRequired(daily);
-    if(next){ startExercise(next); return; }
+    if(next){ startExercise(next,{variantSeen:!!variantSeen}); return; }
     renderDailySummary();
   }
+
+  // ---- which exercise was it? (E1) ------------------------------------------
+  //
+  // Some plan items stand for more than one exercise: "Chest-to-Bar / High
+  // Pull", the Muscle-Up Transition Drill and the Pistol Squat. The ledger is
+  // append-only, so the app asks which one the athlete is doing rather than
+  // recording a guess it could never take back.
+  //
+  // The choice is remembered per plan item, in the profile, so that Backup,
+  // Restore and Reset already cover it. It is stored as the variant's own id,
+  // never as an exercise id: the id is resolved from the authored table in
+  // week.js at the moment a workout starts, so editing that table can never
+  // leave a stale identity lying around in storage.
+  function getVariantChoice(planId){
+    var p=Store.getProfile(), v=p&&p.variants&&p.variants[planId];
+    if(!v) return null;
+    var vs=Week.variantsOf(planId)||[];
+    for(var i=0;i<vs.length;i++){ if(vs[i].id===v) return v; }
+    // A remembered choice that is no longer on offer is no choice at all.
+    return null;
+  }
+  function setVariantChoice(planId,variantId){
+    var p=Store.getProfile()||{};
+    p.variants=p.variants||{};
+    p.variants[planId]=variantId;
+    Store.setProfile(p);
+  }
+  function variantLabelOf(planId,variantId){
+    var vs=Week.variantsOf(planId)||[];
+    for(var i=0;i<vs.length;i++){ if(vs[i].id===variantId) return vs[i].label; }
+    return null;
+  }
+  // `then` runs after the athlete picks; cancelling starts nothing.
+  function openVariantSheet(planId,then){
+    var vs=Week.variantsOf(planId); if(!vs) return;
+    var cur=getVariantChoice(planId);
+    var body='<div class="grip"></div><h2>'+esc(Week.variantQuestion(planId))+'</h2>'+
+      '<p class="muted small">Your progress is recorded against the one you pick.</p>'+
+      vs.map(function(v){
+        return '<button class="btn" data-vpick="'+esc(v.id)+'">'+esc(v.label)+
+          (v.id===cur?' <span class="muted small">&middot; last time</span>':'')+'</button>';
+      }).join('')+
+      '<button class="btn ghost" data-close>Cancel</button>';
+    showSheet(body,function(sheet){
+      on('[data-vpick]','click',function(e){
+        setVariantChoice(planId,e.currentTarget.dataset.vpick);
+        closeSheet();
+        if(then) then();
+      },sheet);
+      on('[data-close]','click',closeSheet,sheet);
+    });
+  }
+
   // Start (or redo) one specific queue item. Dispatches the day's base session
   // (climbing/group) to its own flow; everything else runs the shared
   // ladder/pyramid/sets/unilateral/hold runner exactly as before.
+  //
+  // opts.variantSeen: the screen the athlete tapped from already shows which
+  // variant is remembered, so it may be reused without asking. Anything else
+  // asks again. The default is to ask, so a new way of starting an exercise
+  // fails safe instead of silently recording yesterday's answer.
   function startExercise(exId, opts){
     opts=opts||{};
     var dayId=todayDayId(), res=Week.resolveDay(getPlan(),dayId,weekCtx());
@@ -1159,7 +1255,32 @@
     if(e&&e.kind==='base'){ startBaseItem(daily,e,opts); return; }
     var rt=exercisePrescription(exId,res,(e&&e.block)||null); if(!rt){ toast('This exercise has no runner yet.'); return; }
     if(e&&e.state==='completed'&&!opts.redo){ return openExResult(exId); }
+    // THE IDENTITY GATE. Resolved before anything is built or marked in
+    // progress, so cancelling the sheet leaves the day exactly as it was.
+    var remembered=getVariantChoice(exId);
+    var ident=Week.evidenceIdentity(exId,rt.blocks[0]&&rt.blocks[0].exId,remembered);
+    // Ask when there is no choice on record, or when this way of starting did
+    // not show the remembered one (and always on a redo, whose row no longer
+    // does). Never ask twice for one start: confirmedVariant means the athlete
+    // has just answered.
+    var mustAsk=!opts.confirmedVariant&&(ident.error==='variant_required'||
+      (!!Week.variantsOf(exId)&&(!opts.variantSeen||!!opts.redo)));
+    if(mustAsk){
+      openVariantSheet(exId,function(){
+        var again={}; for(var k in opts){ again[k]=opts[k]; }
+        again.confirmedVariant=true;
+        startExercise(exId,again);
+      });
+      return;
+    }
     UI.workout=buildWorkout(rt);
+    // Stamp the identity the ledger will record. The runner's own exId is left
+    // exactly as it was: the legacy engine reads it.
+    var blk0=UI.workout.blocks[0];
+    if(blk0&&!ident.error){
+      blk0.evidenceExId=ident.exerciseId; blk0.variantId=ident.variantId||null;
+      if(ident.runnerLabel) blk0.label=ident.runnerLabel;
+    }
     UI.workout.dailyExId=exId; UI.workout.dailyId=daily.id; UI.workout.adhoc=!!daily.adhoc;
     UI.workout.plannedRounds=(UI.workout.blocks[0]&&UI.workout.blocks[0].kind==='ladder')?UI.workout.blocks[0].rounds.length:null;
     UI.workout.extraRounds=0; UI.workout.redo=!!opts.redo;
@@ -1335,8 +1456,14 @@
   }
   function redoExercise(exId){
     if(!confirm('Redo '+ (Week.EX[exId]?Week.EX[exId].name:exId) +'? This starts a fresh attempt.')) return;
-    var daily=activeDaily(); var e=Daily.findEx(daily,exId); if(e){ e.state='not_started'; e.result=null; persistDaily(daily); }
-    startExercise(exId,{redo:true});
+    function begin(){
+      var daily=activeDaily(); var e=Daily.findEx(daily,exId); if(e){ e.state='not_started'; e.result=null; persistDaily(daily); }
+      startExercise(exId,{redo:true,confirmedVariant:true});
+    }
+    // A fresh attempt may be a different variant, and the completed row no
+    // longer shows which one it was. Ask BEFORE resetting the item, so
+    // cancelling the question leaves the finished result exactly as it was.
+    if(Week.variantsOf(exId)) openVariantSheet(exId,begin); else begin();
   }
   function openExResult(exId){
     var daily=activeDaily(); var e=Daily.findEx(daily,exId); if(!e||!e.result){ toast('No result yet.'); return; }
@@ -1510,7 +1637,9 @@
   }
   // Shared wiring for a queue rendered by queueHtml (scheduled or ad-hoc).
   function wireQueue(wrap){
-    on('[data-exstart]','click',function(e){ startExercise(e.currentTarget.dataset.exstart); },wrap);
+    // These rows show which variant is remembered, so starting from one may reuse it.
+    on('[data-exstart]','click',function(e){ startExercise(e.currentTarget.dataset.exstart,{variantSeen:true}); },wrap);
+    on('[data-exvariant]','click',function(e){ openVariantSheet(e.currentTarget.dataset.exvariant,function(){ renderAdhocRunner(); }); },wrap);
     on('[data-exview]','click',function(e){ openExResult(e.currentTarget.dataset.exview); },wrap);
     on('[data-exredo]','click',function(e){ redoExercise(e.currentTarget.dataset.exredo); },wrap);
     on('[data-exskip]','click',function(e){ skipExercise(e.currentTarget.dataset.exskip); },wrap);
@@ -1885,10 +2014,21 @@
           : '<div class="q-actions"><button class="btn sm" data-exstart="'+esc(e.exId)+'">'+startLabel+'</button>'+skipBtn+'</div>';
       }
       var nameHtml=isBase?'<span class="q-name">'+esc(e.name)+'</span>':'<button class="q-name" data-exmeta="'+esc(e.exId)+'">'+esc(e.name)+'</button>';
+      // Which exercise this item will be recorded as, for the items that stand
+      // for more than one. Shown only while it can still be changed: once an
+      // item is started or done, the choice is already part of that workout.
+      var variantLine='';
+      if(runnable&&!isBase&&e.state==='not_started'&&Week.variantsOf(e.exId)){
+        var vchoice=getVariantChoice(e.exId);
+        variantLine='<div class="q-presc muted small">'+(vchoice
+          ?esc(variantLabelOf(e.exId,vchoice))+' &middot; <button class="link" style="padding:4px 0" data-exvariant="'+esc(e.exId)+'">change</button>'
+          :'<button class="link" style="padding:4px 0" data-exvariant="'+esc(e.exId)+'">Which one?</button>')+'</div>';
+      }
       return '<div class="q-ex'+(runnable?'':' ex-off')+(e.state==='completed'?' q-done':'')+(isBase?' q-base':'')+'" >'+
         '<div class="q-head"><span class="wk-ex-n'+(runnable?'':' off')+'">'+num+'</span>'+
         nameHtml+prioPill(e.priority)+chip+'</div>'+
         (presc?'<div class="q-presc muted small">'+esc(presc)+'</div>':'')+
+        variantLine+
         actions+'</div>';
     }).join('');
   }

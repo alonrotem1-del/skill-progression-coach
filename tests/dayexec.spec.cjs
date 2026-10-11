@@ -117,7 +117,11 @@ async function seed(page, dayId) {
     const bench = { pullup_max: 9, dips_max: 6 }; const state = {};
     D.worlds.forEach(w => { const nodes = window.CoachStore.seedStates(w, bench); const f = E.autoFocus(w, nodes); state[w.id] = { nodes, focus: { primary: f.primary, supporting: f.supporting, manual: false } }; });
     S.setBench(bench); S.setState(state);
-    S.setProfile({ onboarded: true, activeWorld: 'muscleup', days: [0, 2, 4], duration: 'normal' });
+    // The athlete has already said which variant they do (E1 asks once, then remembers),
+    // so these tests, whose subject is not identity, start the runner as they always did.
+    // The question itself is covered in identity.spec.cjs.
+    S.setProfile({ onboarded: true, activeWorld: 'muscleup', days: [0, 2, 4], duration: 'normal',
+      variants: { pistol: 'full', highpull: 'high_pull', transition_drill: 'low_bar' } });
     ['spc_c_day', 'spc_c_sessions', 'spc_c_workout', 'spc_c_adhoc', 'spc_c_plan', 'spc_c_templates'].forEach(k => localStorage.removeItem(k));
   });
   await page.reload();
