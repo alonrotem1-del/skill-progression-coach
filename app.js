@@ -2020,9 +2020,9 @@
       var variantLine='';
       if(runnable&&!isBase&&e.state==='not_started'&&Week.variantsOf(e.exId)){
         var vchoice=getVariantChoice(e.exId);
-        variantLine='<div class="q-presc muted small">'+(vchoice
-          ?esc(variantLabelOf(e.exId,vchoice))+' &middot; <button class="link" style="padding:4px 0" data-exvariant="'+esc(e.exId)+'">change</button>'
-          :'<button class="link" style="padding:4px 0" data-exvariant="'+esc(e.exId)+'">Which one?</button>')+'</div>';
+        variantLine='<div class="q-presc q-variant muted small">'+(vchoice
+          ?'<span>'+esc(variantLabelOf(e.exId,vchoice))+' &middot;</span><button class="link vlink" data-exvariant="'+esc(e.exId)+'">change</button>'
+          :'<button class="link vlink" data-exvariant="'+esc(e.exId)+'">Which one?</button>')+'</div>';
       }
       return '<div class="q-ex'+(runnable?'':' ex-off')+(e.state==='completed'?' q-done':'')+(isBase?' q-base':'')+'" >'+
         '<div class="q-head"><span class="wk-ex-n'+(runnable?'':' off')+'">'+num+'</span>'+
@@ -2527,7 +2527,13 @@
     // block (current or not) still renders in its original document order.
     var body='', side='';
     w.blocks.forEach(function(bl,bi){
-      var ex=Data.exercises[bl.exId]||{};
+      // The cue describes the exercise the athlete SELECTED. The runner's own id
+      // (bl.exId) is a legacy identity that several movements share, so keying on
+      // it showed the High Pull cue for a chest-to-bar and a bar-transition cue
+      // for a ring transition. Keyed on the stamped identity instead, an exercise
+      // with no approved cue of its own shows none, which is better than a cue
+      // for a different movement. `ex` feeds nothing but the cue.
+      var ex=Data.exercises[bl.evidenceExId||bl.exId]||{};
       var isCur=cur&&cur.bi===bi;
       var label='<div class="section">'+esc(bl.label)+(bl.note?' <span class="muted tiny">&middot; '+esc(bl.note)+'</span>':'')+'</div>';
       var overview=(bl.kind==='ladder')?ladderOverview(bl,isCur?cur.ri:-1):straightOverview(bl,isCur?cur.si:-1);

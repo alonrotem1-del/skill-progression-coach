@@ -340,6 +340,12 @@
     .q-ex.q-done .q-name{text-decoration:line-through;text-decoration-color:var(--dim)}
     .q-ex.ex-off .q-name{text-decoration:line-through;color:var(--dim)}
     .q-presc{margin:3px 0 0 30px}
+    /* The "which variant" line is a text link, so the TEXT stays light; the hit area
+       is what is made comfortable. 44px is the usual minimum for a thumb, and the
+       link's box is that tall for real rather than faked with an overlapping
+       pseudo-element that would steal taps from the Start button just below. */
+    .q-variant{display:flex;align-items:center;gap:6px;min-height:44px}
+    .q-variant .vlink{min-height:44px;min-width:44px;display:inline-flex;align-items:center;padding:0}
     .q-actions{display:flex;align-items:center;gap:10px;margin:7px 0 0 30px;flex-wrap:wrap}
     .q-sub{margin:4px 0 0 30px}
     .q-ex.q-base{background:rgba(56,189,248,.06);border-radius:10px;padding:9px 8px;margin:2px 0}
@@ -685,22 +691,22 @@
       window.dispatchEvent(new Event('spc-installed'));
     });
   </script>
-  <script src="data.js?v=20261011a"></script>
-  <script src="week.js?v=20261011a"></script>
-  <script src="daily.js?v=20261011a"></script>
-  <script src="engine.js?v=20261011a"></script>
-  <script src="progress.js?v=20261011a"></script>
-  <script src="store.js?v=20261011a"></script>
-  <script src="duration.js?v=20261011a"></script>
-  <script src="adapt.js?v=20261011a"></script>
-  <script src="settings.js?v=20261011a"></script>
-  <script src="idb.js?v=20261011a"></script>
-  <script src="context.js?v=20261011a"></script>
-  <script src="evaluator.js?v=20261011a"></script>
-  <script src="shadow.js?v=20261011a"></script>
-  <script src="evidence.js?v=20261011a"></script>
-  <script src="goals.js?v=20261011a"></script>
-  <script src="backup.js?v=20261011a"></script>
-  <script src="app.js?v=20261011a"></script>
+  <script src="data.js?v=20261012a"></script>
+  <script src="week.js?v=20261012a"></script>
+  <script src="daily.js?v=20261012a"></script>
+  <script src="engine.js?v=20261012a"></script>
+  <script src="progress.js?v=20261012a"></script>
+  <script src="store.js?v=20261012a"></script>
+  <script src="duration.js?v=20261012a"></script>
+  <script src="adapt.js?v=20261012a"></script>
+  <script src="settings.js?v=20261012a"></script>
+  <script src="idb.js?v=20261012a"></script>
+  <script src="context.js?v=20261012a"></script>
+  <script src="evaluator.js?v=20261012a"></script>
+  <script src="shadow.js?v=20261012a"></script>
+  <script src="evidence.js?v=20261012a"></script>
+  <script src="goals.js?v=20261012a"></script>
+  <script src="backup.js?v=20261012a"></script>
+  <script src="app.js?v=20261012a"></script>
 </body>
 </html>
