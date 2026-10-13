@@ -24,7 +24,7 @@ async function seed(page) {
 }
 
 async function configureLadder(page, { rounds, restRound }) {
-  await page.locator('.nav [data-s="profile"]').click();
+  if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
   await page.locator('[data-sview="workoutDefaults"]').click();
   await page.locator('[data-editdef="mu_strength"]').click();
   const roundsEl = page.locator('.ed-in[data-ed="rounds"][data-bi="0"]');

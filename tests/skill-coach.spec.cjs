@@ -597,7 +597,9 @@ test.describe('app UI', () => {
     await page.locator('[data-finish]').click();
     await expect(page.locator('text=/Unlocked|Nice Work/')).toBeVisible();
     if (await page.locator('.unlock [data-ok]').count()) await page.locator('.unlock [data-ok]').click();
-    await page.locator('[data-map]').click();
+    // UX-1: the summary no longer links to the archived Map; reach it directly.
+    await page.locator('[data-today]').click();
+    await page.evaluate((s) => window.CoachApp._goto(s), 'map');
     await expect(page.locator('.node.completed', { hasText: '10 Pull-Ups' })).toBeVisible();
     // Persists across reload
     await page.reload();
@@ -902,7 +904,7 @@ test.describe('V5 skill-tree proposal (review artifact)', () => {
 test.describe('settings UI', () => {
   test('Profile hub exposes Workout Defaults, Timer & Alerts, and Exercise Library', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     const titles = await page.locator('.settings-row[data-sview] .sr-title').allTextContents();
     const joined = titles.join('|');
     expect(joined).toContain('Workout Defaults');
@@ -912,7 +914,7 @@ test.describe('settings UI', () => {
 
   test('ladder settings can be edited and short/long rests stay distinct', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="workoutDefaults"]').click();
     await page.locator('[data-editdef="mu_strength"]').click();
     await expect(page.locator('.ed-block').first()).toBeVisible();
@@ -928,7 +930,7 @@ test.describe('settings UI', () => {
 
   test('duration in the editor recalculates as fields change', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="workoutDefaults"]').click();
     await page.locator('[data-editdef="mu_strength"]').click();
     const before = await page.locator('.ed-dur').textContent();
@@ -940,7 +942,7 @@ test.describe('settings UI', () => {
 
   test('save as default persists after refresh; reset restores the template default', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="workoutDefaults"]').click();
     await page.locator('[data-editdef="mu_strength"]').click();
     const rounds = page.locator('.ed-in[data-ed="rounds"][data-bi="0"]');
@@ -954,7 +956,7 @@ test.describe('settings UI', () => {
     });
     expect(saved).toBe(4);
     // Reset in the editor restores the template default (5 rounds) in the working copy.
-    await page.locator('.nav [data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="workoutDefaults"]').click();
     await page.locator('[data-editdef="mu_strength"]').click();
     await page.locator('[data-edreset]').click();
@@ -1005,7 +1007,7 @@ test.describe('settings UI', () => {
   test('an approved exercise replacement in Workout Defaults takes effect in the workout', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
     // Edit the mu_strength default via Profile → Workout Defaults.
-    await page.locator('.nav [data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="workoutDefaults"]').click();
     await page.locator('[data-editdef="mu_strength"]').click();
     // Scapular Pull-Ups (block 1) has an approved alternative (Ring Row).
@@ -1067,7 +1069,7 @@ test.describe('settings UI', () => {
   test('editing settings never writes a legacy puc_* key', async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('puc_log', JSON.stringify([{ id: 1, reps: 8, setType: 'work' }])));
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="workoutDefaults"]').click();
     await page.locator('[data-editdef="mu_strength"]').click();
     const rounds = page.locator('.ed-in[data-ed="rounds"][data-bi="0"]');

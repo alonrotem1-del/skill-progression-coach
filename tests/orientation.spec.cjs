@@ -63,7 +63,7 @@ test('2 — no code attempts a landscape lock, even on an installed/standalone l
 test('3 — Settings has no "Enter Landscape" action', async ({ page }) => {
   await stubOrientation(page);
   await page.goto('index.html'); await seed(page);
-  await page.locator('.nav [data-s="profile"]').click();
+  if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
   expect(await page.locator('[data-enter-landscape]').count()).toBe(0);
   expect(await page.locator('#landscapeCard').count()).toBe(0);
 });
@@ -96,7 +96,7 @@ test.describe('5/6 — a physical landscape viewport remains usable (secondary, 
 
   test('Week uses the width (multi-column) and Map/workout still render', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="plan"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
     const wkCols = await page.locator('.week-grid').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length);
     expect(wkCols).toBeGreaterThan(1);
     await page.evaluate((s) => window.CoachApp._goto(s), 'map');

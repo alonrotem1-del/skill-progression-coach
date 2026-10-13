@@ -340,7 +340,7 @@ async function seedOnboarded(page) {
 }
 
 async function openDataSettings(page) {
-  await page.locator('[data-s="profile"]').click();
+  if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
   await page.locator('[data-sview="data"]').click();
 }
 

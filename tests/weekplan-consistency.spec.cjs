@@ -50,7 +50,7 @@ async function seed(page, dayId) {
 // One card per weekday, as the Week screen actually renders it: the session
 // description line plus the listed items.
 async function weekCards(page) {
-  await page.locator('.nav [data-s="plan"]').click();
+  if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
   await expect(page.locator('.wd-card').first()).toBeVisible();
   return await page.evaluate(() => Array.from(document.querySelectorAll('.wd-card')).map(c => ({
     day: (c.querySelector('.wd-day') || {}).textContent.replace(' Today', '').trim(),
@@ -68,7 +68,7 @@ function cardFor(cards, dayId) {
 }
 
 async function openDayDetail(page, dayId) {
-  await page.locator('.nav [data-s="plan"]').click();
+  if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
   await page.locator('[data-daydetail="' + dayId + '"]').click();
   await expect(page.locator('.sheet-back .sheet')).toBeVisible();
 }
@@ -80,7 +80,7 @@ async function closeDayDetail(page) {
 }
 
 async function openEditPlan(page) {
-  await page.locator('.nav [data-s="plan"]').click();
+  if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
   await page.locator('[data-editplan]').click();
   await expect(page.locator('[data-epsave]')).toBeVisible();
 }

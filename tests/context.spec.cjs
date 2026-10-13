@@ -523,7 +523,7 @@ test.describe('P5 context — no new engine behaviour', () => {
     });
     await seed(page, 2);
     await expect(page.locator('.nav [data-s="today"]')).toBeVisible();
-    await page.locator('.nav [data-s="plan"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
     await expect(page.locator('.scr')).toBeVisible();
     await page.locator('.nav [data-s="today"]').click();
     await expect(page.locator('.scr')).toBeVisible();
@@ -545,7 +545,7 @@ test.describe('P5 context — no new engine behaviour', () => {
     });
     await seed(page, 2);
     const profileBefore = await page.evaluate(() => localStorage.getItem('spc_c_profile'));
-    await page.locator('[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="data"]').click();
     await expect(page.locator('[data-ctx-status]')).toContainText(/unavailable/i);
     await expect(page.locator('[data-ctx-status]')).toContainText(/data is unaffected/i);
@@ -555,7 +555,7 @@ test.describe('P5 context — no new engine behaviour', () => {
 
   test('25 — with storage working, the diagnostic names the installed context', async ({ page }) => {
     await seed(page, 2);
-    await page.locator('[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="data"]').click();
     await expect(page.locator('[data-ctx-status]')).toContainText(new RegExp(CTX));
     await expect(page.locator('[data-ctx-status]')).toContainText(/installed and adopted/i);
@@ -580,7 +580,7 @@ test.describe('P5 context — delivery', () => {
       await page.waitForTimeout(250);
       cached = await read();
     }
-    expect(cached.name).toMatch(/skill-progression-coach-v26/);
+    expect(cached.name).toMatch(/skill-progression-coach-v27/);
     ['context.js', 'content/contexts.json', 'content/vocabulary.json',
       'content/bundle-1.json', 'content/semantics-1.json']
       .forEach((f) => expect(cached.urls.some((u) => u.indexOf(f) >= 0), f).toBe(true));

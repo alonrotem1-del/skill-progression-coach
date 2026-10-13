@@ -133,7 +133,14 @@
       exercises: exercises, activeExId: null, status: 'not_started'
     };
   }
-  function dateKey(d) { return d.toISOString().slice(0, 10); }
+  // The athlete's LOCAL calendar date. The weekday that picks today's session
+  // is local (getDay), so the key that names today's workout must be too — a
+  // UTC key rolls over hours away from local midnight, and in that window the
+  // key names one day while the weekday names another.
+  function dateKey(d) {
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
 
   // Build an AD-HOC daily-workout entity from a chosen list of exercises. Same
   // shape as a scheduled daily so it flows through the identical runner, resume

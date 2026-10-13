@@ -43,7 +43,8 @@
     chart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
     person:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/></svg>',
     center:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>',
-    week:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M7.5 13h2M14.5 13h2M7.5 17h2M14.5 17h2"/></svg>'
+    week:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M7.5 13h2M14.5 13h2M7.5 17h2M14.5 17h2"/></svg>',
+    gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>'
   };
 
   // ---- audio ----------------------------------------------------------------
@@ -430,40 +431,60 @@
   }
 
   // ---- shell / nav ----------------------------------------------------------
+  // Today = Coach, Goals = Progress, Settings = Control. Two primary
+  // destinations and one permanent gear: everything administrative (the week,
+  // history, data, preferences) lives one level down behind it, so nothing
+  // competes with the two questions the athlete opens the app for.
+  var PRIMARY=['today','goals'];
   function shell(inner,active){
     app.innerHTML='';
     var wrap=h('<div></div>');
-    wrap.appendChild(h('<div class="scr">'+inner+'</div>'));
-    // Four destinations, one question each: what do I do today, what is the
-    // week, where am I on my goals, and everything else. The Skill Map and the
-    // separate Progress tab are gone as top-level concepts — a graph is not the
-    // product, and two screens answering "where am I" was one too many.
+    // The date + gear bar belongs to the two root screens only; screens pushed
+    // on top of them (a goal's detail, the workout chooser) keep their own
+    // back header and still highlight the tab they came from.
+    var top=(PRIMARY.indexOf(active)>=0&&UI.screen===active)?topBar():'';
+    wrap.appendChild(h('<div class="scr">'+top+inner+'</div>'));
     var nav=h('<div class="nav">'+
       navBtn('today','Today',ICON.today,active)+
-      navBtn('plan','Plan',ICON.week,active)+
-      navBtn('goals','Goals',ICON.chart,active)+
-      navBtn('profile','Profile',ICON.person,active)+'</div>');
+      navBtn('goals','Goals',ICON.chart,active)+'</div>');
     wrap.appendChild(nav);
     app.appendChild(wrap);
     on('.nav button','click',function(e){ setScreen(e.currentTarget.getAttribute('data-s')); },nav);
+    on('[data-settings]','click',function(){ setScreen('settings'); },wrap);
+    on('[data-tosettings]','click',function(){ settingsView='home'; setScreen('settings'); },wrap);
     return wrap;
   }
   function navBtn(id,label,ic,active){return '<button data-s="'+id+'" class="'+(active===id?'on':'')+'"><span class="ic">'+ic+'</span>'+label+'</button>';}
+  function topBar(){
+    var d=new Date(), days=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
+      months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '<div class="topbar"><div class="tb-date">'+days[d.getDay()]+', '+d.getDate()+' '+months[d.getMonth()]+'</div>'+
+      '<button class="gear" data-settings aria-label="Settings" title="Settings">'+ICON.gear+'</button></div>';
+  }
+  // Header for every screen reached from Settings: a way back, and a title.
+  function backHeader(title){
+    return '<div class="wk-top"><div class="between"><button class="link" data-tosettings>&lsaquo; Settings</button><b>'+esc(title)+'</b><span style="width:60px"></span></div></div>';
+  }
 
   function setScreen(name){
+    // 'week' and 'profile' are the old names of 'plan' and 'settings'. They stay
+    // accepted so every older entry point lands on the same screen, while the
+    // screen state only ever holds the canonical name.
+    if(name==='week') name='plan';
+    if(name==='profile') name='settings';
     UI.screen=name;
     window.scrollTo(0,0); // a full screen swap always starts at the top — the
                            // browser does not reset scroll on innerHTML replacement
     if(name==='today') renderToday();
-    else if(name==='plan'||name==='week') renderWeek();
+    else if(name==='plan') renderWeek();
     else if(name==='goals') renderGoals();
     else if(name==='goal') renderGoalDetail(UI.goalId);
-    // 'map' and 'progress' are no longer primary destinations. The routes stay
-    // callable so nothing that already links to them breaks, and History moved
-    // into Goals — but neither has an entry point in the shell any more.
+    else if(name==='history') renderHistory();
+    // 'map' and 'progress' are archived: callable so nothing that still refers
+    // to them breaks, but no screen links to them any more.
     else if(name==='map') renderMap();
     else if(name==='progress') renderProgress();
-    else if(name==='profile') renderProfile();
+    else if(name==='settings') renderProfile();
   }
 
   // ---- onboarding -----------------------------------------------------------
@@ -594,6 +615,7 @@
   // competing recommendation; the only secondary card is the smaller "lighter /
   // adapted option", clearly subordinate.
   function renderToday(){
+    UI.screen='today'; // drawn directly from many flows; it is always the Today root
     var plan=getPlan(), ctx=weekCtx(), dayId=ctx.todayId;
     var res=Week.resolveDay(plan,dayId,ctx);
     var r=readiness();
@@ -781,10 +803,21 @@
       var inner=(v&&v.goals&&v.goals.length)
         ? v.goals.map(function(g){ return goalCardHtml(g,true); }).join('')
         : goalsUnavailableHtml(v);
-      body.innerHTML=inner+historySection();
+      body.innerHTML=inner;
       on('[data-goalopen]','click',function(e){ UI.goalId=e.currentTarget.dataset.goalopen; setScreen('goal'); },body);
-      wireHistory(body);
     });
+  }
+
+  // History is a record, not a destination: it lives behind the gear, one
+  // level below the question the athlete arrived with.
+  function renderHistory(){
+    var wrap=shell(backHeader('History')+historySection(),null);
+    wireHistory(wrap);
+  }
+  // After a history row is deleted, excluded or re-classified, redraw whichever
+  // screen the row was on. (Progress is archived but still renders history.)
+  function refreshHistoryScreen(){
+    if(UI.screen==='progress') renderProgress(); else setScreen('history');
   }
 
   function renderGoalDetail(goalId){
@@ -834,10 +867,10 @@
         (res.adapted?'<div class="wd-adapt">Adapted — tap for why</div>':'')+
         '</button>';
     }).join('');
-    var html='<div class="hero"><div class="between"><h1>Your Week</h1><button class="btn sm primary" data-editplan>Edit Plan</button></div>'+
+    var html=backHeader('This Week')+'<div class="hero"><div class="between"><h1>Your Week</h1><button class="btn sm primary" data-editplan>Edit Plan</button></div>'+
       '<div class="path-summary">Sunday–Saturday · tap any day for the full plan</div></div>'+
       '<div class="week-grid">'+cards+'</div>';
-    var wrap=shell(html,'week');
+    var wrap=shell(html,null);
     on('[data-daydetail]','click',function(e){ openDayDetail(+e.currentTarget.dataset.daydetail); },wrap);
     on('[data-editplan]','click',function(){ openEditPlan(); },wrap);
   }
@@ -869,7 +902,7 @@
       '<button class="link" data-epreset>Reset to Approved</button></div></div>'+
       tabs+body+
       '<div class="ep-save"><button class="btn primary" data-epsave>Save Plan</button></div>';
-    var wrap=shell(html,'week');
+    var wrap=shell(html,null);
     on('[data-eptab]','click',function(e){ UI.planEditView=e.currentTarget.dataset.eptab; renderEditPlan(); },wrap);
     on('[data-epday]','click',function(e){ togglePlanDay(e.currentTarget.dataset.ex,+e.currentTarget.dataset.epday); },wrap);
     on('[data-eptarget]','click',function(e){ bumpPlanTarget(e.currentTarget.dataset.ex,+e.currentTarget.dataset.eptarget); },wrap);
@@ -879,7 +912,7 @@
     on('[data-epreset1]','click',function(e){ resetOneExercise(e.currentTarget.dataset.epreset1); },wrap);
     on('[data-epmeta]','click',function(e){ openExMetaSheet(e.currentTarget.dataset.epmeta); },wrap);
     on('[data-epsave]','click',savePlanEdit,wrap);
-    on('[data-epcancel]','click',function(){ UI.planEdit=null; UI.planAck={}; setScreen('week'); },wrap);
+    on('[data-epcancel]','click',function(){ UI.planEdit=null; UI.planAck={}; setScreen('plan'); },wrap);
     on('[data-epreset]','click',resetPlanEdit,wrap);
   }
   function editRequirementsHtml(req,ids){
@@ -999,7 +1032,7 @@
     var p=getPlan(); p.requirements=clone(UI.planEdit); savePlan(p); UI.planEdit=null; UI.planAck={};
     clearDaily(); // rebuild Today's queue from the saved plan
     toast('Plan saved — Today, Week and the Map now use your updated plan.');
-    setScreen('week');
+    setScreen('plan');
   }
   // Reset the ENTIRE plan to the approved recommendation (confirm; edits stay
   // pending until Save).
@@ -1107,13 +1140,13 @@
     completeTodayBaseItem(dayId,'_group',{type:'group',name:'Group Workout Log',
       plannedText:'Log actual movements', actualText:(log.group.moves.length)+' movement'+(log.group.moves.length===1?'':'s')+' logged'});
     closeSheet(); toast('Group workout logged — Friday will adjust to the actual pulling load.');
-    if(UI.screen==='week') renderWeek(); else renderToday();
+    if(UI.screen==='plan') renderWeek(); else renderToday();
   }
   function markDayDone(dayId){
     var p=getPlan(); p.dayLog=p.dayLog||{}; var log=p.dayLog[dayId]||{}; log.completed=true; p.dayLog[dayId]=log; savePlan(p);
     var baseId=Week.climbsVisibly(p,dayId)?'bouldering':(Week.DAYS_BY_ID[dayId]&&Week.DAYS_BY_ID[dayId].type==='group'?'_group':null);
     if(baseId) completeTodayBaseItem(dayId,baseId,{type:baseId==='bouldering'?'climbing':'group', name:baseId==='bouldering'?'Climbing Session':'Group Workout Log', actualText:'Marked completed'});
-    closeSheet(); toast('Marked completed.'); if(UI.screen==='week') renderWeek(); else renderToday();
+    closeSheet(); toast('Marked completed.'); if(UI.screen==='plan') renderWeek(); else renderToday();
   }
   // If `dayId` is TODAY, sync its queue's base item (climbing/group) to
   // completed — so the same session finished via the day-detail sheet or the
@@ -1128,12 +1161,12 @@
   function setDayOverride(dayId,mode){
     var p=getPlan(); p.overrides=p.overrides||{}; p.overrides[dayId]=mode; savePlan(p);
     closeSheet(); toast(mode==='planned'?'Restored the planned session for today.':'Using the lighter option for today.');
-    if(UI.screen==='week') renderWeek(); else renderToday();
+    if(UI.screen==='plan') renderWeek(); else renderToday();
   }
   function clearDayOverride(dayId){
     var p=getPlan(); if(p.overrides) delete p.overrides[dayId]; savePlan(p);
     closeSheet(); toast('Override cleared — back to the load-based suggestion.');
-    if(UI.screen==='week') renderWeek(); else renderToday();
+    if(UI.screen==='plan') renderWeek(); else renderToday();
   }
 
   // Build the runnable workout for a resolved day from its INCLUDED plan
@@ -3491,10 +3524,9 @@
         '<div class="card"><div class="section" style="margin-top:0">Progress</div>'+
         (affected.length?affected.map(function(n){return '<div class="crit"><span>'+esc(n.name)+' — '+esc(Engine.progressText(n,ws.nodes))+'</span></div>';}).join(''):'<p class="muted small">Data updated.</p>')+'</div>'+
         (unlocked.length?'<div class="card ok" style="border-color:var(--focus)"><div class="section" style="margin-top:0">New Skills Unlocked</div>'+unlocked.map(function(n){return '<div class="crit done"><span class="ck">'+ICON.check+'</span><span>'+esc(n.name)+'</span></div>';}).join('')+'</div>':'')+
-        '<button class="btn primary" data-today>Back to Today</button><button class="btn ghost" data-map>View Map</button>';
+        '<button class="btn primary" data-today>Back to Today</button>';
       window.scrollTo(0,0);
       app.innerHTML=''; app.appendChild(h('<div class="scr">'+html+'</div>'));
-      on('[data-map]','click',function(){setScreen('map');});
       on('[data-today]','click',function(){setScreen('today');});
     }
     if(unlocked.length){
@@ -3633,12 +3665,12 @@
     if(!confirm('Delete this workout from your history? This cannot be undone.')) return;
     var sessions=(Store.getSessions()||[]).filter(function(s){return s.id!==id;});
     Store.setSessions(sessions); recomputeBenchFromSessions();
-    toast('Workout deleted.'); renderProgress();
+    toast('Workout deleted.'); refreshHistoryScreen();
   }
   function toggleExclude(id){
     var sessions=(Store.getSessions()||[]); var s=sessions.filter(function(x){return x.id===id;})[0]; if(!s) return;
     s.excluded=!s.excluded; Store.setSessions(sessions); recomputeBenchFromSessions();
-    toast(s.excluded?'Excluded from your stats.':'Included in your stats.'); renderProgress();
+    toast(s.excluded?'Excluded from your stats.':'Included in your stats.'); refreshHistoryScreen();
   }
   function toggleTest(id){
     var sessions=(Store.getSessions()||[]); var s=sessions.filter(function(x){return x.id===id;})[0]; if(!s) return;
@@ -3650,7 +3682,7 @@
       s._prevClass=s.classification||null; s.classification='test'; s.excluded=true;
     }
     Store.setSessions(sessions); recomputeBenchFromSessions();
-    toast(isTest?'This workout now counts again.':'Marked as a test — excluded from progress.'); renderProgress();
+    toast(isTest?'This workout now counts again.':'Marked as a test — excluded from progress.'); refreshHistoryScreen();
   }
 
   // ---- Profile / Settings ---------------------------------------------------
@@ -3672,28 +3704,41 @@
   function settingsRow(view,title,sub){
     return '<button class="settings-row" data-sview="'+view+'"><div class="sr-main"><div class="sr-title">'+esc(title)+'</div><div class="muted small">'+esc(sub)+'</div></div><span class="sr-arrow">&rsaquo;</span></button>';
   }
+  // A row that opens a whole screen of its own rather than a settings sub-view.
+  function settingsScreenRow(screen,title,sub){
+    return '<button class="settings-row" data-sgo="'+screen+'"><div class="sr-main"><div class="sr-title">'+esc(title)+'</div><div class="muted small">'+esc(sub)+'</div></div><span class="sr-arrow">&rsaquo;</span></button>';
+  }
   function renderSettingsHome(){
-    var html='<h1>Profile &amp; Settings</h1>'+
+    var html='<div class="wk-top"><div class="between"><button class="link" data-sclose>&lsaquo; Today</button><b>Settings</b><span style="width:60px"></span></div></div>'+
       '<div class="settings-list">'+
-      settingsRow('goals','Active Goals','Goal world, training days, session length')+
+      '<div class="section">Training</div>'+
+      settingsScreenRow('plan','This Week','Your schedule, and changes to it')+
+      settingsRow('goals','Training Days','Which days you train, and for how long')+
+      settingsScreenRow('history','History','Every workout you have logged')+
+      '<div class="section">Workouts</div>'+
       settingsRow('workoutDefaults','Workout Defaults','Rounds, reps and rests per workout')+
-      settingsRow('timer','Timer & Alerts','Sound, vibration, countdown ticks')+
       settingsRow('exercises','Exercise Library','Every exercise, benchmark and alternative')+
-      settingsRow('data','Data & History','Legacy data, reset, re-run onboarding')+
+      settingsRow('timer','Timer & Alerts','Sound, vibration, countdown ticks')+
+      '<div class="section">App</div>'+
+      settingsRow('data','Data & Backup','Backup, restore, install, reset')+
       '</div>';
-    var wrap=shell(html,'profile');
+    var wrap=shell(html,null);
     on('[data-sview]','click',function(e){ settingsView=e.currentTarget.dataset.sview; renderProfile(); },wrap);
+    on('[data-sgo]','click',function(e){ setScreen(e.currentTarget.dataset.sgo); },wrap);
+    on('[data-sclose]','click',function(){ setScreen('today'); },wrap);
   }
   function wireSettingsBack(wrap){ on('[data-sback]','click',function(){ settingsView='home'; renderProfile(); },wrap); }
 
   function renderGoalsSettings(){
     var p=Store.getProfile()||{};
     var dayLabels=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], days=p.days||[];
-    var html=settingsBackHeader('Active Goals')+
-      '<div class="section">Active Goal World</div><div class="opts" id="worlds">'+Data.worlds.map(function(w){return '<button class="pill '+(w.id===UI.worldId?'on':'')+'" data-world="'+w.id+'">'+esc(w.name)+'</button>';}).join('')+'</div>'+
+    // The legacy "goal world" picker is retired from view: the athlete's Goals
+    // are the canonical ones on the Goals tab. The legacy world still runs the
+    // legacy engine underneath until cutover, it is just no longer a choice.
+    var html=settingsBackHeader('Training Days')+
       '<div class="section">Training Days</div><div class="opts" id="days">'+dayLabels.map(function(d,i){return '<button class="pill '+(days.indexOf(i)>=0?'on':'')+'" data-d="'+i+'">'+d+'</button>';}).join('')+'</div>'+
       '<div class="section">Preferred Session Length</div><div class="opts" id="dur">'+['short','normal','long'].map(function(v){return '<button class="pill '+(p.duration===v?'on':'')+'" data-v="'+v+'">'+({short:'Short',normal:'Normal',long:'Long'}[v])+'</button>';}).join('')+'</div>';
-    var wrap=shell(html,'profile'); wireSettingsBack(wrap);
+    var wrap=shell(html,null); wireSettingsBack(wrap);
     on('#worlds .pill','click',function(e){switchWorldProfile(e.currentTarget.dataset.world);},wrap);
     on('#days .pill','click',function(e){var i=+e.currentTarget.dataset.d;var a=(p.days||[]).slice();var k=a.indexOf(i);if(k>=0)a.splice(k,1);else a.push(i);p.days=a;Store.setProfile(p);renderProfile();},wrap);
     on('#dur .pill','click',function(e){p.duration=e.currentTarget.dataset.v;Store.setProfile(p);UI.readiness=null;renderProfile();},wrap);
@@ -3709,7 +3754,7 @@
       tgl('vibrate','Vibrate at end of rest','Haptic buzz on supported devices')+
       tgl('countdown','Countdown ticks','A tick on the last 3 seconds of each rest')+
       '</div>';
-    var wrap=shell(html,'profile'); wireSettingsBack(wrap);
+    var wrap=shell(html,null); wireSettingsBack(wrap);
     on('[data-tgl]','click',function(e){var k=e.currentTarget.dataset.tgl;settings().timer[k]=!settings().timer[k];saveSettings();renderProfile();},wrap);
   }
 
@@ -3722,7 +3767,7 @@
     return '<div class="section">Install</div><div class="card tight"><p class="small">Add Skill Progression Coach to your home screen as its own app. In your browser menu choose <b>Add to Home Screen</b> (on iPhone: Share &rarr; Add to Home Screen).</p></div>';
   }
   function renderDataSettings(){
-    var html=settingsBackHeader('Data & History')+
+    var html=settingsBackHeader('Data & Backup')+
       installSection()+
       '<div class="section">Backup</div>'+
       '<div class="card tight"><p class="small">Save a complete backup file of everything this app has stored on this device — your own coach data and the Pull-Up Coach history it reads. Keep it somewhere safe before switching devices, reinstalling, or trying something risky.</p></div>'+
@@ -3740,7 +3785,7 @@
       '<p class="footnote muted tiny" data-evidence-status></p>'+
       '<p class="footnote muted tiny" data-shadow-status></p>'+
       '<div data-shadow-report></div>';
-    var wrap=shell(html,'profile'); wireSettingsBack(wrap);
+    var wrap=shell(html,null); wireSettingsBack(wrap);
     idbStatusLine(wrap);
     ctxStatusLine(wrap);
     evidenceStatusLine(wrap);
@@ -4004,7 +4049,7 @@
       });
     });
     html+='</div>';
-    var wrap=shell(html,'profile'); wireSettingsBack(wrap);
+    var wrap=shell(html,null); wireSettingsBack(wrap);
     on('[data-exdetail]','click',function(e){ openExerciseSheet(e.currentTarget.dataset.exdetail); },wrap);
   }
   function openExerciseSheet(exId){
@@ -4063,7 +4108,7 @@
         html+='<p class="footnote muted tiny">Climbing sessions are goal-driven; duration is never auto-estimated from reps.</p>';
       }
     });
-    var wrap=shell(html,'profile'); wireSettingsBack(wrap);
+    var wrap=shell(html,null); wireSettingsBack(wrap);
     on('[data-editdef]','click',function(e){ openWorkoutEditor(e.currentTarget.dataset.editdef,'default'); },wrap);
   }
 
@@ -4171,7 +4216,7 @@
       if(JSON.stringify(ed.blocks.map(function(b){return Settings.resolvedBlock(b,t.type);}))===JSON.stringify(def.blocks)) delete s.workoutDefaults[ed.templateId];
       else s.workoutDefaults[ed.templateId]={blocks:clone(ed.blocks)};
       saveSettings(); delete todayEdits[ed.templateId]; closeEditor();
-      if(scope==='today'){ setScreen('today'); } else { settingsView='workoutDefaults'; setScreen('profile'); }
+      if(scope==='today'){ setScreen('today'); } else { settingsView='workoutDefaults'; setScreen('settings'); }
     });
     on('[data-edreset]','click',function(){
       var base=(ed.scope==='today')?Settings.effective(t,settings(),null):Settings.defaultsForTemplate(t);
@@ -4180,7 +4225,7 @@
     on('[data-edcancel]','click',cancelEditor);
     on('[data-edcancel2]','click',cancelEditor);
   }
-  function cancelEditor(){ var scope=UI.editor?UI.editor.scope:'today'; closeEditor(); if(scope==='today'){UI.editorFromToday=false;setScreen('today');} else {settingsView='workoutDefaults';setScreen('profile');} }
+  function cancelEditor(){ var scope=UI.editor?UI.editor.scope:'today'; closeEditor(); if(scope==='today'){UI.editorFromToday=false;setScreen('today');} else {settingsView='workoutDefaults';setScreen('settings');} }
   function editorReplace(bi){
     var ed=UI.editor, b=ed.blocks[bi], ex=Data.exercises[b.exId]||{};
     var opts=(ex.alternatives||[]).filter(function(a){return Data.exercises[a];});
@@ -4198,7 +4243,7 @@
   // ---- go -------------------------------------------------------------------
   // If the install prompt becomes available while the user is on the Data
   // settings screen, refresh it so the Install button appears.
-  window.addEventListener('spc-installable',function(){ if(UI.screen==='profile'&&settingsView==='data') renderProfile(); });
+  window.addEventListener('spc-installable',function(){ if(UI.screen==='settings'&&settingsView==='data') renderProfile(); });
 
   // _evidence is a TEST SEAM, not an API: it exposes the tap so the ordering
   // invariant can be asserted from a real page against real IndexedDB.

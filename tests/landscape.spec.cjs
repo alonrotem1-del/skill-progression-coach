@@ -197,7 +197,7 @@ function defineLandscapeTests(viewport) {
 
     test('Settings hub, Exercise Library, and Progress reflow into columns', async ({ page }) => {
       await page.goto('index.html'); await seed(page);
-      await page.locator('.nav [data-s="profile"]').click();
+      if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
       let colCount = await page.locator('.settings-list').evaluate(el => getComputedStyle(el).columnCount);
       expect(Number(colCount)).toBeGreaterThan(1);
       await page.locator('[data-sview="exercises"]').click();

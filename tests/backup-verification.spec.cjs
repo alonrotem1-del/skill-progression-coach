@@ -74,7 +74,7 @@ async function finishOneExercise(page, exId) {
 }
 
 async function openEditPlan(page) {
-  await page.locator('.nav [data-s="plan"]').click();
+  if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
   await page.locator('[data-editplan]').click();
 }
 async function toggleDayChip(page, exerciseName, dayId) {
@@ -123,7 +123,7 @@ test.describe('Phase 1 verification — full round trip (Week / History / Progre
 
     await finishOneExercise(page, 'triceps'); // → History entry + a bench-adjacent Progress change
 
-    await page.locator('[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="timer"]').click();
     await expect(page.locator('[data-tgl="sound"]')).toHaveAttribute('aria-checked', 'true'); // default
     await page.locator('[data-tgl="sound"]').click();
@@ -144,7 +144,7 @@ test.describe('Phase 1 verification — full round trip (Week / History / Progre
     };
 
     // -- (A) export -------------------------------------------------------
-    await page.locator('[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="data"]').click();
     const [download] = await Promise.all([
       page.waitForEvent('download'),
@@ -163,7 +163,7 @@ test.describe('Phase 1 verification — full round trip (Week / History / Progre
 
     await finishOneExercise(page, 'triceps'); // a SECOND History entry + bench change
 
-    await page.locator('[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="timer"]').click();
     await page.locator('[data-tgl="sound"]').click(); // flip back on
     await expect(page.locator('[data-tgl="sound"]')).toHaveAttribute('aria-checked', 'true');
@@ -175,7 +175,7 @@ test.describe('Phase 1 verification — full round trip (Week / History / Progre
     expect(await page.locator('.scr').innerText()).not.toBe(before.progress);
 
     // -- (D) restore --------------------------------------------------------
-    await page.locator('[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="data"]').click();
     page.once('dialog', d => d.accept());
     await Promise.all([
@@ -198,7 +198,7 @@ test.describe('Phase 1 verification — full round trip (Week / History / Progre
     expect(after.settings).toBe(before.settings);
     expect(after.pucLog).toBe(before.pucLog);
 
-    await page.locator('[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="timer"]').click();
     await expect(page.locator('[data-tgl="sound"]')).toHaveAttribute('aria-checked', 'false'); // back to BEFORE
     await page.locator('[data-sback]').click();
@@ -214,14 +214,14 @@ test.describe('Phase 1 verification — full round trip (Week / History / Progre
     // -- reload/persistence (Section 3) --------------------------------------
     await page.reload();
     expect(await editPlanRowText(page, 'Toes-to-Bar')).toBe(before.week);
-    await page.locator('[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="timer"]').click();
     await expect(page.locator('[data-tgl="sound"]')).toHaveAttribute('aria-checked', 'false');
   });
 
   test('in-progress warning: absent when there is nothing in progress', async ({ page }) => {
     await seed(page, 2);
-    await page.locator('[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="data"]').click();
     const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-backup-export]').click()]);
     const text = fs.readFileSync(await download.path(), 'utf8');
@@ -242,7 +242,7 @@ test.describe('Phase 1 verification — full round trip (Week / History / Progre
     await page.evaluate(() => {
       localStorage.setItem('spc_c_workout', JSON.stringify({ type: 'strength', data: { templateId: 'ex_biceps', blocks: [] } }));
     });
-    await page.locator('[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="data"]').click();
     const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-backup-export]').click()]);
     const text = fs.readFileSync(await download.path(), 'utf8');
@@ -340,7 +340,7 @@ test.describe('Phase 1 verification — invalid file safety (UI level, before an
       const before = await page.evaluate(() => localStorage.getItem('spc_c_profile'));
       let dialogSeen = false;
       page.once('dialog', d => { dialogSeen = true; d.dismiss(); });
-      await page.locator('[data-s="profile"]').click();
+      if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
       await page.locator('[data-sview="data"]').click();
       await page.locator('[data-backup-file]').setInputFiles(tmpFile('spc-invalid', content));
       await page.waitForTimeout(300);
@@ -365,7 +365,7 @@ test.describe('Phase 1 verification — snapshot semantics (real localStorage)',
     // rewrite, so it isolates the property under test.
     await seed(page, 2);
     await page.evaluate(() => { localStorage.setItem('spc_c_bench', 'null'); }); // the 4-char string, not JSON null
-    await page.locator('[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="data"]').click();
     const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-backup-export]').click()]);
     const env = JSON.parse(fs.readFileSync(await download.path(), 'utf8'));
@@ -383,7 +383,7 @@ test.describe('Phase 1 verification — snapshot semantics (real localStorage)',
 
   test('a key present on the device but recorded absent in the backup is REMOVED by restore', async ({ page }) => {
     await seed(page, 2);
-    await page.locator('[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="data"]').click();
     // Export while spc_c_templates is absent (fresh seed never set it).
     expect(await page.evaluate(() => localStorage.getItem('spc_c_templates'))).toBeNull();
@@ -435,7 +435,7 @@ test.describe('Phase 1 verification — rollback surfaces through the real UI', 
 
     let dialogSeen = false;
     page.once('dialog', d => { dialogSeen = true; d.accept(); });
-    await page.locator('[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="data"]').click();
     await page.locator('[data-backup-file]').setInputFiles(tmpFile('spc-rollback', JSON.stringify(env)));
     await page.waitForTimeout(400);
@@ -473,7 +473,7 @@ test.describe('Phase 1 verification — service worker / offline availability', 
       const match = await cache.match('./backup.js', { ignoreSearch: true });
       return { cacheName, hasBackup: !!match };
     });
-    expect(cached.cacheName).toMatch(/skill-progression-coach-v26/);
+    expect(cached.cacheName).toMatch(/skill-progression-coach-v27/);
     expect(cached.hasBackup).toBe(true);
   });
 
@@ -481,7 +481,7 @@ test.describe('Phase 1 verification — service worker / offline availability', 
     await seed(page, 2);
     await page.evaluate(async () => { await navigator.serviceWorker.ready; });
     await page.reload();
-    await page.locator('[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="data"]').click();
     await expect(page.locator('[data-backup-export]')).toBeVisible();
     await expect(page.locator('[data-backup-restore]')).toBeVisible();
@@ -493,7 +493,7 @@ test.describe('Phase 1 verification — service worker / offline availability', 
     await page.waitForTimeout(600);
     await context.setOffline(true);
     await page.goto('index.html');
-    await page.locator('[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="data"]').click();
     await expect(page.locator('[data-backup-export]')).toBeVisible();
     const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-backup-export]').click()]);
@@ -522,9 +522,9 @@ test.describe('Phase 1 verification — service worker / offline availability', 
     await page.waitForTimeout(800); // let activate() prune obsolete caches
     const keys = await page.evaluate(() => window.caches.keys());
     expect(keys).not.toContain('skill-progression-coach-v17');
-    expect(keys).toContain('skill-progression-coach-v26');
+    expect(keys).toContain('skill-progression-coach-v27');
     // The live page (this activation) still has the current Backup UI.
-    await page.locator('[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="data"]').click();
     await expect(page.locator('[data-backup-export]')).toBeVisible();
   });

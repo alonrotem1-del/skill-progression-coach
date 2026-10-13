@@ -263,19 +263,28 @@ const openGoal = async (page, goalId) => {
 };
 
 test.describe('renovation — the shell', () => {
-  test('18 four destinations, and Map and Progress are not among them', async ({ page }) => {
+  test('18 two destinations plus a gear, and nothing else is a tab', async ({ page }) => {
     await seed(page);
-    expect(await page.locator('.nav button').allTextContents()).toEqual(['Today', 'Plan', 'Goals', 'Profile']);
-    expect(await page.locator('.nav button[data-s="map"]').count()).toBe(0);
-    expect(await page.locator('.nav button[data-s="progress"]').count()).toBe(0);
-    // "Week" is now "Plan" — the athlete plans, they do not browse a week.
-    expect(await page.locator('.nav button[data-s="week"]').count()).toBe(0);
+    // UX-1: Today = Coach, Goals = Progress, Settings = Control (the gear).
+    expect(await page.locator('.nav button').allTextContents()).toEqual(['Today', 'Goals']);
+    for (const gone of ['map', 'progress', 'week', 'plan', 'profile', 'settings']) {
+      expect(await page.locator('.nav button[data-s="' + gone + '"]').count(), gone).toBe(0);
+    }
+    // the gear is on both root screens
+    await expect(page.locator('[data-settings]')).toBeVisible();
+    await page.locator('.nav [data-s="goals"]').click();
+    await expect(page.locator('[data-settings]')).toBeVisible();
+    // and Settings reaches everything that used to be a tab
+    await page.locator('[data-settings]').click();
+    for (const row of ['[data-sgo="plan"]', '[data-sgo="history"]', '[data-sview="goals"]', '[data-sview="data"]']) {
+      await expect(page.locator(row), row).toBeVisible();
+    }
   });
 
   test('19 no route into the Skill Map from anywhere the athlete looks', async ({ page }) => {
     await seed(page);
-    for (const screen of ['today', 'plan', 'goals', 'profile']) {
-      await page.locator('.nav button[data-s="' + screen + '"]').click();
+    for (const screen of ['today', 'plan', 'goals', 'settings', 'history']) {
+      await page.evaluate((s) => window.CoachApp._goto(s), screen);
       await page.waitForTimeout(250);
       const text = (await page.locator('#app').innerText()).toLowerCase();
       expect(text, screen).not.toContain('skill map');
@@ -322,9 +331,12 @@ test.describe('renovation — the shell', () => {
     await expect(page.locator('.why-body')).toBeVisible();
   });
 
-  test('24 History lives inside Goals rather than as its own destination', async ({ page }) => {
+  test('24 History lives behind the gear, not on Goals', async ({ page }) => {
     await seed(page);
     await goGoals(page);
+    expect(await page.locator('#app').innerText()).not.toContain('WORKOUT HISTORY');
+    await page.locator('[data-settings]').click();
+    await page.locator('[data-sgo="history"]').click();
     expect(await page.locator('#app').innerText()).toContain('WORKOUT HISTORY');
   });
 
@@ -354,9 +366,9 @@ test.describe('renovation — the shell', () => {
     expect(after).toBe(before);
   });
 
-  test('27 Plan still shows the week and still edits', async ({ page }) => {
+  test('27 This Week (behind the gear) still shows the week and still edits', async ({ page }) => {
     await seed(page);
-    await page.locator('.nav button[data-s="plan"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
     await page.waitForTimeout(300);
     expect(await page.locator('#app').innerText()).toContain('Sunday');
     await page.locator('[data-editplan]').first().click();
@@ -365,9 +377,9 @@ test.describe('renovation — the shell', () => {
     expect(await page.locator('#app').innerText()).not.toContain('Bouldering');
   });
 
-  test('28 Profile still reaches Data, Backup and the diagnostics', async ({ page }) => {
+  test('28 Settings still reaches Data, Backup and the diagnostics', async ({ page }) => {
     await seed(page);
-    await page.locator('.nav button[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="data"]').click();
     await expect(page.locator('[data-idb-status]')).toContainText(/schema v2/, { timeout: 8000 });
     await expect(page.locator('[data-backup-export]')).toBeVisible();

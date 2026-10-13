@@ -641,7 +641,7 @@ test.describe('idb.js — no source-of-truth cutover', () => {
     await seed(page, 2);
     await page.evaluate(async () => { await window.CoachIDB.init(); });
     await expect(page.locator('.nav [data-s="today"]')).toBeVisible();
-    await page.locator('.nav [data-s="plan"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
     await expect(page.locator('.scr')).toBeVisible();
     await page.evaluate((s) => window.CoachApp._goto(s), 'progress');
     await expect(page.locator('.scr')).toBeVisible();
@@ -665,7 +665,7 @@ test.describe('idb.js — no source-of-truth cutover', () => {
     await seed(page, 2);
     // The app is fully usable: Today rendered, nav works, a workout can start.
     await expect(page.locator('.nav [data-s="today"]')).toBeVisible();
-    await page.locator('.nav [data-s="plan"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
     await expect(page.locator('.scr')).toBeVisible();
     await page.locator('.nav [data-s="today"]').click();
     await expect(page.locator('.scr')).toBeVisible();
@@ -683,7 +683,7 @@ test.describe('idb.js — no source-of-truth cutover', () => {
     });
     await seed(page, 2);
     const profileBefore = await page.evaluate(() => localStorage.getItem('spc_c_profile'));
-    await page.locator('[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="data"]').click();
     await expect(page.locator('[data-idb-status]')).toContainText(/unavailable/i);
     await expect(page.locator('[data-idb-status]')).toContainText(/simulated IndexedDB failure/);
@@ -695,7 +695,7 @@ test.describe('idb.js — no source-of-truth cutover', () => {
 
   test('31 — the diagnostics line reports ready, with the schema version, when the store is up', async ({ page }) => {
     await seed(page, 2);
-    await page.locator('[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="data"]').click();
     await expect(page.locator('[data-idb-status]')).toContainText(/ready \(schema v2/);
   });
@@ -713,7 +713,7 @@ test.describe('idb.js — PWA / offline', () => {
       const cache = await window.caches.open(cacheName);
       return { cacheName, hasIdb: !!(await cache.match('./idb.js', { ignoreSearch: true })) };
     });
-    expect(cached.cacheName).toMatch(/skill-progression-coach-v26/);
+    expect(cached.cacheName).toMatch(/skill-progression-coach-v27/);
     expect(cached.hasIdb).toBe(true);
   });
 
@@ -749,7 +749,7 @@ test.describe('idb.js — PWA / offline', () => {
     await page.waitForTimeout(800); // let activate() prune obsolete caches
     const keys = await page.evaluate(() => window.caches.keys());
     expect(keys).not.toContain('skill-progression-coach-v17');
-    expect(keys).toContain('skill-progression-coach-v26');
+    expect(keys).toContain('skill-progression-coach-v27');
     // The live activation has idb.js, and the database still opens.
     const ok = await page.evaluate(async () => (await window.CoachIDB.init()).ok);
     expect(ok).toBe(true);

@@ -44,13 +44,13 @@ test.describe('portrait screenshots @ 390x844', () => {
 
   test('2 — Week', async ({ page }) => {
     await seed(page);
-    await page.locator('.nav [data-s="plan"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
     await shot(page, '02-week');
   });
 
   test('3/14 — Edit Plan (with a warning)', async ({ page }) => {
     await seed(page);
-    await page.locator('.nav [data-s="plan"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
     await page.locator('[data-editplan]').click();
     await page.locator('[data-eptarget="1"][data-ex="t2b"]').click({ clickCount: 5 }); // push above recommended -> warning
     await shot(page, '03-14-edit-plan-warning');

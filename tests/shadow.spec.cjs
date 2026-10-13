@@ -485,7 +485,7 @@ test.describe('P6b shadow — in the running app', () => {
 
   test('31 the diagnostic runs in Profile and says plainly that nothing uses it', async ({ page }) => {
     await seed(page);
-    await page.locator('.nav button[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="data"]').click();
     const line = page.locator('[data-shadow-status]');
     await expect(line).toContainText(/Shadow evaluation/, { timeout: 15000 });
@@ -508,7 +508,7 @@ test.describe('P6b shadow — in the running app', () => {
       await window.CoachIDB.init(); return (await window.CoachIDB.all('ledger')).length;
     });
 
-    await page.locator('.nav button[data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="data"]').click();
     await expect(page.locator('[data-shadow-status]'))
       .toContainText(/diagnostic, not used by the app/, { timeout: 15000 });

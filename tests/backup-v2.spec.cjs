@@ -104,7 +104,7 @@ async function openData(page) {
     await expect(page.locator('[data-backup-export]')).toBeVisible();
     return;
   }
-  await page.locator('[data-s="profile"]').click();
+  if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
   if (await page.locator('[data-sview="data"]').count()) {
     await page.locator('[data-sview="data"]').click();
   }
@@ -743,7 +743,7 @@ test.describe('Backup v2 — PWA / offline', () => {
       };
     });
     expect(r.keys).not.toContain('skill-progression-coach-v17');
-    expect(r.keys).toContain('skill-progression-coach-v26');
+    expect(r.keys).toContain('skill-progression-coach-v27');
     expect(r.hasIdb).toBe(true);
     expect(r.hasBackup).toBe(true);
     expect(r.hasContext).toBe(true);

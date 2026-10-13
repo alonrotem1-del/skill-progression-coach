@@ -43,8 +43,9 @@ test.describe('standalone PWA (project site)', () => {
     expect(m.start_url).toBe('./');
     expect(m.scope).toBe('./');
     expect(m.display).toBe('standalone');
-    expect(m.theme_color).toBe('#12b76a');
-    expect(m.background_color).toBe('#0b1220');
+    // Quiet Paper (UX-1): the installed app's chrome is the paper colour.
+    expect(m.theme_color).toBe('#f5f0e6');
+    expect(m.background_color).toBe('#f5f0e6');
   });
 
   test('green icon assets exist and are green (not the purple original)', async ({ request }) => {

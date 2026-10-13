@@ -195,7 +195,7 @@ async function seedPlan(page, todayId = 5, active = 'muscleup') {
 test.describe('weekly plan — UI', () => {
   test('9 — Week screen shows all seven approved days', async ({ page }) => {
     await page.goto('index.html'); await seedPlan(page);
-    await page.locator('.nav [data-s="plan"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
     await expect(page.locator('.wd-card')).toHaveCount(7);
     const text = await page.locator('.week-grid').textContent();
     ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].forEach(d => expect(text).toContain(d));
@@ -258,7 +258,7 @@ test.describe('weekly plan — UI', () => {
     // Today scheduled session name…
     const todayName = await page.locator('.rec.sched .name').first().textContent();
     // …matches the Friday card on the Week screen.
-    await page.locator('.nav [data-s="plan"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
     const friCard = page.locator('.wd-card').nth(5);
     await expect(friCard).toContainText('Home Pull Session');
     // Map node detail surfaces the same plan (10 Pull-Ups trained Tue & Fri).

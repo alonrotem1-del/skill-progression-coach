@@ -123,7 +123,7 @@ test.describe('Edit Plan', () => {
 
   test('11/12/13/14/15 — editor opens with frequency targets and the approved defaults', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="plan"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
     await expect(page.locator('[data-editplan]')).toBeVisible();   // 11
     await page.locator('[data-editplan]').click();
     await expect(page.locator('.ep-tabs')).toBeVisible();
@@ -146,7 +146,7 @@ test.describe('Edit Plan', () => {
 
   test('16/17/18/19 — reassign via tap, counters update, Save persists, Cancel discards', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="plan"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
     await page.locator('[data-editplan]').click();
     const ring = page.locator('.ep-row', { hasText: 'Ring Support Hold' });
     // Ring Support is assigned Tue+Fri by default (target 1) → over-assigned.
@@ -171,7 +171,7 @@ test.describe('Edit Plan', () => {
     // Corrupt the plan first.
     await page.evaluate(() => { const S = window.CoachStore.makeStore(); const p = S.getPlan(); p.requirements.pistol.days = []; S.setPlan(p); });
     await page.reload();
-    await page.locator('.nav [data-s="plan"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
     await page.locator('[data-editplan]').click();
     page.once('dialog', d => d.accept());       // reset now confirms
     await page.locator('[data-epreset]').click();
@@ -201,7 +201,7 @@ test.describe('Edit Plan', () => {
     // Tuesday lists Top Hold by default.
     await expect(page.locator('.rec.sched .queue')).toContainText('Top Hold');
     // Unassign Top Hold from Tuesday (its only eligible day) and save.
-    await page.locator('.nav [data-s="plan"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
     await page.locator('[data-editplan]').click();
     await page.locator('.ep-row', { hasText: 'Top Hold' }).locator('[data-epday="2"]').click();
     await page.locator('[data-epsave]').click();
@@ -272,7 +272,7 @@ test.describe('Friday completeness', () => {
 test.describe('Muscle-Up Transition Drill', () => {
   test('29/30 — the Exercise Library explains the transition drill and links High Pull to the dip/support phase', async ({ page }) => {
     await page.goto('index.html'); await seed(page);
-    await page.locator('.nav [data-s="profile"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
     await page.locator('[data-sview="exercises"]').click();
     await page.locator('.settings-row', { hasText: 'Muscle-Up Transition Drill' }).click();
     const sheet = page.locator('.sheet');

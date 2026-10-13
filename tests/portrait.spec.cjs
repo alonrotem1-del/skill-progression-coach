@@ -74,7 +74,7 @@ WIDTHS.forEach(({ width, height }) => {
     test('Today, Week, Map, Progress all fit without horizontal scroll', async ({ page }) => {
       await seed(page);
       await noHorizontalOverflow(page);
-      await page.locator('.nav [data-s="plan"]').click();
+      if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
       await noHorizontalOverflow(page);
       await page.evaluate((s) => window.CoachApp._goto(s), 'map');
       await noHorizontalOverflow(page);
@@ -100,7 +100,7 @@ test.describe('8/10 — Week fits in portrait', () => {
 
   test('days stack as one vertical column', async ({ page }) => {
     await seed(page);
-    await page.locator('.nav [data-s="plan"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
     const cols = await page.locator('.week-grid').evaluate(el => getComputedStyle(el).gridTemplateColumns.trim().split(' ').length);
     expect(cols).toBe(1);
     await noHorizontalOverflow(page);
@@ -112,7 +112,7 @@ test.describe('9/10 — Edit Plan fits, all seven weekday chips stay selectable'
 
   test('frequency stepper and 7 day chips fit and can all be tapped', async ({ page }) => {
     await seed(page);
-    await page.locator('.nav [data-s="plan"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
     await page.locator('[data-editplan]').click();
     await noHorizontalOverflow(page);
     // Every weekday chip for the first exercise row is tappable and toggles.

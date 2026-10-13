@@ -53,7 +53,7 @@ async function seed(page, dayId = 5) {
   await page.reload();
 }
 async function openEditor(page) {
-  await page.locator('.nav [data-s="plan"]').click();
+  if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
   await page.locator('[data-editplan]').click();
 }
 const row = (page, name) => page.locator('.ep-row', { hasText: name });
@@ -221,7 +221,7 @@ test.describe('propagation after saving', () => {
   test('23 — Week reflects the saved days', async ({ page }) => {
     await seed(page); await saveT2bAllDays(page);
     // Monday's day detail now lists Toes-to-Bar (a newly-assigned day).
-    await page.locator('.nav [data-s="plan"]').click();
+    if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click(); await page.locator('[data-sgo="plan"]').click();
     await page.locator('.wd-card', { hasText: 'Monday' }).click();
     await expect(page.locator('.sheet')).toContainText('Toes-to-Bar');
   });

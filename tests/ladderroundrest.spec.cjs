@@ -24,7 +24,7 @@ async function seed(page) {
 // Edit the Pull-Up Ladder default: rounds, inter-round rest, and (optionally)
 // the step pattern — the exact controls a real user would use.
 async function configureLadder(page, { rounds, restRound, steps } = {}) {
-  await page.locator('.nav [data-s="profile"]').click();
+  if (!(await page.locator('[data-settings]').count())) await page.locator('.nav [data-s="today"]').click(); await page.locator('[data-settings]').click();
   await page.locator('[data-sview="workoutDefaults"]').click();
   await page.locator('[data-editdef="mu_strength"]').click();
   if (rounds != null) {
