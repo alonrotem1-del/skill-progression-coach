@@ -1,0 +1,498 @@
+<title>Quiet Paper</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<style>
+/* ── review harness chrome (not part of the design system under test) ──── */
+:root{ --h-bg:#EDE9E1; --h-ink:#2B2822; --h-muted:#6E675C; --h-line:#D8D2C6; color-scheme:light; }
+html,body{margin:0}
+body{
+  background:var(--h-bg);color:var(--h-ink);
+  font:400 15px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+}
+.wrap{max-width:900px;margin:0 auto;padding-block:28px 64px;padding-inline:16px;box-sizing:border-box}
+h1{font:500 26px/1.2 'Newsreader',Georgia,serif;letter-spacing:-.01em;margin:0 0 6px;text-wrap:balance}
+.lede{color:var(--h-muted);font-size:14.5px;max-width:58ch;margin:0 0 22px}
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 18px}
+.seg{display:inline-flex;border:1px solid var(--h-line);border-radius:10px;overflow:hidden;background:#F6F3EC}
+.seg button{appearance:none;border:0;background:none;cursor:pointer;font:500 13.5px inherit;color:var(--h-muted);padding:9px 14px}
+.seg button[aria-pressed="true"]{background:#2B2822;color:#F6F3EC}
+.seg button:focus-visible{outline:2px solid #B2623C;outline-offset:-2px}
+.caption{font-size:13px;color:var(--h-muted);margin:0 0 14px;max-width:58ch}
+.stage{display:flex;justify-content:center}
+.phone{position:relative;width:min(390px,100%);height:844px;flex:0 0 auto;border:1px solid var(--h-line);border-radius:26px;overflow:hidden;background:#FBF9F5}
+.device{position:absolute;inset:0;overflow-y:auto}
+.notes{margin-top:30px;border-top:1px solid var(--h-line);padding-top:20px}
+.notes h2{font:500 17px/1.3 'Newsreader',Georgia,serif;margin:0 0 10px}
+.notes ul{margin:0;padding-left:20px;color:var(--h-muted);font-size:14px}
+.notes li{margin-bottom:7px}
+.notes li b{color:var(--h-ink);font-weight:600}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ── the design system under evaluation ────────────────────────────────── */
+/* ──────────────────────────────────────────────────────────────────────────
+   QUIET PAPER, EARNED MOMENTS — design-system hypothesis under test.
+   MOCKUP ONLY. Nothing here is imported, cached or referenced by the app.
+   Layout concept: one column on paper. Hierarchy from type and air, not boxes.
+   ────────────────────────────────────────────────────────────────────────── */
+.device{
+  --paper:#FBF9F5;
+  --paper-raised:#F5F1EA;
+  --ink:#23211D;
+  --ink-muted:#6B665C;
+  --ink-faint:#9A948A;
+  --hairline:#E4DED2;
+  --clay:#B2623C;
+  --sage:#7B8A6B;
+  --ochre:#C9973F;
+
+  --serif:'Newsreader',Georgia,'Times New Roman',serif;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+
+  --gutter:22px;
+  --nav-h:62px;
+  --radius:12px;
+  color-scheme:light;
+}
+
+.device *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+
+.device{
+  background:var(--paper);
+  color:var(--ink);
+  font:400 16px/1.55 var(--sans);
+  /* Paper grain. Sells the substrate; costs one data URI and no requests. */
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  -webkit-font-smoothing:antialiased;
+}
+
+.screen{
+  min-height:100%;
+  padding:0 var(--gutter) calc(var(--nav-h) + 28px);
+  max-width:430px;margin:0 auto;
+}
+
+/* ── day header ─────────────────────────────────────────────────────────── */
+.head{display:flex;gap:16px;align-items:flex-start;padding:26px 0 0}
+.head-text{flex:1;min-width:0}
+.daylabel{font-size:13px;color:var(--ink-muted);letter-spacing:.01em}
+.daytitle{
+  font:400 29px/1.14 var(--serif);
+  color:var(--ink);letter-spacing:-.012em;margin-top:5px;text-wrap:balance;
+}
+.daysub{font-size:14.5px;color:var(--ink-muted);margin-top:8px;text-wrap:balance;max-width:30ch}
+.daymark{flex:0 0 auto;margin-top:6px;opacity:.95}
+
+/* "Why this?" — the reason stays one tap away and silent until asked. */
+.why{margin-top:12px}
+.why summary{
+  list-style:none;cursor:pointer;display:inline-block;
+  font-size:13.5px;color:var(--ink-muted);padding:4px 0;
+  text-decoration:underline;text-decoration-color:var(--hairline);
+  text-underline-offset:3px;text-decoration-thickness:1px;
+}
+.why summary::-webkit-details-marker{display:none}
+.why[open] summary{color:var(--ink-muted)}
+.why-body{font-size:14px;color:var(--ink-muted);line-height:1.55;padding:4px 0 2px;max-width:34em}
+
+/* ── exercise list: rows on paper, not cards ────────────────────────────── */
+.list{margin-top:22px;border-top:1px solid var(--hairline)}
+.ex{
+  display:flex;gap:14px;align-items:flex-start;width:100%;
+  padding:14px 0;border-bottom:1px solid var(--hairline);
+  background:none;border-left:0;border-right:0;border-top:0;
+  font:inherit;color:inherit;text-align:left;cursor:pointer;
+}
+.ex-n{
+  flex:0 0 16px;font-size:13px;color:var(--ink-faint);
+  font-variant-numeric:tabular-nums;padding-top:3px;
+}
+.ex-main{flex:1;min-width:0}
+.ex-name{display:block;font-size:17px;font-weight:500;color:var(--ink);letter-spacing:-.003em}
+.ex-presc{display:block;font-size:14px;color:var(--ink-muted);margin-top:3px}
+/* Optional / conditional information, as quiet as it can be while still read. */
+.ex-presc .q{color:var(--ink-faint)}
+.ex-chev{flex:0 0 auto;color:var(--ink-faint);padding-top:5px}
+
+/* A single prescribed item gets room to breathe instead of a list of one. */
+.solo{margin-top:30px;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
+.solo .ex{padding:24px 0;border-bottom:0}
+.solo .ex-name{font-size:19px}
+.solo .ex-presc{font-size:15px;margin-top:5px}
+
+/* ── the one primary action ─────────────────────────────────────────────── */
+.actions{margin-top:26px}
+.primary{
+  display:block;width:100%;height:54px;border:0;border-radius:var(--radius);
+  background:var(--ink);color:var(--paper);
+  font:600 16px/1 var(--sans);letter-spacing:.005em;cursor:pointer;
+}
+[data-primary="clay"] .primary{background:var(--clay)}
+.primary-meta{
+  font-size:12.5px;color:var(--ink-faint);text-align:center;margin-top:10px;
+  font-variant-numeric:tabular-nums;
+}
+.link{
+  display:inline-block;background:none;border:0;padding:6px 0;
+  font:400 14.5px var(--sans);color:var(--ink-muted);cursor:pointer;
+  text-decoration:underline;text-decoration-color:var(--hairline);
+  text-underline-offset:3px;text-decoration-thickness:1px;
+}
+.actions .link{margin-top:6px}
+
+/* ── secondary: everything below here is deliberately quieter ───────────── */
+.secondary{margin-top:40px}
+.secondary.airy{margin-top:72px}
+.secondary p{font-size:14px;color:var(--ink-muted)}
+.altrow{display:flex;gap:20px;margin-top:2px}
+
+.utility{margin-top:34px;border-top:1px solid var(--hairline)}
+.urow{
+  display:flex;align-items:center;justify-content:space-between;width:100%;
+  padding:15px 0;border-bottom:1px solid var(--hairline);
+  background:none;border-left:0;border-right:0;border-top:0;
+  font:inherit;color:inherit;text-align:left;cursor:pointer;
+}
+.urow-l{font-size:15px;color:var(--ink)}
+.urow-r{display:flex;align-items:center;gap:9px;font-size:13.5px;color:var(--ink-faint)}
+
+/* ── week rhythm: seven ticks, no boxes ─────────────────────────────────── */
+.week{display:flex;justify-content:space-between;padding:18px 2px 4px}
+.wd{display:flex;flex-direction:column;align-items:center;gap:8px;flex:1}
+.wd-l{font-size:11px;color:var(--ink-faint);letter-spacing:.02em}
+.wd-t{width:2px;height:14px;border-radius:1px;background:var(--hairline)}
+.wd-t.empty{background:transparent}
+.wd.today .wd-l{color:var(--clay)}
+.wd.today .wd-t{background:var(--clay)}
+
+/* ── bottom navigation ──────────────────────────────────────────────────── */
+.nav{
+  position:fixed;bottom:0;left:0;right:0;max-width:430px;margin:0 auto;
+  display:flex;background:var(--paper);border-top:1px solid var(--hairline);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+.nav button{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;
+  height:var(--nav-h);justify-content:center;
+  background:none;border:0;cursor:pointer;
+  font:400 11px var(--sans);color:var(--ink-faint);
+}
+.nav button.on{color:var(--ink);font-weight:600}
+.nav svg{display:block}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* Harness-only: the nav pins to the frame, not the browser viewport. */
+.device .nav{position:sticky;max-width:none;margin:0}
+.device .screen{padding-bottom:28px;max-width:none}
+</style>
+
+<div class="wrap">
+  <h1>Quiet Paper, Earned Moments</h1>
+  <p class="lede">Two Today screens at 390&nbsp;&times;&nbsp;844, testing the paper substrate, the
+  type pairing and the one-primary-action rule against real content from the app. The illustration
+  is a placeholder &mdash; it is here to test composition and scale, not to set the library.</p>
+
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Which screen">
+      <button type="button" id="tab-a" aria-pressed="true">A &middot; Training day</button>
+      <button type="button" id="tab-b" aria-pressed="false">B &middot; Open day</button>
+    </div>
+    <div class="seg" role="group" aria-label="Primary button colour">
+      <button type="button" id="pri-ink" aria-pressed="true">Ink button</button>
+      <button type="button" id="pri-clay" aria-pressed="false">Clay button</button>
+    </div>
+  </div>
+
+  <p class="caption" id="cap">Friday, five exercises, three of them required. The question: does the
+  primary action still dominate with a five-row list above it?</p>
+
+  <div class="stage">
+    <div class="phone">
+      <div class="device" id="screen-a"><div class="screen">
+
+  <!-- ── day header ───────────────────────────────────────────────────── -->
+  <header class="head">
+    <div class="head-text">
+      <div class="daylabel">Friday</div>
+      <h1 class="daytitle">Home Pull Session</h1>
+      <div class="daysub">About 21 min</div>
+    </div>
+    <!-- PLACEHOLDER day mark. Watercolor wash + graphite contour, 52px.
+         Stands in for the commissioned asset; not a library decision. -->
+    <div class="daymark">
+      <svg viewBox="0 0 64 64" width="52" height="52" aria-hidden="true">
+        <ellipse cx="21" cy="43" rx="10.5" ry="10.5" fill="#C9973F" opacity=".13"/>
+        <ellipse cx="43" cy="45" rx="10.5" ry="10.5" fill="#B2623C" opacity=".10"/>
+        <ellipse cx="32" cy="14" rx="13" ry="5" fill="#C9973F" opacity=".08"/>
+        <g fill="none" stroke="#6B665C" stroke-width="1.25" stroke-linecap="round">
+          <circle cx="21" cy="43" r="9.2"/>
+          <circle cx="43" cy="43" r="9.2"/>
+          <path d="M19.5 12.5 C20.2 20 20.6 27 20.9 33.6"/>
+          <path d="M44.5 12.5 C43.8 20 43.4 27 43.1 33.6"/>
+          <path d="M14 11.5 h11M39 11.5 h11"/>
+        </g>
+      </svg>
+    </div>
+  </header>
+
+  <details class="why">
+    <summary>Why this?</summary>
+    <div class="why-body">Your pulling strength is the limit on the ring muscle-up right
+      now, so Friday carries the ladder. Pistols keep the legs moving while you focus there.</div>
+  </details>
+
+  <!-- ── what is prescribed ───────────────────────────────────────────── -->
+  <div class="list">
+    <button class="ex">
+      <span class="ex-n">1</span>
+      <span class="ex-main">
+        <span class="ex-name">Pistol Squat</span>
+        <span class="ex-presc">3 &times; 5 each side</span>
+      </span>
+      <svg class="ex-chev" width="7" height="12" viewBox="0 0 7 12" fill="none" aria-hidden="true"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+
+    <button class="ex">
+      <span class="ex-n">2</span>
+      <span class="ex-main">
+        <span class="ex-name">Pull-Up Ladder</span>
+        <span class="ex-presc">1&ndash;2&ndash;3 &times; 5 rounds</span>
+      </span>
+      <svg class="ex-chev" width="7" height="12" viewBox="0 0 7 12" fill="none" aria-hidden="true"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+
+    <button class="ex">
+      <span class="ex-n">3</span>
+      <span class="ex-main">
+        <span class="ex-name">Toes-to-Bar</span>
+        <span class="ex-presc">3 &times; 8 reps</span>
+      </span>
+      <svg class="ex-chev" width="7" height="12" viewBox="0 0 7 12" fill="none" aria-hidden="true"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+
+    <button class="ex">
+      <span class="ex-n">4</span>
+      <span class="ex-main">
+        <span class="ex-name">Ring Support Hold</span>
+        <span class="ex-presc">3 &times; 20 sec hold <span class="q">&middot; optional</span></span>
+      </span>
+      <svg class="ex-chev" width="7" height="12" viewBox="0 0 7 12" fill="none" aria-hidden="true"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+
+    <button class="ex">
+      <span class="ex-n">5</span>
+      <span class="ex-main">
+        <span class="ex-name">Wrist Roller</span>
+        <span class="ex-presc">2 &times; 10 reps <span class="q">&middot; only if forearms feel good</span></span>
+      </span>
+      <svg class="ex-chev" width="7" height="12" viewBox="0 0 7 12" fill="none" aria-hidden="true"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+
+  <!-- ── the one action ───────────────────────────────────────────────── -->
+  <div class="actions">
+    <button class="primary">Start workout</button>
+    <div class="primary-meta">3 required &middot; 2 optional</div>
+    <button class="link">Adjust sets</button>
+  </div>
+
+  <!-- ── secondary ────────────────────────────────────────────────────── -->
+  <div class="secondary">
+    <p>Feel like training something else?</p>
+    <div class="altrow">
+      <button class="link">Any workout</button>
+      <button class="link">One exercise</button>
+    </div>
+  </div>
+
+  <div class="utility">
+    <button class="urow">
+      <span class="urow-l">Readiness</span>
+      <span class="urow-r">Not checked
+        <svg width="7" height="12" viewBox="0 0 7 12" fill="none" aria-hidden="true"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+    </button>
+    <button class="urow">
+      <span class="urow-l">This week</span>
+      <span class="urow-r">
+        <svg width="7" height="12" viewBox="0 0 7 12" fill="none" aria-hidden="true"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+    </button>
+    <div class="week">
+      <div class="wd"><span class="wd-l">Sun</span><span class="wd-t empty"></span></div>
+      <div class="wd"><span class="wd-l">Mon</span><span class="wd-t"></span></div>
+      <div class="wd"><span class="wd-l">Tue</span><span class="wd-t"></span></div>
+      <div class="wd"><span class="wd-l">Wed</span><span class="wd-t"></span></div>
+      <div class="wd"><span class="wd-l">Thu</span><span class="wd-t"></span></div>
+      <div class="wd today"><span class="wd-l">Fri</span><span class="wd-t"></span></div>
+      <div class="wd"><span class="wd-l">Sat</span><span class="wd-t empty"></span></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── bottom navigation ──────────────────────────────────────────────── -->
+<nav class="nav">
+  <button class="on">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.4M12 19v2.4M2.6 12h2.4M19 12h2.4M5.3 5.3l1.7 1.7M17 17l1.7 1.7M18.7 5.3L17 7M7 17l-1.7 1.7"/></svg>
+    Today
+  </button>
+  <button>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><rect x="3.3" y="4.8" width="17.4" height="15.4" rx="2.4"/><path d="M3.3 9.6h17.4M8.2 3.2v3M15.8 3.2v3"/></svg>
+    Plan
+  </button>
+  <button>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M5.6 21V3.6M5.6 4.6h11.2l-2.1 3.9 2.1 3.9H5.6"/></svg>
+    Goals
+  </button>
+  <button>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="12" cy="8.4" r="3.7"/><path d="M4.8 20.4c0-3.7 3.2-6.2 7.2-6.2s7.2 2.5 7.2 6.2"/></svg>
+    Profile
+  </button>
+</nav></div>
+      <div class="device" id="screen-b" hidden><div class="screen">
+
+  <header class="head">
+    <div class="head-text">
+      <div class="daylabel">Sunday</div>
+      <h1 class="daytitle">Open day</h1>
+      <div class="daysub">Nothing scheduled. One hold, if you want it.</div>
+    </div>
+    <!-- PLACEHOLDER day mark: a bar to hang from. -->
+    <div class="daymark">
+      <svg viewBox="0 0 64 64" width="52" height="52" aria-hidden="true">
+        <ellipse cx="32" cy="21" rx="19" ry="6" fill="#C9973F" opacity=".13"/>
+        <ellipse cx="32" cy="27" rx="14" ry="5" fill="#B2623C" opacity=".07"/>
+        <g fill="none" stroke="#6B665C" stroke-width="1.25" stroke-linecap="round">
+          <path d="M11 20.5 h42"/>
+          <path d="M13.5 13 v13M50.5 13 v13"/>
+          <path d="M26 21 C25.6 29 25 38 26.8 46"/>
+          <path d="M38 21 C38.4 29 39 38 37.2 46"/>
+        </g>
+      </svg>
+    </div>
+  </header>
+
+  <!-- One prescribed item. Given room rather than listed as a list of one. -->
+  <div class="solo">
+    <button class="ex">
+      <span class="ex-main">
+        <span class="ex-name">Dead Hang</span>
+        <span class="ex-presc">3 &times; 30 sec hold <span class="q">&middot; optional</span></span>
+      </span>
+      <svg class="ex-chev" width="7" height="12" viewBox="0 0 7 12" fill="none" aria-hidden="true"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+
+  <div class="actions">
+    <button class="primary">Start Dead Hang</button>
+    <button class="link">Adjust</button>
+  </div>
+
+  <!-- Deliberately more air here: the emptiness should read as composed. -->
+  <div class="secondary airy">
+    <p>Feel like training something else?</p>
+    <div class="altrow">
+      <button class="link">Any workout</button>
+      <button class="link">One exercise</button>
+    </div>
+  </div>
+
+  <div class="utility">
+    <button class="urow">
+      <span class="urow-l">Readiness</span>
+      <span class="urow-r">Not checked
+        <svg width="7" height="12" viewBox="0 0 7 12" fill="none" aria-hidden="true"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+    </button>
+    <button class="urow">
+      <span class="urow-l">This week</span>
+      <span class="urow-r">
+        <svg width="7" height="12" viewBox="0 0 7 12" fill="none" aria-hidden="true"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+    </button>
+    <div class="week">
+      <div class="wd today"><span class="wd-l">Sun</span><span class="wd-t"></span></div>
+      <div class="wd"><span class="wd-l">Mon</span><span class="wd-t"></span></div>
+      <div class="wd"><span class="wd-l">Tue</span><span class="wd-t"></span></div>
+      <div class="wd"><span class="wd-l">Wed</span><span class="wd-t"></span></div>
+      <div class="wd"><span class="wd-l">Thu</span><span class="wd-t"></span></div>
+      <div class="wd"><span class="wd-l">Fri</span><span class="wd-t"></span></div>
+      <div class="wd"><span class="wd-l">Sat</span><span class="wd-t empty"></span></div>
+    </div>
+  </div>
+
+</div>
+
+<nav class="nav">
+  <button class="on">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.4M12 19v2.4M2.6 12h2.4M19 12h2.4M5.3 5.3l1.7 1.7M17 17l1.7 1.7M18.7 5.3L17 7M7 17l-1.7 1.7"/></svg>
+    Today
+  </button>
+  <button>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><rect x="3.3" y="4.8" width="17.4" height="15.4" rx="2.4"/><path d="M3.3 9.6h17.4M8.2 3.2v3M15.8 3.2v3"/></svg>
+    Plan
+  </button>
+  <button>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M5.6 21V3.6M5.6 4.6h11.2l-2.1 3.9 2.1 3.9H5.6"/></svg>
+    Goals
+  </button>
+  <button>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="12" cy="8.4" r="3.7"/><path d="M4.8 20.4c0-3.7 3.2-6.2 7.2-6.2s7.2 2.5 7.2 6.2"/></svg>
+    Profile
+  </button>
+</nav></div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <h2>What to judge</h2>
+    <ul>
+      <li><b>Does the primary action dominate?</b> In A it sits below five rows. If your eye does
+      not land on it first, the hierarchy has failed.</li>
+      <li><b>Is the prescription legible at a glance?</b> Name and sets should resolve without
+      reading the whole screen.</li>
+      <li><b>Is &ldquo;optional&rdquo; quiet enough to skip past, but present enough to find?</b></li>
+      <li><b>Does B read as composed or as unfinished?</b> One optional hold, no scrolling.</li>
+      <li><b>Ink or Clay for the primary button?</b> Ink keeps the accent rare; Clay is warmer but
+      puts a lot of terracotta on screen.</li>
+      <li><b>Is the serif worth its download?</b> It carries exactly one line per screen.</li>
+      <li><b>Does the paper grain hold up on a real Samsung at low brightness?</b></li>
+    </ul>
+  </div>
+</div>
+
+<script>
+(function(){
+  var a=document.getElementById('screen-a'), b=document.getElementById('screen-b');
+  var ta=document.getElementById('tab-a'), tb=document.getElementById('tab-b');
+  var cap=document.getElementById('cap');
+  var CAP={
+    a:'Friday, five exercises, three of them required. The question: does the primary action still dominate with a five-row list above it?',
+    b:'Sunday, an open day holding one optional hold. The question: does near-empty read as composed rather than broken?'
+  };
+  function show(which){
+    var isA=which==='a';
+    a.hidden=!isA; b.hidden=isA;
+    ta.setAttribute('aria-pressed',String(isA));
+    tb.setAttribute('aria-pressed',String(!isA));
+    cap.textContent=CAP[which];
+  }
+  ta.addEventListener('click',function(){show('a');});
+  tb.addEventListener('click',function(){show('b');});
+
+  var pi=document.getElementById('pri-ink'), pc=document.getElementById('pri-clay');
+  function prim(v){
+    var list=document.querySelectorAll('.device');
+    for(var i=0;i<list.length;i++){
+      if(v==='clay') list[i].setAttribute('data-primary','clay');
+      else list[i].removeAttribute('data-primary');
+    }
+    pi.setAttribute('aria-pressed',String(v!=='clay'));
+    pc.setAttribute('aria-pressed',String(v==='clay'));
+  }
+  pi.addEventListener('click',function(){prim('ink');});
+  pc.addEventListener('click',function(){prim('clay');});
+})();
+</script>

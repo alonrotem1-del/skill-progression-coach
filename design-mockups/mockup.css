@@ -1,0 +1,151 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   QUIET PAPER, EARNED MOMENTS — design-system hypothesis under test.
+   MOCKUP ONLY. Nothing here is imported, cached or referenced by the app.
+   Layout concept: one column on paper. Hierarchy from type and air, not boxes.
+   ────────────────────────────────────────────────────────────────────────── */
+:root{
+  --paper:#FBF9F5;
+  --paper-raised:#F5F1EA;
+  --ink:#23211D;
+  --ink-muted:#6B665C;
+  --ink-faint:#9A948A;
+  --hairline:#E4DED2;
+  --clay:#B2623C;
+  --sage:#7B8A6B;
+  --ochre:#C9973F;
+
+  --serif:'Newsreader',Georgia,'Times New Roman',serif;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+
+  --gutter:22px;
+  --nav-h:62px;
+  --radius:12px;
+  color-scheme:light;
+}
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font:400 16px/1.55 var(--sans);
+  /* Paper grain. Sells the substrate; costs one data URI and no requests. */
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  -webkit-font-smoothing:antialiased;
+}
+
+.screen{
+  min-height:100%;
+  padding:0 var(--gutter) calc(var(--nav-h) + 28px);
+  max-width:430px;margin:0 auto;
+}
+
+/* ── day header ─────────────────────────────────────────────────────────── */
+.head{display:flex;gap:16px;align-items:flex-start;padding:26px 0 0}
+.head-text{flex:1;min-width:0}
+.daylabel{font-size:13px;color:var(--ink-muted);letter-spacing:.01em}
+.daytitle{
+  font:400 29px/1.14 var(--serif);
+  color:var(--ink);letter-spacing:-.012em;margin-top:5px;text-wrap:balance;
+}
+.daysub{font-size:14.5px;color:var(--ink-muted);margin-top:8px;text-wrap:balance;max-width:30ch}
+.daymark{flex:0 0 auto;margin-top:6px;opacity:.95}
+
+/* "Why this?" — the reason stays one tap away and silent until asked. */
+.why{margin-top:12px}
+.why summary{
+  list-style:none;cursor:pointer;display:inline-block;
+  font-size:13.5px;color:var(--ink-muted);padding:4px 0;
+  text-decoration:underline;text-decoration-color:var(--hairline);
+  text-underline-offset:3px;text-decoration-thickness:1px;
+}
+.why summary::-webkit-details-marker{display:none}
+.why[open] summary{color:var(--ink-muted)}
+.why-body{font-size:14px;color:var(--ink-muted);line-height:1.55;padding:4px 0 2px;max-width:34em}
+
+/* ── exercise list: rows on paper, not cards ────────────────────────────── */
+.list{margin-top:22px;border-top:1px solid var(--hairline)}
+.ex{
+  display:flex;gap:14px;align-items:flex-start;width:100%;
+  padding:14px 0;border-bottom:1px solid var(--hairline);
+  background:none;border-left:0;border-right:0;border-top:0;
+  font:inherit;color:inherit;text-align:left;cursor:pointer;
+}
+.ex-n{
+  flex:0 0 16px;font-size:13px;color:var(--ink-faint);
+  font-variant-numeric:tabular-nums;padding-top:3px;
+}
+.ex-main{flex:1;min-width:0}
+.ex-name{display:block;font-size:17px;font-weight:500;color:var(--ink);letter-spacing:-.003em}
+.ex-presc{display:block;font-size:14px;color:var(--ink-muted);margin-top:3px}
+/* Optional / conditional information, as quiet as it can be while still read. */
+.ex-presc .q{color:var(--ink-faint)}
+.ex-chev{flex:0 0 auto;color:var(--ink-faint);padding-top:5px}
+
+/* A single prescribed item gets room to breathe instead of a list of one. */
+.solo{margin-top:30px;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
+.solo .ex{padding:24px 0;border-bottom:0}
+.solo .ex-name{font-size:19px}
+.solo .ex-presc{font-size:15px;margin-top:5px}
+
+/* ── the one primary action ─────────────────────────────────────────────── */
+.actions{margin-top:26px}
+.primary{
+  display:block;width:100%;height:54px;border:0;border-radius:var(--radius);
+  background:var(--ink);color:var(--paper);
+  font:600 16px/1 var(--sans);letter-spacing:.005em;cursor:pointer;
+}
+:root[data-primary="clay"] .primary{background:var(--clay)}
+.primary-meta{
+  font-size:12.5px;color:var(--ink-faint);text-align:center;margin-top:10px;
+  font-variant-numeric:tabular-nums;
+}
+.link{
+  display:inline-block;background:none;border:0;padding:6px 0;
+  font:400 14.5px var(--sans);color:var(--ink-muted);cursor:pointer;
+  text-decoration:underline;text-decoration-color:var(--hairline);
+  text-underline-offset:3px;text-decoration-thickness:1px;
+}
+.actions .link{margin-top:6px}
+
+/* ── secondary: everything below here is deliberately quieter ───────────── */
+.secondary{margin-top:40px}
+.secondary.airy{margin-top:72px}
+.secondary p{font-size:14px;color:var(--ink-muted)}
+.altrow{display:flex;gap:20px;margin-top:2px}
+
+.utility{margin-top:34px;border-top:1px solid var(--hairline)}
+.urow{
+  display:flex;align-items:center;justify-content:space-between;width:100%;
+  padding:15px 0;border-bottom:1px solid var(--hairline);
+  background:none;border-left:0;border-right:0;border-top:0;
+  font:inherit;color:inherit;text-align:left;cursor:pointer;
+}
+.urow-l{font-size:15px;color:var(--ink)}
+.urow-r{display:flex;align-items:center;gap:9px;font-size:13.5px;color:var(--ink-faint)}
+
+/* ── week rhythm: seven ticks, no boxes ─────────────────────────────────── */
+.week{display:flex;justify-content:space-between;padding:18px 2px 4px}
+.wd{display:flex;flex-direction:column;align-items:center;gap:8px;flex:1}
+.wd-l{font-size:11px;color:var(--ink-faint);letter-spacing:.02em}
+.wd-t{width:2px;height:14px;border-radius:1px;background:var(--hairline)}
+.wd-t.empty{background:transparent}
+.wd.today .wd-l{color:var(--clay)}
+.wd.today .wd-t{background:var(--clay)}
+
+/* ── bottom navigation ──────────────────────────────────────────────────── */
+.nav{
+  position:fixed;bottom:0;left:0;right:0;max-width:430px;margin:0 auto;
+  display:flex;background:var(--paper);border-top:1px solid var(--hairline);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+.nav button{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;
+  height:var(--nav-h);justify-content:center;
+  background:none;border:0;cursor:pointer;
+  font:400 11px var(--sans);color:var(--ink-faint);
+}
+.nav button.on{color:var(--ink);font-weight:600}
+.nav svg{display:block}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
