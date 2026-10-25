@@ -4,6 +4,9 @@
 // removed), and that a physical landscape viewport still degrades gracefully
 // via the (unpromoted, secondary) responsive CSS fallback in landscape.spec.cjs.
 const { test, expect } = require('@playwright/test');
+// Written for the earlier weekly-plan app, which now runs only behind the
+// legacy shell switch; these tests keep guarding it there.
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { window.__spcLegacyShell = true; }); });
 
 const LANDSCAPE = { width: 844, height: 390 };
 const PORTRAIT = { width: 390, height: 844 };

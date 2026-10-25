@@ -10,6 +10,9 @@
 // to prove exactly that (no cutover, no mutation, and the app boots normally
 // even when IndexedDB is entirely unavailable).
 const { test, expect } = require('@playwright/test');
+// Written for the earlier weekly-plan app, which now runs only behind the
+// legacy shell switch; these tests keep guarding it there.
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { window.__spcLegacyShell = true; }); });
 
 const STORES = ['ledger', 'artifacts', 'events', 'commitments', 'athlete', 'cache', 'contextPackages'];
 
@@ -713,7 +716,7 @@ test.describe('idb.js — PWA / offline', () => {
       const cache = await window.caches.open(cacheName);
       return { cacheName, hasIdb: !!(await cache.match('./idb.js', { ignoreSearch: true })) };
     });
-    expect(cached.cacheName).toMatch(/skill-progression-coach-v27/);
+    expect(cached.cacheName).toMatch(/skill-progression-coach-v28/);
     expect(cached.hasIdb).toBe(true);
   });
 
@@ -749,7 +752,7 @@ test.describe('idb.js — PWA / offline', () => {
     await page.waitForTimeout(800); // let activate() prune obsolete caches
     const keys = await page.evaluate(() => window.caches.keys());
     expect(keys).not.toContain('skill-progression-coach-v17');
-    expect(keys).toContain('skill-progression-coach-v27');
+    expect(keys).toContain('skill-progression-coach-v28');
     // The live activation has idb.js, and the database still opens.
     const ok = await page.evaluate(async () => (await window.CoachIDB.init()).ok);
     expect(ok).toBe(true);

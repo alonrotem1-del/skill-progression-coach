@@ -44,6 +44,8 @@
     person:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/></svg>',
     center:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>',
     week:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M7.5 13h2M14.5 13h2M7.5 17h2M14.5 17h2"/></svg>',
+    path:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="7" cy="18" r="2.5"/><circle cx="17" cy="6" r="2.5"/><path d="M9.5 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h5.5"/></svg>',
+    academy:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 9 12 4l9 5"/><path d="M5 9v9M9.5 9v9M14.5 9v9M19 9v9"/><path d="M3 20h18"/></svg>',
     gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>'
   };
 
@@ -421,7 +423,30 @@
   }
 
   // ---- boot -----------------------------------------------------------------
+  // The Foundation Path is the app. The earlier weekly-plan app (Today, Goals,
+  // the legacy plan and its runners) is still in this file and still under
+  // test, but only behind the __spcLegacyShell switch the older suites set: no
+  // athlete-facing route leads to it any more.
+  var LEGACY=!!window.__spcLegacyShell;
   function boot(){
+    if(LEGACY) return bootLegacy();
+    var p=Store.getProfile();
+    var existingAthlete=!!(p&&p.onboarded);
+    if(!p) Store.setProfile({onboarded:true,activeWorld:Data.worlds[0].id,days:[],duration:'normal',createdBy:'foundation-path'});
+    UI.worldId=(Store.getProfile()||{}).activeWorld||Data.worlds[0].id;
+    ensureEnrollment(existingAthlete);
+    if(restoreProgramRun()) return loadProgramPackage();
+    if(restoreWorkoutState()) return loadProgramPackage();
+    var had=getPkg()&&getPkg().source.md5;
+    if(had) setScreen('path'); else { UI.screen='boot'; app.innerHTML='<div class="scr"><p class="muted">Loading the program…</p></div>'; }
+    return loadProgramPackage().then(function(){
+      var now=getPkg()&&getPkg().source.md5;
+      // Draw the Path once the package is known, or again if a newer one arrived
+      // while the athlete is still looking at it.
+      if(UI.screen==='boot'||(UI.screen==='path'&&now!==had)) setScreen('path');
+    });
+  }
+  function bootLegacy(){
     var p=Store.getProfile();
     if(!p||!p.onboarded){ return renderOnboarding(); }
     UI.worldId=p.activeWorld||Data.worlds[0].id;
@@ -431,11 +456,9 @@
   }
 
   // ---- shell / nav ----------------------------------------------------------
-  // Today = Coach, Goals = Progress, Settings = Control. Two primary
-  // destinations and one permanent gear: everything administrative (the week,
-  // history, data, preferences) lives one level down behind it, so nothing
-  // competes with the two questions the athlete opens the app for.
-  var PRIMARY=['today','goals'];
+  // Path = where I am and what to do now, Academy = specialization, Settings
+  // (the gear) = control. A workout is a mode, not a destination.
+  var PRIMARY=LEGACY?['today','goals']:['path','academy'];
   function shell(inner,active){
     app.innerHTML='';
     var wrap=h('<div></div>');
@@ -444,9 +467,9 @@
     // back header and still highlight the tab they came from.
     var top=(PRIMARY.indexOf(active)>=0&&UI.screen===active)?topBar():'';
     wrap.appendChild(h('<div class="scr">'+top+inner+'</div>'));
-    var nav=h('<div class="nav">'+
-      navBtn('today','Today',ICON.today,active)+
-      navBtn('goals','Goals',ICON.chart,active)+'</div>');
+    var nav=h('<div class="nav">'+(LEGACY?
+      navBtn('today','Today',ICON.today,active)+navBtn('goals','Goals',ICON.chart,active):
+      navBtn('path','Path',ICON.path,active)+navBtn('academy','Academy',ICON.academy,active))+'</div>');
     wrap.appendChild(nav);
     app.appendChild(wrap);
     on('.nav button','click',function(e){ setScreen(e.currentTarget.getAttribute('data-s')); },nav);
@@ -472,10 +495,20 @@
     // screen state only ever holds the canonical name.
     if(name==='week') name='plan';
     if(name==='profile') name='settings';
+    // Outside the legacy shell, the old destinations resolve to the new ones:
+    // every exit the older runners take ("back to Today") lands on the Path.
+    if(!LEGACY&&name==='today') name='path';
+    if(!LEGACY&&name==='goals') name='academy';
     UI.screen=name;
     window.scrollTo(0,0); // a full screen swap always starts at the top — the
                            // browser does not reset scroll on innerHTML replacement
-    if(name==='today') renderToday();
+    if(name==='path') renderPath();
+    else if(name==='academy') renderAcademy();
+    else if(name==='pworkout') renderProgramWorkout();
+    else if(name==='prun') renderProgramRun();
+    else if(name==='psummary') renderProgramSummary();
+    else if(name==='pexit') renderFoundationExit();
+    else if(name==='today') renderToday();
     else if(name==='plan') renderWeek();
     else if(name==='goals') renderGoals();
     else if(name==='goal') renderGoalDetail(UI.goalId);
@@ -811,7 +844,7 @@
   // History is a record, not a destination: it lives behind the gear, one
   // level below the question the athlete arrived with.
   function renderHistory(){
-    var wrap=shell(backHeader('History')+historySection(),null);
+    var wrap=shell(backHeader('History')+(LEGACY?'':programHistoryHtml()+'<div class="section">Earlier app history</div>')+historySection(),null);
     wireHistory(wrap);
   }
   // After a history row is deleted, excluded or re-classified, redraw whichever
@@ -3696,6 +3729,7 @@
     if(settingsView==='timer') return renderTimerSettings();
     if(settingsView==='exercises') return renderExerciseLibrary();
     if(settingsView==='data') return renderDataSettings();
+    if(settingsView==='program') return renderProgramSettings();
     return renderSettingsHome();
   }
   function settingsBackHeader(title){
@@ -3709,6 +3743,7 @@
     return '<button class="settings-row" data-sgo="'+screen+'"><div class="sr-main"><div class="sr-title">'+esc(title)+'</div><div class="muted small">'+esc(sub)+'</div></div><span class="sr-arrow">&rsaquo;</span></button>';
   }
   function renderSettingsHome(){
+    if(!LEGACY) return renderPathSettingsHome();
     var html='<div class="wk-top"><div class="between"><button class="link" data-sclose>&lsaquo; Today</button><b>Settings</b><span style="width:60px"></span></div></div>'+
       '<div class="settings-list">'+
       '<div class="section">Training</div>'+
@@ -3726,6 +3761,25 @@
     on('[data-sview]','click',function(e){ settingsView=e.currentTarget.dataset.sview; renderProfile(); },wrap);
     on('[data-sgo]','click',function(e){ setScreen(e.currentTarget.dataset.sgo); },wrap);
     on('[data-sclose]','click',function(){ setScreen('today'); },wrap);
+  }
+  // The Foundation Path's control area. The legacy plan settings (This Week,
+  // Training Days, Workout Defaults, Exercise Library) belong to the earlier
+  // app and are only offered in the legacy shell.
+  function renderPathSettingsHome(){
+    var html='<div class="wk-top"><div class="between"><button class="link" data-sclose>&lsaquo; Path</button><b>Settings</b><span style="width:60px"></span></div></div>'+
+      '<div class="settings-list">'+
+      '<div class="section">Training</div>'+
+      settingsRow('program','Program','Beginner Program, your position, the program file')+
+      settingsScreenRow('history','History','Every workout and Max Test you have logged')+
+      settingsScreenRow('pexit','Foundation Exit','The standard that opens the Academy')+
+      '<div class="section">App</div>'+
+      settingsRow('timer','Timer & Alerts','Sound, vibration, countdown ticks')+
+      settingsRow('data','Data & Backup','Backup, restore, install, reset')+
+      '</div>';
+    var wrap=shell(html,null);
+    on('[data-sview]','click',function(e){ settingsView=e.currentTarget.dataset.sview; renderProfile(); },wrap);
+    on('[data-sgo]','click',function(e){ setScreen(e.currentTarget.dataset.sgo); },wrap);
+    on('[data-sclose]','click',function(){ setScreen('path'); },wrap);
   }
   function wireSettingsBack(wrap){ on('[data-sback]','click',function(){ settingsView='home'; renderProfile(); },wrap); }
 
@@ -4239,6 +4293,617 @@
     });
   }
   function switchWorldProfile(worldId){UI.worldId=worldId;var p=Store.getProfile()||{};p.activeWorld=worldId;Store.setProfile(p);UI.readiness=null;renderProfile();}
+
+  // ==========================================================================
+  // FOUNDATION PATH — the Beginner Program as the home of the app.
+  // The prescription comes from the program package (built from the source by
+  // tools/build-program.cjs, never edited here); what the athlete actually did
+  // is an append-only event list (spc_c_program). program.js derives position,
+  // outcomes, Foundation Exit and Academy status from the two.
+  // ==========================================================================
+  var Program=window.CoachProgram;
+  var PKG_KEY='spc_c_programpkg', PROG_KEY='spc_c_program', RUN_KEY='spc_c_programrun';
+  var PKG_URL='private/beginner-program.json';
+  var _pkg=null;
+  function getPkg(){
+    if(_pkg) return _pkg;
+    try{ var s=localStorage.getItem(PKG_KEY); if(s){ var p=JSON.parse(s); if(Program.validatePackage(p).ok) _pkg=p; } }catch(e){}
+    return _pkg;
+  }
+  function setPkg(p){ _pkg=p; try{ localStorage.setItem(PKG_KEY,JSON.stringify(p)); }catch(e){} }
+  // Local builds serve the package from private/; on a device without it the
+  // athlete imports the file once (Settings -> Program). Either way it is kept
+  // on the device, so the path works offline.
+  function loadProgramPackage(){
+    if(!window.fetch) return Promise.resolve(getPkg());
+    return fetch(PKG_URL,{cache:'no-store'}).then(function(r){ return r.ok?r.json():null; }).then(function(p){
+      if(p&&Program.validatePackage(p).ok){ var cur=getPkg(); if(!cur||cur.source.md5!==p.source.md5||cur.builtAt!==p.builtAt) setPkg(p); }
+      return getPkg();
+    })['catch'](function(){ return getPkg(); });
+  }
+  function progState(){ return Store.get(PROG_KEY)||null; }
+  function progAdd(ev){ var s=Program.addEvent(progState()||Program.emptyState(),ev); Store.set(PROG_KEY,s); return s; }
+  function ensureEnrollment(existingAthlete){
+    if(progState()) return;
+    var s=Program.emptyState();
+    if(existingAthlete) Program.migrationEvents().forEach(function(e){ s=Program.addEvent(s,e); });
+    else s=Program.addEvent(s,{type:'enrolled',programId:'calixpert-beginner',start:'MT0',basis:'new-athlete'});
+    Store.set(PROG_KEY,s);
+  }
+  // Foundation Exit is evaluated whenever new evidence lands; passing it is a
+  // milestone that is recorded once and never revoked.
+  function checkFoundationPass(){
+    var st=progState(); var fs=Program.foundationStatus(st);
+    if(!fs.passed&&fs.allPass){ progAdd({type:'foundation_exit_passed',domains:fs.domains.map(function(d){ return {id:d.id,evidence:d.evidence&&d.evidence.eventId}; })}); return true; }
+    return false;
+  }
+
+  function shortTitle(w){ return w.title.replace(/^Workout \d - /,''); }
+  function nodeLabel(pkg,n){
+    if(n.type==='week') return 'Phase '+n.phase+' · Week '+n.week;
+    if(n.type==='deload') return 'Phase '+n.phase+' · Deload week';
+    if(n.type==='maxtest') return n.id==='MT0'?'Max Test · before Phase 1':'Max Test · after Phase '+n.afterPhase;
+    if(n.type==='exit') return 'Foundation Exit';
+    return n.id;
+  }
+  function phaseSplit(pkg,p){
+    var w=pkg.weeks['P'+p+'W1']; if(!w) return '';
+    return w.workouts.filter(function(id){return !pkg.workouts[id].optional;}).map(function(id){return shortTitle(pkg.workouts[id]);}).join(' · ');
+  }
+  function fmtDate(iso){ try{ var d=new Date(iso); return d.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]; }catch(e){ return ''; } }
+  function doseText(d,opts){
+    if(!d) return '';
+    if(d.min==null) return esc(d.raw||'');
+    var v=d.min===d.max?String(d.min):d.min+'–'+d.max;
+    var u=d.unit==='sec'?' sec':d.unit==='sec-or-reps'?' sec/reps':(opts&&opts.noReps?'':' reps');
+    var per=d.per?' / '+d.per:'';
+    return v+u+per;
+  }
+  function restText(s){ if(s==null) return ''; return s%60===0?(s/60)+' min':(s/60).toFixed(1).replace('.0','')+' min'; }
+  function blockPrescription(b){
+    if(b.kind==='exercise') return (b.sets!=null?b.sets+' '+b.setsLabel+' × ':'')+doseText(b.dose)+(b.restSec!=null?' · rest '+restText(b.restSec):'');
+    if(b.kind==='emom'){
+      if(b.style==='pyramid') return 'Pyramid EMOM · '+esc(b.rule||'');
+      var t=b.minutes&&b.minutes.min!=null?(b.minutes.min===b.minutes.max?b.minutes.min:b.minutes.min+'–'+b.minutes.max)+(b.minutes.unitWritten?' min':' (no unit written)'):'';
+      return 'EMOM · '+doseText(b.perMinute)+' every minute'+(t?' · '+t:'');
+    }
+    if(b.kind==='amrap') return 'AMRAP · '+b.minutes+' min, as many rounds as possible';
+    if(b.kind==='circuit') return (b.rounds!=null?b.rounds+' rounds':'Circuit')+(b.restRaw?' · '+esc(b.restRaw):'');
+    return '';
+  }
+  function blockName(b,variant){
+    if(b.kind==='emom'&&b.style!=='pyramid') return b.style==='single'?b.exercise:'EMOM';
+    if(b.kind==='emom') return variant==='hard'&&b.hardExercise?b.hardExercise:b.exercise;
+    if(b.kind==='amrap') return 'AMRAP';
+    if(b.kind==='circuit') return 'Circuit';
+    return variant==='hard'&&b.hard?b.hard:b.easy;
+  }
+  function emomPlan(b){
+    if(b.style==='alternating') return b.parts.map(function(p){ return '<div class="fp-sub">'+(p.minutes==='odd'?'Odd minutes':'Even minutes')+': <b>'+esc(p.exercise)+'</b></div>'; }).join('');
+    if(b.style==='cycle') return b.parts.map(function(p){ return '<div class="fp-sub">Minute '+p.minute+': <b>'+esc(p.exercise)+'</b></div>'; }).join('')+'<div class="fp-sub muted">then start again at minute 1</div>';
+    if(b.style==='single'&&b.options&&b.options.length>1) return '<div class="fp-sub">Options: '+b.options.map(esc).join(' / ')+'</div>';
+    return '';
+  }
+  function formatKey(w,b){
+    if(b.kind==='amrap') return 'amrap';
+    if(b.kind==='circuit') return w.format==='circuit'?'core-circuit':null;
+    if(b.kind!=='emom') return null;
+    return b.style==='pyramid'?'emom-pyramid':b.style==='alternating'?'emom-alternating':b.style==='cycle'?'emom-cycle':'emom';
+  }
+  function qaHtml(pkg,ids){
+    if(!ids||!ids.length) return '';
+    return ids.map(function(id){
+      var q=(pkg.qa||[]).filter(function(x){return x.id===id;})[0]; if(!q) return '';
+      var body=q.kind==='contradiction'
+        ?'<div><b>Source A:</b> '+esc(q.sourceA)+'</div><div><b>Source B:</b> '+esc(q.sourceB)+'</div><div class="muted">'+esc(q['class']||'')+' · master line '+q.line+'</div>'
+        :'<div>'+esc(q.text)+'</div><div class="muted">master line '+q.line+'</div>';
+      return '<details class="fp-qa"><summary>Source note · '+esc(q.topic)+'</summary>'+body+'</details>';
+    }).join('');
+  }
+  function lastVariant(easy){ try{ var m=JSON.parse(localStorage.getItem('spc_c_programvariants')||'{}'); return m[easy]||'easy'; }catch(e){ return 'easy'; } }
+  function rememberVariant(easy,v){ try{ var m=JSON.parse(localStorage.getItem('spc_c_programvariants')||'{}'); m[easy]=v; localStorage.setItem('spc_c_programvariants',JSON.stringify(m)); }catch(e){} }
+
+  // ---- Path (home) ----------------------------------------------------------
+  function renderPath(){
+    UI.screen='path';
+    var pkg=getPkg();
+    if(!pkg){
+      shell('<div class="fp-empty"><h1>Foundation Path</h1><p class="muted">The Beginner Program is not installed on this device yet.</p>'+
+        '<p class="small muted">Import the program file once in Settings → Program. It stays on this device and works offline.</p>'+
+        '<button class="btn primary" data-goprog>Open Settings → Program</button></div>','path');
+      on('[data-goprog]','click',function(){ settingsView='program'; setScreen('settings'); });
+      return;
+    }
+    var st=progState(), v=Program.pathView(pkg,st);
+    var run=Store.get(RUN_KEY);
+    var cur=v.current;
+    var startPhase=(v.nodes[v.startIndex]||{}).phase||1;
+    var firstOfStartPhase=v.nodes.findIndex(function(n){ return n.phase===startPhase&&(n.type==='week'||n.type==='deload'); });
+    var placedBefore=v.nodes.filter(function(n,i){ return n.status==='placed'&&i<firstOfStartPhase; });
+    var html='<div class="fp-head"><div class="fp-k">Beginner Program · Foundation Path</div>'+
+      (cur?'<div class="fp-t">'+esc(nodeLabel(pkg,cur))+'</div>':'<div class="fp-t">Foundation complete</div>')+'</div>';
+    if(run&&run.workoutId&&pkg.workouts[run.workoutId]){
+      html+='<div class="fp-resume"><div><b>Workout in progress</b><div class="small muted">'+esc(nodeLabel(pkg,{type:'week',phase:pkg.workouts[run.workoutId].phase,week:pkg.workouts[run.workoutId].week}))+' · '+esc(shortTitle(pkg.workouts[run.workoutId]))+'</div></div><button class="btn sm primary" data-resumerun>Resume</button></div>';
+    }
+    html+='<div class="fp-path">';
+    if(placedBefore.length){
+      var labels=[]; placedBefore.forEach(function(n){ var l=n.type==='maxtest'?(n.id==='MT0'?'Max Test':null):'Phase '+n.phase; if(l&&labels.indexOf(l)<0) labels.push(l); });
+      html+='<button class="fp-placed" data-placedinfo><div class="fp-k">Placed past</div><div class="fp-chips">'+labels.map(function(l){return '<span>'+esc(l)+'</span>';}).join('')+'</div>'+
+        '<div class="small muted">Not done here, and not marked as done.</div></button>';
+    }
+    var lastPhase=null, side=0;
+    v.nodes.forEach(function(n,i){
+      if(i<firstOfStartPhase&&n.status==='placed') return;
+      var ph=n.phase||n.afterPhase;
+      if(n.type!=='maxtest'&&n.type!=='exit'&&ph&&ph!==lastPhase){
+        lastPhase=ph;
+        html+='<div class="fp-phase'+(cur&&cur.phase===ph?' now':'')+'"><div class="fp-k">Phase '+ph+(cur&&cur.phase===ph?' · you are here':'')+'</div><div class="fp-ps">'+esc(phaseSplit(pkg,ph))+'</div></div>';
+      }
+      if(n.type==='exit') html+='<div class="fp-phase"><div class="fp-k">Skill Progression Coach</div><div class="fp-ps">The standard that opens the Academy</div></div>';
+      side++;
+      html+=nodeHtml(pkg,st,n,side);
+      if(n.status==='current'&&n.type==='week') html+=weekPanelHtml(pkg,st,n);
+    });
+    var ac=Program.academyStatus(st);
+    html+='<button class="fp-acad" data-goacademy><div class="fp-k">'+(ac.open?'Open':'🔒 Academy')+'</div><div class="fp-t2">The Academy</div><div class="small muted">'+(ac.open?'Your specialization paths.':'Opens when every Foundation Exit domain has passed.')+'</div></button>';
+    html+='</div>';
+    var wrap=shell(html,'path');
+    on('[data-node]','click',function(e){ openNode(e.currentTarget.dataset.node); },wrap);
+    on('[data-pw]','click',function(e){ openProgramWorkout(e.currentTarget.dataset.pw); },wrap);
+    on('[data-resumerun]','click',function(){ resumeProgramRun(); },wrap);
+    on('[data-goacademy]','click',function(){ setScreen('academy'); },wrap);
+    on('[data-placedinfo]','click',function(){ placedSheet(pkg,v); },wrap);
+    var c=wrap.querySelector('.fp-node.current'); if(c&&c.scrollIntoView){ try{ c.scrollIntoView({block:'center'}); }catch(e){ c.scrollIntoView(); } }
+  }
+  function nodeHtml(pkg,st,n,side){
+    var icon={done:'✓',current:'★',upcoming:'',placed:'·'}[n.status]||'';
+    var kind=n.type;
+    var sub='';
+    if(n.type==='week'){
+      var wp=Program.weekProgress(pkg,st,n.id);
+      sub=n.status==='placed'?'placed past':n.status==='current'?wp.done+' of '+wp.total+' done':n.status==='done'?'done':'';
+    } else if(n.type==='maxtest') sub=n.status==='done'?'recorded':n.status==='placed'?'placed past':'benchmark';
+    else if(n.type==='deload') sub=n.status==='done'?'done':n.status==='placed'?'placed past':'about 50% intensity';
+    else if(n.type==='exit') sub=n.status==='done'?'passed':'all six domains';
+    var lbl=n.type==='week'?'Week '+n.week:n.type==='maxtest'?'Max Test':n.type==='deload'?'Deload week':'Foundation Exit';
+    return '<button class="fp-node '+n.status+' t-'+kind+' s'+(side%4)+'" data-node="'+n.id+'"><span class="fp-disc"><span class="fp-wc"></span><span class="fp-ic">'+(kind==='exit'&&n.status!=='done'?'🔒':kind==='maxtest'&&n.status!=='done'?'◆':icon)+'</span></span>'+
+      '<span class="fp-lab">'+esc(lbl)+(n.status==='current'?' · <b>you are here</b>':'')+'<span class="fp-sl">'+esc(sub)+'</span></span></button>';
+  }
+  function weekPanelHtml(pkg,st,n){
+    var wp=Program.weekProgress(pkg,st,n.id);
+    var next=wp.required.filter(function(r){return r.status==='available';})[0];
+    function row(r){
+      var w=pkg.workouts[r.id];
+      var chip=r.status==='completed'?'<span class="fp-chip ok">✓ Done'+(r.reported?' (reported)':'')+'</span>':
+        r.optional?'<span class="fp-chip opt">Optional</span>':
+        next&&r.id===next.id?'<span class="fp-chip next">Next</span>':'<span class="fp-chip av">Available</span>';
+      return '<button class="fp-wrow '+r.status+(r.optional?' optional':'')+'" data-pw="'+r.id+'"><span class="fp-wn">'+(r.optional?'+':w.slot)+'</span><span class="fp-wt">'+esc(r.optional?'Legs':shortTitle(w))+'</span>'+chip+'<span class="sr-arrow">&rsaquo;</span></button>';
+    }
+    return '<div class="fp-week"><div class="fp-k">This week · '+wp.done+' of '+wp.total+' required done</div>'+wp.required.map(row).join('')+wp.optional.map(row).join('')+'</div>';
+  }
+  function placedSheet(pkg,v){
+    var items=v.nodes.filter(function(n){return n.status==='placed';}).map(function(n){ return '<div class="dd-kv"><span>'+esc(nodeLabel(pkg,n))+'</span><b>placed past</b></div>'; }).join('');
+    showSheet('<div class="grip"></div><h2>Placed past</h2><p class="small muted">Your Foundation Path starts at '+esc(nodeLabel(pkg,v.nodes[v.startIndex]))+'. Everything before it is placed past: not done here, and not counted as done. You can still open any of its workouts to look at them.</p>'+items+'<button class="btn ghost" data-close>Close</button>',function(sheet){ on('[data-close]','click',closeSheet,sheet); });
+  }
+  function openNode(id){
+    var pkg=getPkg(), st=progState(), v=Program.pathView(pkg,st);
+    var n=v.nodes.filter(function(x){return x.id===id;})[0]; if(!n) return;
+    if(n.type==='week') return weekSheet(pkg,st,n);
+    if(n.type==='maxtest') return n.status==='current'?renderMaxTest(n.id):maxTestSheet(pkg,st,n);
+    if(n.type==='deload') return deloadSheet(pkg,n);
+    if(n.type==='exit') return setScreen('pexit');
+  }
+  function weekSheet(pkg,st,n){
+    var wp=Program.weekProgress(pkg,st,n.id);
+    var why=n.status==='upcoming'?'<p class="small muted">Opens when the path reaches it: the weeks before it are completed in order.</p>':n.status==='placed'?'<p class="small muted">Placed past: not done here, and not counted as done. You can look at the workouts.</p>':'';
+    var rows=wp.required.concat(wp.optional).map(function(r){ var w=pkg.workouts[r.id];
+      return '<button class="fp-wrow '+r.status+'" data-pw="'+r.id+'"><span class="fp-wn">'+(r.optional?'+':w.slot)+'</span><span class="fp-wt">'+esc(r.optional?'Legs (optional)':shortTitle(w))+'</span><span class="fp-chip '+(r.status==='completed'?'ok':'')+'">'+esc(r.status==='completed'?'✓ Done':r.status==='available'?'Available':r.status==='placed'?'Placed past':r.status==='missed'?'Not done':'Upcoming')+'</span></button>'; }).join('');
+    showSheet('<div class="grip"></div><h2>'+esc(nodeLabel(pkg,n))+'</h2>'+why+rows+'<button class="btn ghost" data-close>Close</button>',function(sheet){
+      on('[data-pw]','click',function(e){ closeSheet(); openProgramWorkout(e.currentTarget.dataset.pw); },sheet);
+      on('[data-close]','click',closeSheet,sheet);
+    });
+  }
+  function deloadSheet(pkg,n){
+    var cur=n.status==='current';
+    showSheet('<div class="grip"></div><div class="fp-src">From the program</div><h2>Deload week</h2><div class="sub small muted">'+esc(nodeLabel(pkg,n))+'</div>'+
+      pkg.deload.text.map(function(t){return '<p class="small">'+esc(t)+'</p>';}).join('')+
+      (cur?'<button class="btn primary" data-deloaddone>Deload week done</button>':'<p class="small muted">'+(n.status==='done'?'Done.':n.status==='placed'?'Placed past.':'Comes before Week 1 of this phase.')+'</p>')+
+      '<button class="btn ghost" data-close>Close</button>',function(sheet){
+        on('[data-deloaddone]','click',function(){ progAdd({type:'deload_completed',nodeId:n.id}); closeSheet(); toast('Deload week done.'); renderPath(); },sheet);
+        on('[data-close]','click',closeSheet,sheet);
+      });
+  }
+
+  // ---- workout preview ------------------------------------------------------
+  function openProgramWorkout(id){ UI.pworkout=id; setScreen('pworkout'); }
+  function renderProgramWorkout(){
+    var pkg=getPkg(), id=UI.pworkout, w=pkg&&pkg.workouts[id];
+    if(!w){ return setScreen('path'); }
+    var st=progState(), ws=Program.workoutStatus(pkg,st,id);
+    var comps=Program.completions(st,id);
+    var html='<div class="wk-top"><div class="between"><button class="link" data-backpath>&lsaquo; Path</button><b>Phase '+w.phase+' · Week '+w.week+'</b><span style="width:50px"></span></div></div>'+
+      '<div class="fp-wh"><div class="fp-k">'+esc(w.optional?'Optional session':'Workout '+w.slot+' of 4')+'</div><h1>'+esc(w.optional?'Legs':shortTitle(w))+'</h1>'+
+      '<div class="small muted">'+esc(w.header||'')+' · <a href="'+esc(w.url)+'" target="_blank" rel="noopener">Calixpert lesson ↗</a></div></div>';
+    if(comps.length){
+      var last=comps[comps.length-1];
+      html+='<div class="fp-done-note">✓ Done'+(last.source==='reported'?' (reported before this app — no set data)':' on '+fmtDate(last.finishedAt||last.at))+'</div>';
+    }
+    if(w.warmup&&w.warmup.length) html+='<div class="fp-box"><div class="fp-k">Warm-up</div>'+w.warmup.map(function(x){ return '<div class="fp-li">'+esc(x.name)+'<span>'+esc(x.dose)+'</span></div>'; }).join('')+'</div>';
+    html+='<div class="fp-blocks">';
+    w.blocks.forEach(function(b,i){
+      var chosen=b.hard?lastVariant(b.easy):'easy';
+      html+='<div class="fp-block"><div class="fp-bn">'+(i+1)+'</div><div class="fp-bb">';
+      if(b.kind==='exercise'||(b.kind==='emom'&&b.style==='pyramid')){
+        html+=b.hard?'<div class="fp-vars"><span class="'+(chosen==='easy'?'on':'')+'">Easy · '+esc(b.easy.replace(/^Pyramid EMOM:\s*/,''))+'</span><span class="'+(chosen==='hard'?'on':'')+'">Hard · '+esc(b.hard.replace(/^Pyramid EMOM:\s*/,''))+'</span></div>':'<div class="fp-ex">'+esc(blockName(b,'easy'))+'</div>';
+      } else if(b.kind==='emom') html+='<div class="fp-ex">'+esc(b.style==='single'?b.exercise:'EMOM')+'</div>'+emomPlan(b);
+      else html+='<div class="fp-ex">'+esc(b.kind==='amrap'?'AMRAP':'Circuit')+'</div>';
+      html+='<div class="fp-pres">'+blockPrescription(b)+'</div>';
+      if(b.items) html+=b.items.map(function(it){ return '<div class="fp-li">'+esc(it.easy)+(it.hard?' / '+esc(it.hard):'')+'<span>'+doseText(it.dose)+'</span></div>'; }).join('');
+      var fk=formatKey(w,b); if(fk&&pkg.formats[fk]) html+='<details class="fp-qa"><summary>How this format works</summary><div>'+esc(pkg.formats[fk].text)+'</div></details>';
+      html+=qaHtml(pkg,b.qa)+'</div></div>';
+    });
+    html+='</div>';
+    if(w.cooldown) html+='<div class="fp-box"><div class="fp-k">'+esc(w.cooldown.label)+'</div><div class="fp-li">'+esc(w.cooldown.name)+'<span>'+esc(w.cooldown.dose)+'</span></div></div>';
+    var wqa=(w.qa||[]).filter(function(q){ return !w.blocks.some(function(b){ return (b.qa||[]).indexOf(q)>=0; }); });
+    if(wqa.length) html+='<div class="fp-box">'+qaHtml(pkg,wqa)+'</div>';
+    var easyHard=(pkg.globalNotes||[]).filter(function(n){return n.id==='easy-hard';})[0];
+    if(w.blocks.some(function(b){return b.hard;})&&easyHard) html+='<p class="tiny muted fp-foot">Easy / Hard: '+esc(easyHard.text)+'</p>';
+    if(ws.status==='available') html+='<div class="fp-cta"><button class="btn primary" data-startpw>'+(comps.length?'Start again':'Start workout')+'</button></div>';
+    else html+='<p class="small muted fp-foot">'+esc(ws.status==='completed'?'':ws.status==='placed'?'Placed past — for viewing.':ws.status==='upcoming'?'Opens when the path reaches this week.':'')+'</p>';
+    var wrap=shell(html,'path');
+    on('[data-backpath]','click',function(){ setScreen('path'); },wrap);
+    on('[data-startpw]','click',function(){ startProgramRun(id); },wrap);
+  }
+
+  // ---- runner ---------------------------------------------------------------
+  function newRun(pkg,id){
+    var w=pkg.workouts[id];
+    return { workoutId:id, startedAt:new Date().toISOString(), cursor:0,
+      blocks:w.blocks.map(function(b){
+        var r={ variant:b.hard?lastVariant(b.easy):(b.kind==='emom'&&b.hardExercise?lastVariant(b.easy):'easy'), skipped:false, note:'' };
+        if(b.kind==='exercise'){ r.sets=[]; for(var i=0;i<(b.sets||1);i++) r.sets.push(Program.bilateral(b.dose)?{left:null,right:null,done:false}:{value:null,done:false}); }
+        if(b.kind==='emom'){ r.minutes=[]; }
+        if(b.kind==='amrap'){ r.rounds=null; r.partial=null; }
+        if(b.kind==='circuit'){ r.rounds=null; r.items=b.items.map(function(){return null;}); }
+        return r;
+      }) };
+  }
+  function saveRun(){ if(UI.prun) Store.set(RUN_KEY,UI.prun); else Store.del(RUN_KEY); }
+  function startProgramRun(id){
+    var pkg=getPkg(); var existing=Store.get(RUN_KEY);
+    if(existing&&existing.workoutId&&existing.workoutId!==id&&!confirm('Another workout is in progress. Discard it and start this one?')) return;
+    UI.prun=(existing&&existing.workoutId===id)?existing:newRun(pkg,id);
+    saveRun(); stopTimer(); stopClock(); UI.screen='prun'; renderProgramRun();
+  }
+  function resumeProgramRun(){ var r=Store.get(RUN_KEY); if(!r) return; UI.prun=r; UI.screen='prun'; renderProgramRun(); }
+  function restoreProgramRun(){ var r=Store.get(RUN_KEY), pkg=getPkg(); if(!r||!pkg||!pkg.workouts[r.workoutId]) return false; UI.prun=r; UI.screen='prun'; renderProgramRun(); return true; }
+
+  var clock=null;
+  function stopClock(){ if(clock){ clearInterval(clock.t); clock=null; } }
+  function stepper(attr,val,step){ return '<div class="stepper"><button data-dec="'+attr+'">−</button><span class="num">'+(val==null||val===''?'—':val)+'</span><button data-inc="'+attr+'">+</button></div>'; }
+  function outcomeChip(o){ return o==='met'?'<span class="fp-chip ok">in range</span>':o==='below'?'<span class="fp-chip below">below</span>':o==='done'?'<span class="fp-chip ok">logged</span>':''; }
+
+  function renderProgramRun(){
+    var pkg=getPkg(), run=UI.prun; if(!pkg||!run){ return setScreen('path'); }
+    UI.screen='prun';
+    var w=pkg.workouts[run.workoutId], i=run.cursor, b=w.blocks[i], r=run.blocks[i];
+    var outcome=r.skipped?'':Program.blockOutcome(b,r);
+    var html='<div class="wk-top"><div class="between"><button class="link" data-exitrun>&lsaquo; Exit</button><b>'+esc(w.optional?'Legs':shortTitle(w))+'</b><span class="muted small">'+(i+1)+'/'+w.blocks.length+'</span></div>'+
+      '<div class="prog"><i style="width:'+Math.round(i/w.blocks.length*100)+'%"></i></div></div>';
+    html+='<div class="fp-runcard">';
+    if(b.hard||(b.kind==='emom'&&b.hardExercise)){
+      html+='<div class="fp-vtog"><button class="'+(r.variant==='easy'?'on':'')+'" data-var="easy">Easy</button><button class="'+(r.variant==='hard'?'on':'')+'" data-var="hard">Hard</button></div>';
+    }
+    html+='<h2>'+esc(blockName(b,r.variant))+'</h2><div class="fp-pres">'+blockPrescription(b)+'</div>'+(b.kind==='emom'?emomPlan(b):'');
+    if(b.kind==='exercise'){
+      var bil=Program.bilateral(b.dose);
+      r.sets.forEach(function(s,k){
+        var o=Program.setOutcome(b.dose,s);
+        html+='<div class="fp-set'+(s.done?' done':'')+'"><span class="fp-sn">'+(b.setsLabel==='rounds'?'Round ':'Set ')+(k+1)+'</span>'+
+          (bil?'<span class="fp-lr">L '+stepper('s'+k+'L',s.left)+'</span><span class="fp-lr">R '+stepper('s'+k+'R',s.right)+'</span>':stepper('s'+k,s.value))+
+          (s.done?outcomeChip(o):'<button class="btn sm primary" data-setdone="'+k+'">Done</button>')+'</div>';
+      });
+      html+='<div id="rest"></div>';
+    } else if(b.kind==='emom'){
+      var mins=r.minutes;
+      html+='<div class="fp-clock" id="fpclock">'+clockHtml(b,r)+'</div>';
+      mins.forEach(function(v,k){ var lab=b.style==='alternating'?(((k+1)%2)?b.parts[0].exercise:b.parts[1].exercise):b.style==='cycle'?b.parts[k%b.parts.length].exercise:''; html+='<div class="fp-set done"><span class="fp-sn">Min '+(k+1)+'</span>'+(lab?'<span class="fp-ml">'+esc(lab)+'</span>':'')+stepper('m'+k,v)+'</div>'; });
+      html+='<button class="btn ghost" data-addmin>+ Log minute '+(mins.length+1)+'</button>';
+    } else if(b.kind==='amrap'){
+      html+=b.items.map(function(it){ return '<div class="fp-li">'+esc(it.easy)+'<span>'+doseText(it.dose)+'</span></div>'; }).join('');
+      html+='<div class="fp-clock" id="fpclock">'+clockHtml(b,r)+'</div>';
+      html+='<div class="fp-set"><span class="fp-sn">Rounds</span>'+stepper('rounds',r.rounds)+'</div><div class="fp-set"><span class="fp-sn">Extra reps</span>'+stepper('partial',r.partial)+'</div>';
+      var prev=lastAmrap(w.id);
+      if(prev!=null) html+='<p class="small muted">Last time: '+prev+' rounds. The program says: write it down so you can beat it next time.</p>';
+    } else if(b.kind==='circuit'){
+      b.items.forEach(function(it,k){ html+='<div class="fp-set"><span class="fp-sn fp-wide">'+esc(it.easy)+'<span class="tiny muted"> '+doseText(it.dose)+'</span></span>'+stepper('c'+k,r.items[k])+'</div>'; });
+      html+='<div class="fp-set"><span class="fp-sn">Rounds done</span>'+stepper('rounds',r.rounds)+'</div>';
+      if(b.restBetweenRoundsSec) html+='<button class="btn ghost" data-roundrest>Rest '+restText(b.restBetweenRoundsSec)+' between rounds</button><div id="rest"></div>';
+    }
+    // The verdict waits until every set is done; until then, show progress.
+    var pending=null;
+    if(b.kind==='exercise'&&r.sets.some(function(s){return !s.done;})) pending=r.sets.filter(function(s){return s.done;}).length+' of '+r.sets.length+' '+b.setsLabel+' done';
+    if(b.kind==='emom'&&b.minutes&&b.minutes.min!=null&&r.minutes.length<b.minutes.min) pending=r.minutes.length+' of '+b.minutes.min+' minutes logged';
+    html+='<div class="fp-out">'+(r.skipped?'<span class="fp-chip">skipped</span>':pending?'<span class="small muted">'+esc(pending)+'</span>':outcomeChip(outcome))+'</div>';
+    html+=qaHtml(pkg,b.qa);
+    html+='</div><div class="fp-nav">'+
+      (i>0?'<button class="btn ghost" data-prev>Previous</button>':'')+
+      (i<w.blocks.length-1?'<button class="btn ghost" data-skip>'+(r.skipped?'Unskip':'Skip')+'</button><button class="btn primary" data-next>Next</button>':
+        '<button class="btn ghost" data-skip>'+(r.skipped?'Unskip':'Skip')+'</button><button class="btn primary" data-finishrun>Finish workout</button>')+'</div>';
+    app.innerHTML=''; var wrap=h('<div class="scr fp-run">'+html+'</div>'); app.appendChild(wrap); window.scrollTo(0,0);
+    wireProgramRun(wrap,pkg,w,b,r);
+  }
+  function clockHtml(b,r){
+    var total=b.kind==='amrap'?b.minutes*60:((b.minutes&&b.minutes.max)||0)*60;
+    var c=clock&&clock.block===UI.prun.cursor?clock:null;
+    var el=c?c.elapsed:0;
+    if(b.kind==='amrap') return '<div class="t">'+fmt(Math.max(0,total-el))+'</div><div class="muted small">AMRAP '+b.minutes+' min</div><button class="link" data-clock>'+(c&&c.running?'Pause':el?'Resume':'Start timer')+'</button>';
+    var minute=Math.floor(el/60)+1, left=60-(el%60);
+    return '<div class="t">'+fmt(left)+'</div><div class="muted small">'+(c?'Minute '+minute:'Every minute on the minute')+'</div><button class="link" data-clock>'+(c&&c.running?'Pause':el?'Resume':'Start timer')+'</button>';
+  }
+  function lastAmrap(wid){
+    var pkg=getPkg(), w=pkg.workouts[wid];
+    var same=Program.ofType(progState(),'workout_completed').filter(function(e){ var x=pkg.workouts[e.workoutId]; return x&&x.format==='amrap'&&x.phase===w.phase; });
+    for(var k=same.length-1;k>=0;k--){ var bl=(same[k].result||[])[0]; if(bl&&bl.rounds!=null) return bl.rounds; }
+    return null;
+  }
+  function wireProgramRun(wrap,pkg,w,b,r){
+    function rerender(){ saveRun(); renderProgramRun(); }
+    function adjust(attr,delta){
+      var start=function(cur,dflt){ return (cur==null||cur==='')?dflt:Math.max(0,(+cur)+delta); };
+      var m;
+      if((m=attr.match(/^s(\d+)([LR])?$/))){ var s=r.sets[+m[1]], dmin=b.dose.min||0;
+        if(m[2]==='L') s.left=start(s.left,dmin); else if(m[2]==='R') s.right=start(s.right,dmin); else s.value=start(s.value,dmin); }
+      else if((m=attr.match(/^m(\d+)$/))) r.minutes[+m[1]]=start(r.minutes[+m[1]],(b.perMinute&&b.perMinute.min)||1);
+      else if((m=attr.match(/^c(\d+)$/))) r.items[+m[1]]=start(r.items[+m[1]],b.items[+m[1]].dose.min||0);
+      else if(attr==='rounds') r.rounds=start(r.rounds,0);
+      else if(attr==='partial') r.partial=start(r.partial,0);
+      rerender();
+    }
+    on('[data-inc]','click',function(e){ adjust(e.currentTarget.dataset.inc,1); },wrap);
+    on('[data-dec]','click',function(e){ adjust(e.currentTarget.dataset.dec,-1); },wrap);
+    on('[data-var]','click',function(e){ r.variant=e.currentTarget.dataset['var']; rememberVariant(b.easy,r.variant); rerender(); },wrap);
+    on('[data-setdone]','click',function(e){
+      var k=+e.currentTarget.dataset.setdone, s=r.sets[k], dmin=b.dose.min;
+      if(Program.bilateral(b.dose)){ if(s.left==null) s.left=dmin; if(s.right==null) s.right=dmin; } else if(s.value==null) s.value=dmin;
+      s.done=true; saveRun(); renderProgramRun();
+      var more=r.sets.some(function(x){return !x.done;});
+      if(more&&b.restSec) startRest(b.restSec);
+    },wrap);
+    on('[data-addmin]','click',function(){ r.minutes.push((b.perMinute&&b.perMinute.min)||1); rerender(); },wrap);
+    on('[data-roundrest]','click',function(){ startRest(b.restBetweenRoundsSec,{label:'Rest between rounds'}); },wrap);
+    // EMOM / AMRAP clock: a helper only. It beeps each new minute (EMOM) and at
+    // the end; what the athlete logs is what counts.
+    function paintClock(){
+      var el=document.getElementById('fpclock'); if(!el||UI.screen!=='prun') return;
+      el.innerHTML=clockHtml(b,r);
+      var btn=el.querySelector('[data-clock]'); if(btn) btn.onclick=toggleClock;
+    }
+    function toggleClock(){
+      if(clock&&clock.block===UI.prun.cursor) clock.running=!clock.running;
+      else {
+        stopClock();
+        clock={block:UI.prun.cursor,elapsed:0,running:true,t:null};
+        var total=b.kind==='amrap'?b.minutes*60:((b.minutes&&b.minutes.max)||0)*60;
+        clock.t=setInterval(function(){
+          if(!clock||!clock.running) return;
+          clock.elapsed++;
+          if(b.kind==='emom'&&clock.elapsed%60===0&&(!total||clock.elapsed<total)){ if(settings().timer.sound) playBeep(); if(settings().timer.vibrate) vibrate([150]); }
+          if(total>0&&clock.elapsed>=total){ clock.running=false; if(settings().timer.sound) playBeep(); if(settings().timer.vibrate) vibrate([100,50,100,50,200]); }
+          paintClock();
+        },1000);
+      }
+      paintClock();
+    }
+    paintClock();
+    on('[data-prev]','click',function(){ stopTimer(); stopClock(); UI.prun.cursor--; rerender(); },wrap);
+    on('[data-next]','click',function(){ stopTimer(); stopClock(); UI.prun.cursor++; rerender(); },wrap);
+    on('[data-skip]','click',function(){ r.skipped=!r.skipped; rerender(); },wrap);
+    on('[data-exitrun]','click',function(){ stopTimer(); stopClock(); saveRun(); UI.prun=null; setScreen('path'); },wrap);
+    on('[data-finishrun]','click',function(){ finishProgramRun(); },wrap);
+  }
+  function finishProgramRun(){
+    var pkg=getPkg(), run=UI.prun, w=pkg.workouts[run.workoutId];
+    var sum=Program.runSummary(w,run);
+    if(sum.notDone&&!confirm(sum.notDone+' exercise'+(sum.notDone>1?'s have':' has')+' no result. Finish the workout anyway? What you logged is kept as it is.')) return;
+    stopTimer(); stopClock();
+    var ev=Program.completionEvent(pkg,run.workoutId,run);
+    progAdd(ev);
+    UI.prun=null; Store.del(RUN_KEY);
+    UI.psummary=ev; setScreen('psummary');
+  }
+  function renderProgramSummary(){
+    var pkg=getPkg(), ev=UI.psummary; if(!ev){ return setScreen('path'); }
+    var w=pkg.workouts[ev.workoutId];
+    var lines=w.blocks.map(function(b,i){
+      var r=ev.result[i]||{}, o=ev.summary.blocks[i].outcome;
+      var vals='';
+      if(b.kind==='exercise') vals=(r.sets||[]).map(function(s){ return Program.bilateral(b.dose)?('L'+(s.left==null?'—':s.left)+'/R'+(s.right==null?'—':s.right)):(s.value==null?'—':s.value); }).join(', ');
+      else if(b.kind==='emom') vals=(r.minutes||[]).join(', ');
+      else if(b.kind==='amrap') vals=(r.rounds==null?'—':r.rounds)+' rounds'+(r.partial?' + '+r.partial:'');
+      else if(b.kind==='circuit') vals=(r.rounds==null?'—':r.rounds)+' rounds';
+      return '<div class="fp-sumrow '+o+'"><span>'+esc(blockName(b,r.variant))+'</span><span>'+esc(r.skipped?'skipped':vals||'—')+' '+outcomeChip(o)+'</span></div>';
+    }).join('');
+    var st=progState(), v=Program.pathView(pkg,st);
+    var html='<div class="fp-wh" style="text-align:center;padding-top:18px"><div class="fp-k">Workout saved</div><h1>'+esc(w.optional?'Legs':shortTitle(w))+'</h1><div class="small muted">Phase '+w.phase+' · Week '+w.week+'</div></div>'+
+      '<div class="fp-box">'+lines+'</div>'+
+      (ev.summary.below?'<p class="small muted">Results below the prescription are kept exactly as logged. Nothing is reset, and the program carries on as written.</p>':'')+
+      '<p class="small"><b>Next on your path:</b> '+esc(v.current?nodeLabel(pkg,v.current):'—')+'</p>'+
+      '<button class="btn primary" data-backpath>Back to the Path</button>';
+    app.innerHTML=''; var wrap=h('<div class="scr">'+html+'</div>'); app.appendChild(wrap); window.scrollTo(0,0);
+    on('[data-backpath]','click',function(){ UI.psummary=null; setScreen('path'); },wrap);
+  }
+
+  // ---- Max Test (a benchmark: recorded, never pass/fail) ---------------------
+  function renderMaxTest(nodeId){
+    UI.screen='pmaxtest'; UI.pmt=UI.pmt&&UI.pmt.nodeId===nodeId?UI.pmt:{nodeId:nodeId,results:{}};
+    var pkg=getPkg(), mt=pkg.maxTest, st=progState(), hist=Program.maxTestHistory(st);
+    function lastOf(fam){ for(var k=hist.length-1;k>=0;k--){ var r=(hist[k].results||[]).filter(function(x){return x.family===fam&&!x.notTested;})[0]; if(r) return r.variant+' · '+r.value+' '+(r.unit||'')+' · '+fmtDate(hist[k].date||hist[k].at); } return null; }
+    var html='<div class="wk-top"><div class="between"><button class="link" data-backpath>&lsaquo; Path</button><b>Max Test</b><span style="width:50px"></span></div></div>'+
+      '<div class="fp-src">From the program</div><p class="small">Five tests in this order: hang, pull, push-up, dip, plank. Pick the variation that fits you today, rest at least two minutes between tests, and write down what you managed. There is no pass mark — it measures where you are.</p>'+
+      '<div id="rest"></div><button class="btn ghost" data-mtrest>Rest 2:00</button>';
+    mt.families.forEach(function(f){
+      var r=UI.pmt.results[f.id]||{family:f.id,variant:f.variants[f.variants.length-1],unit:f.unit,valid:false,notTested:false};
+      UI.pmt.results[f.id]=r;
+      var last=lastOf(f.id);
+      html+='<div class="fp-box fp-mt" data-fam="'+f.id+'"><div class="between"><b>'+esc(f.label)+'</b><label class="small"><input type="checkbox" data-nt '+(r.notTested?'checked':'')+'> not tested</label></div>'+
+        (last?'<div class="tiny muted">Last: '+esc(last)+'</div>':'')+
+        '<select data-variant class="input">'+f.variants.map(function(v){return '<option'+(v===r.variant?' selected':'')+'>'+esc(v)+'</option>';}).join('')+'<option value="__own"'+(r.variant==='__own'?' selected':'')+'>My own variation…</option></select>'+
+        (r.variant==='__own'?'<input class="input" data-own placeholder="Which variation?" value="'+esc(r.own||'')+'">':'')+
+        (f.id==='pull'?'<div class="fp-opts"><select data-grip class="input"><option value="">Grip…</option><option value="overhand"'+(r.grip==='overhand'?' selected':'')+'>Overhand</option><option value="underhand"'+(r.grip==='underhand'?' selected':'')+'>Underhand</option><option value="neutral"'+(r.grip==='neutral'?' selected':'')+'>Neutral</option></select><label class="small"><input type="checkbox" data-assist '+(r.assisted?'checked':'')+'> with assistance (band etc.)</label></div>':'')+
+        (f.id==='hang'?'<div class="fp-opts"><select data-grip class="input"><option value="">Grip…</option><option value="overhand"'+(r.grip==='overhand'?' selected':'')+'>Two hands, overhand</option><option value="other"'+(r.grip==='other'?' selected':'')+'>Other</option></select></div>':'')+
+        (f.id==='dip'?'<div class="fp-opts"><select data-app class="input"><option value="">Where…</option><option value="parallel-bars"'+(r.apparatus==='parallel-bars'?' selected':'')+'>Parallel dip bars</option><option value="two-chairs"'+(r.apparatus==='two-chairs'?' selected':'')+'>Two chairs</option><option value="other"'+(r.apparatus==='other'?' selected':'')+'>Other</option></select></div>':'')+
+        (f.id==='plank'?'<div class="fp-opts"><select data-form class="input"><option value="">Plank form…</option><option value="forearm"'+(r.plankForm==='forearm'?' selected':'')+'>On the forearms</option><option value="straight-arm"'+(r.plankForm==='straight-arm'?' selected':'')+'>On straight arms</option></select></div>':'')+
+        '<div class="fp-set"><span class="fp-sn">'+(f.unit==='sec'?'Seconds':'Reps')+'</span><input class="input fp-num" type="number" inputmode="numeric" min="0" data-val value="'+(r.value==null?'':r.value)+'"></div>'+
+        '<label class="small fp-valid"><input type="checkbox" data-valid '+(r.valid?'checked':'')+'> Every counted '+(f.unit==='sec'?'second held the position':'rep had full range and control (no swing or kip)')+'</label>'+
+        '</div>';
+    });
+    html+='<button class="btn primary" data-mtsave>Save Max Test</button>';
+    if(hist.length) html+='<div class="fp-box"><div class="fp-k">Earlier Max Tests</div>'+hist.map(function(e){ return '<div class="fp-li"><span>'+esc(fmtDate(e.date||e.at))+'</span><span>'+(e.results||[]).filter(function(x){return !x.notTested;}).map(function(x){return esc(x.family)+' '+esc(x.value);}).join(' · ')+'</span></div>'; }).join('')+'</div>';
+    var wrap=shell(html,'path');
+    on('[data-backpath]','click',function(){ setScreen('path'); },wrap);
+    on('[data-mtrest]','click',function(){ startRest(120,{label:'Rest before the next test'}); },wrap);
+    wrap.querySelectorAll('[data-fam]').forEach(function(box){
+      var r=UI.pmt.results[box.dataset.fam];
+      function bind(sel,ev,fn){ var el=box.querySelector(sel); if(el) el.addEventListener(ev,fn); }
+      bind('[data-variant]','change',function(e){ r.variant=e.target.value; renderMaxTest(nodeId); });
+      bind('[data-own]','input',function(e){ r.own=e.target.value; });
+      bind('[data-grip]','change',function(e){ r.grip=e.target.value||null; });
+      bind('[data-assist]','change',function(e){ r.assisted=e.target.checked; });
+      bind('[data-app]','change',function(e){ r.apparatus=e.target.value||null; });
+      bind('[data-form]','change',function(e){ r.plankForm=e.target.value||null; });
+      bind('[data-val]','input',function(e){ r.value=e.target.value===''?null:+e.target.value; });
+      bind('[data-valid]','change',function(e){ r.valid=e.target.checked; });
+      bind('[data-nt]','change',function(e){ r.notTested=e.target.checked; });
+    });
+    on('[data-mtsave]','click',function(){
+      var results=mt.families.map(function(f){ var r=Object.assign({},UI.pmt.results[f.id]); if(r.variant==='__own'){ r.variant=r.own||'Own variation'; r.custom=true; } delete r.own; return r; });
+      if(!results.some(function(r){ return !r.notTested&&r.value!=null; })){ toast('Enter at least one result, or mark the tests you skipped.'); return; }
+      progAdd({type:'maxtest_recorded',nodeId:nodeId,date:new Date().toISOString(),results:results});
+      UI.pmt=null;
+      var passed=checkFoundationPass();
+      toast('Max Test saved.');
+      if(passed) return renderAcademyUnlock();
+      setScreen('path');
+    },wrap);
+  }
+  function maxTestSheet(pkg,st,n){
+    var rec=Program.ofType(st,'maxtest_recorded').filter(function(e){return e.nodeId===n.id;}).pop();
+    var body=rec?(rec.results||[]).map(function(r){ return '<div class="dd-kv"><span>'+esc(r.family)+' · '+esc(r.variant)+'</span><b>'+(r.notTested?'not tested':esc(r.value)+' '+esc(r.unit||''))+'</b></div>'; }).join('')+
+      '<p class="small muted">Recorded '+esc(fmtDate(rec.date||rec.at))+'. A benchmark only: it does not pass or fail a phase.</p>':
+      '<p class="small">'+(n.status==='placed'?'Placed past.':'At the end of this phase.')+' "Take 2-3 days of rest after your last workout" before the test (program text).</p>';
+    showSheet('<div class="grip"></div><div class="fp-src">From the program</div><h2>'+esc(nodeLabel(pkg,n))+'</h2>'+body+'<button class="btn ghost" data-close>Close</button>',function(sheet){ on('[data-close]','click',closeSheet,sheet); });
+  }
+
+  // ---- Foundation Exit (SPC Stage 5A, Calibration v1) ------------------------
+  function renderFoundationExit(){
+    UI.screen='pexit';
+    var st=progState(), fs=Program.foundationStatus(st);
+    var stTxt={pass:'Passed','stale':'Older than 45 days','not-yet':'Not yet','no-evidence':'No result yet'};
+    var html='<div class="wk-top"><div class="between"><button class="link" data-backpath>&lsaquo; Path</button><b>Foundation Exit</b><span style="width:50px"></span></div></div>'+
+      '<div class="fp-src spc">Skill Progression Coach standard · v1</div>'+
+      (fs.passed?'<div class="fp-done-note">✓ Passed on '+esc(fmtDate(fs.passedAt))+' · the Academy is open</div>':
+        '<p class="small">All six must pass to open the Academy. A result counts when it is exactly the test described and was recorded in the last '+Program.EXIT_EVIDENCE_DAYS+' days. Max Test results count when they are the very same test. You can record a test whenever you are ready.</p>')+
+      '<details class="fp-qa"><summary>What makes a rep count (F7)</summary><div>'+esc(Program.F7)+'</div></details>';
+    fs.domains.forEach(function(d){
+      var ev=d.evidence, evTxt='';
+      if(ev){ var vv=d.test==='legs'?('squats '+ev.values.squats+', lunges R '+ev.values.lungeR+' / L '+ev.values.lungeL):(ev.values.value+' '+Program.TESTS[d.test].unit); evTxt=esc(vv)+' · '+esc(fmtDate(ev.date))+' · '+(ev.source==='max-test'?'Max Test':'test'); }
+      html+='<div class="fp-box fp-dom '+d.status+'"><div class="between"><div><div class="fp-k">'+d.id+' · '+esc(d.label)+'</div><b>'+esc(d.pass)+'</b></div><span class="fp-chip '+(d.status==='pass'?'ok':d.status==='not-yet'?'below':'')+'">'+esc(stTxt[d.status])+'</span></div>'+
+        (evTxt?'<div class="small muted">'+evTxt+'</div>':'')+(fs.passed?'':'<button class="btn ghost sm" data-rectest="'+d.test+'">Record a test</button>')+'</div>';
+    });
+    var wrap=shell(html,'path');
+    on('[data-backpath]','click',function(){ setScreen('path'); },wrap);
+    on('[data-rectest]','click',function(e){ recordTestSheet(e.currentTarget.dataset.rectest,null); },wrap);
+  }
+  // One form for every SPC test (Foundation Exit domains, Ring Muscle-Up entry).
+  function recordTestSheet(test,purpose){
+    var T=Program.TESTS[test], legs=test==='legs';
+    var body='<div class="grip"></div><div class="fp-src spc">Skill Progression Coach test</div><h2>'+esc(T.label)+'</h2><p class="small">'+esc(T.test)+'</p>'+
+      '<div class="fp-k">Every counted '+(T.unit==='sec'?'second':'rep')+' needs all of these</div>'+
+      T.validity.map(function(v,k){ return '<label class="small fp-valid"><input type="checkbox" data-vchk="'+k+'"> '+esc(v)+'</label>'; }).join('')+
+      (legs?'<div class="fp-set"><span class="fp-sn">Squats</span><input class="input fp-num" type="number" min="0" data-tv="squats"></div><div class="fp-set"><span class="fp-sn">Reverse lunges · right</span><input class="input fp-num" type="number" min="0" data-tv="lungeR"></div><div class="fp-set"><span class="fp-sn">Reverse lunges · left</span><input class="input fp-num" type="number" min="0" data-tv="lungeL"></div>':
+        '<div class="fp-set"><span class="fp-sn">'+(T.unit==='sec'?'Valid seconds':'Valid consecutive reps')+'</span><input class="input fp-num" type="number" min="0" data-tv="value"></div>')+
+      '<select class="input" data-assessor><option value="self">Self-recorded</option><option value="video">On video</option><option value="witnessed">Witnessed</option></select>'+
+      '<p class="tiny muted">Pain or unsafe movement: stop the test. Only valid reps and seconds are entered.</p>'+
+      '<button class="btn primary" data-savetest>Save result</button><button class="btn ghost" data-close>Cancel</button>';
+    showSheet(body,function(sheet){
+      on('[data-close]','click',closeSheet,sheet);
+      on('[data-savetest]','click',function(){
+        var values={}; sheet.querySelectorAll('[data-tv]').forEach(function(el){ values[el.dataset.tv]=el.value===''?null:+el.value; });
+        if(Object.keys(values).some(function(k){return values[k]==null;})){ toast('Enter every value.'); return; }
+        var valid=[].slice.call(sheet.querySelectorAll('[data-vchk]')).every(function(c){return c.checked;});
+        progAdd({type:'exit_test_recorded',test:test,values:values,valid:valid,assessor:sheet.querySelector('[data-assessor]').value,date:new Date().toISOString(),purpose:purpose||'foundation-exit'});
+        closeSheet();
+        if(!valid) toast('Saved — not counted, because not every condition was ticked.'); else toast('Result saved.');
+        if(checkFoundationPass()) return renderAcademyUnlock();
+        if(UI.screen==='academy') renderAcademy(); else renderFoundationExit();
+      },sheet);
+    });
+  }
+  function renderAcademyUnlock(){
+    UI.screen='punlock';
+    app.innerHTML='';
+    var wrap=h('<div class="scr fp-unlock"><div class="fp-k">Foundation Exit passed</div><h1>The Academy is open</h1><p class="muted">You have built the foundation. Now choose where to specialize.</p><button class="btn primary" data-goacademy>Enter the Academy</button></div>');
+    app.appendChild(wrap);
+    on('[data-goacademy]','click',function(){ setScreen('academy'); },wrap);
+  }
+
+  // ---- Academy (minimum: Ring Muscle-Up + Pistol Squat) ----------------------
+  function renderAcademy(){
+    UI.screen='academy';
+    var st=progState(), ac=Program.academyStatus(st), fs=Program.foundationStatus(st);
+    var html='<div class="fp-head"><div class="fp-k">'+(ac.open?'Open':'Locked')+'</div><div class="fp-t">The Academy</div></div>';
+    if(!ac.open){
+      var n=fs.domains.filter(function(d){return d.status==='pass';}).length;
+      html+='<div class="fp-box"><b>Opens after the Foundation Exit</b><p class="small muted">'+n+' of 6 domains passed. Every domain must pass; there is no partial entry.</p><button class="btn ghost sm" data-goexit>See the Foundation Exit</button></div>';
+    }
+    ac.goals.forEach(function(g){
+      var stt=g.status==='open'?'Open':g.status==='locked-entry'?'Entry check needed':'Locked';
+      html+='<div class="fp-box fp-goal '+g.status+'"><div class="between"><b class="fp-t2">'+esc(g.label)+'</b><span class="fp-chip '+(g.status==='open'?'ok':'')+'">'+esc(stt)+'</span></div><div class="small muted">Entry: '+esc(g.entryText)+'</div>';
+      if(ac.open&&g.status==='locked-entry') html+=g.needs.map(function(n){ return '<div class="fp-li">'+esc(n.label)+'<span>'+(n.have==null?'—':n.have)+' / '+n.need+(n.ok?' ✓':'')+'</span></div>'+(n.ok?'':'<button class="btn ghost sm" data-rectest="'+n.test+'">Record '+esc(n.label.toLowerCase())+'</button>'); }).join('');
+      if(g.status==='open') html+='<p class="small">Entry passed. The training inside this goal is still being finalized, so there is nothing to train here yet.</p>';
+      html+='</div>';
+    });
+    html+='<div class="fp-box muted"><div class="fp-k">Later</div><div class="small">'+ac.later.map(esc).join(' · ')+'</div></div>';
+    var wrap=shell(html,'academy');
+    on('[data-goexit]','click',function(){ setScreen('pexit'); },wrap);
+    on('[data-rectest]','click',function(e){ recordTestSheet(e.currentTarget.dataset.rectest,'ring-muscle-up-entry'); },wrap);
+  }
+
+  // ---- Settings → Program ---------------------------------------------------
+  function renderProgramSettings(){
+    var pkg=getPkg(), st=progState(), v=pkg?Program.pathView(pkg,st):null;
+    var html=settingsBackHeader('Program')+
+      '<div class="fp-box"><div class="fp-k">Installed program</div>'+(pkg?'<b>'+esc(pkg.publisher+' · '+pkg.title)+'</b><div class="small muted">'+Object.keys(pkg.weeks).length+' weeks · '+Object.values(pkg.workouts).filter(function(w){return !w.optional;}).length+' workouts + '+Object.values(pkg.workouts).filter(function(w){return w.optional;}).length+' optional · source '+esc(pkg.source.md5.slice(0,8))+'</div>':'<div class="small muted">Not installed on this device.</div>')+
+      '<input type="file" accept="application/json,.json" data-pkgfile style="display:none"><button class="btn ghost sm" data-pkgimport>Import program file…</button></div>'+
+      (v?'<div class="fp-box"><div class="fp-k">Your position</div><b>'+esc(v.current?nodeLabel(pkg,v.current):'Foundation complete')+'</b>'+
+        '<p class="small muted">Started at '+esc(nodeLabel(pkg,v.nodes[v.startIndex]))+'. Changing your starting point never deletes what you did; content before it is shown as placed past.</p>'+
+        '<select class="input" data-repos>'+v.nodes.filter(function(n){return n.type!=='exit';}).map(function(n){ return '<option value="'+n.id+'"'+(n.id===v.start?' selected':'')+'>'+esc(nodeLabel(pkg,n))+'</option>'; }).join('')+'</select>'+
+        '<button class="btn ghost sm" data-reposave>Set starting point</button></div>':'');
+    var wrap=shell(html,null); wireSettingsBack(wrap);
+    var file=wrap.querySelector('[data-pkgfile]');
+    on('[data-pkgimport]','click',function(){ file.click(); },wrap);
+    if(file) file.addEventListener('change',function(){
+      var f=file.files&&file.files[0]; if(!f) return;
+      var rd=new FileReader(); rd.onload=function(){ try{ var p=JSON.parse(rd.result); var vv=Program.validatePackage(p); if(!vv.ok){ toast('Not a program file: '+vv.errors.join(', ')); return; } setPkg(p); toast('Program installed.'); renderProgramSettings(); }catch(e){ toast('Could not read that file.'); } }; rd.readAsText(f);
+    });
+    on('[data-reposave]','click',function(){
+      var to=wrap.querySelector('[data-repos]').value; if(!to||to===v.start) return;
+      if(!confirm('Start your path at '+nodeLabel(pkg,v.nodes.filter(function(n){return n.id===to;})[0])+'? Nothing you recorded is deleted.')) return;
+      progAdd({type:'repositioned',start:to,basis:'athlete'}); toast('Starting point set.'); renderProgramSettings();
+    },wrap);
+  }
+  function programHistoryHtml(){
+    var pkg=getPkg(), st=progState(); if(!pkg||!st) return '';
+    var comps=Program.ofType(st,'workout_completed').slice().reverse();
+    var mts=Program.maxTestHistory(st).slice().reverse();
+    var rows=comps.map(function(e){ var p=e.prescription||{}; var w=pkg.workouts[e.workoutId]||{};
+      var t=p.title||w.title||e.workoutId; var s=e.summary;
+      return '<div class="hist-item"><div class="hist-h"><span class="hist-date">'+esc(fmtDate(e.finishedAt||e.at))+'</span><span class="hist-nm">'+esc('Phase '+(p.phase||w.phase)+' · Week '+(p.week||w.week)+' · '+t)+'</span></div>'+
+        '<div class="small muted">'+(e.source==='reported'?'Reported before this app (no set data)':(s?s.met+' in range · '+s.below+' below · '+(s.done||0)+' logged · '+s.notDone+' no result':''))+'</div></div>'; }).join('');
+    var mrows=mts.map(function(e){ return '<div class="hist-item"><div class="hist-h"><span class="hist-date">'+esc(fmtDate(e.date||e.at))+'</span><span class="hist-nm">Max Test</span></div><div class="small muted">'+(e.results||[]).map(function(r){ return esc(r.family)+': '+(r.notTested?'—':esc(r.variant)+' '+esc(r.value)); }).join(' · ')+'</div></div>'; }).join('');
+    return '<div class="section">Foundation Path</div>'+(rows||'<p class="small muted">No program workouts yet.</p>')+(mrows?'<div class="section">Max Tests</div>'+mrows:'');
+  }
 
   // ---- go -------------------------------------------------------------------
   // If the install prompt becomes available while the user is on the Data

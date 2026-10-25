@@ -7,13 +7,13 @@
  * activation, deletes only obsolete Skill-Coach caches — never the original
  * app's caches. It also never intercepts requests outside its scope.
  */
-const CACHE = 'skill-progression-coach-v27';
+const CACHE = 'skill-progression-coach-v28';
 const SCOPE = new URL(self.registration.scope).pathname; // e.g. /skill-progression-coach/
 const ASSETS = [
   './', './index.html',
   './app.js', './data.js', './week.js', './engine.js', './progress.js', './store.js',
   './duration.js', './adapt.js', './settings.js', './daily.js', './backup.js', './idb.js',
-  './context.js', './evaluator.js', './shadow.js', './evidence.js', './goals.js',
+  './context.js', './evaluator.js', './shadow.js', './evidence.js', './goals.js', './program.js',
   // Content is DELIVERED here and nowhere else. Evaluation reads definitions
   // only from the durable contextPackages store (Technical Schema §16,
   // invariant 25) — these entries exist so a first offline boot can install a
@@ -47,6 +47,9 @@ self.addEventListener('fetch', event => {
   try { url = new URL(req.url); } catch (e) { return; }
   // Never touch anything outside this app's own scope — the original app is safe.
   if (url.origin !== self.location.origin || url.pathname.indexOf(SCOPE) !== 0) return;
+  // The program package (private/) is never cached here: the app keeps its own
+  // copy on the device, and a rebuilt package must always reach it.
+  if (url.pathname.indexOf(SCOPE + 'private/') === 0) return;
 
   if (req.mode === 'navigate') {
     // Network-first for the app shell so updates are picked up; cached shell

@@ -11,6 +11,9 @@
 // restore across two storage systems that share no transaction) do not exist
 // in a shim.
 const { test, expect } = require('@playwright/test');
+// Written for the earlier weekly-plan app, which now runs only behind the
+// legacy shell switch; these tests keep guarding it there.
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { window.__spcLegacyShell = true; }); });
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -20,6 +23,7 @@ const DURABLE = ['ledger', 'events', 'artifacts', 'commitments', 'athlete', 'con
 const LS_KEYS = [
   'spc_c_profile', 'spc_c_state', 'spc_c_sessions', 'spc_c_bench', 'spc_c_settings', 'spc_c_plan',
   'spc_c_templates', 'spc_c_adhoc', 'spc_c_workout', 'spc_c_day',
+  'spc_c_program', 'spc_c_programrun', 'spc_c_programpkg', 'spc_c_programvariants',
   'puc_log', 'puc_plan', 'puc_settings', 'puc_session', 'puc_progression', 'puc_secondary'
 ];
 
@@ -743,7 +747,7 @@ test.describe('Backup v2 — PWA / offline', () => {
       };
     });
     expect(r.keys).not.toContain('skill-progression-coach-v17');
-    expect(r.keys).toContain('skill-progression-coach-v27');
+    expect(r.keys).toContain('skill-progression-coach-v28');
     expect(r.hasIdb).toBe(true);
     expect(r.hasBackup).toBe(true);
     expect(r.hasContext).toBe(true);

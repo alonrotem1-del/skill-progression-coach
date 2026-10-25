@@ -6,6 +6,9 @@
 // tests never see it), and that portrait behavior is otherwise completely
 // unaffected. The app never requests, locks, or promotes landscape.
 const { test, expect } = require('@playwright/test');
+// Written for the earlier weekly-plan app, which now runs only behind the
+// legacy shell switch; these tests keep guarding it there.
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { window.__spcLegacyShell = true; }); });
 
 // The three required phone-landscape sizes (wide, short) vs the portrait
 // dimensions used throughout the rest of the suite.

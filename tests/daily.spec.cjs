@@ -5,6 +5,9 @@
 // delete / exclude / mark-as-test. Pure-module tests exercise daily.js directly;
 // the E2E tests drive the live app. All English.
 const { test, expect } = require('@playwright/test');
+// Written for the earlier weekly-plan app, which now runs only behind the
+// legacy shell switch; these tests keep guarding it there.
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { window.__spcLegacyShell = true; }); });
 
 // ── pure daily.js module (no browser) ──────────────────────────────────────
 const Week = require('../week.js');

@@ -9,6 +9,9 @@
 // engine has its own suites, and a renovation that passed only by keeping the
 // old structure would have proved nothing.
 const { test, expect } = require('@playwright/test');
+// Written for the earlier weekly-plan app, which now runs only behind the
+// legacy shell switch; these tests keep guarding it there.
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { window.__spcLegacyShell = true; }); });
 const path = require('path');
 
 const REPO = path.resolve(__dirname, '..');

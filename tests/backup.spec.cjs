@@ -10,6 +10,9 @@
 // real Export/Restore UI in a page, including the confirm() dialog and the
 // hidden file input.
 const { test, expect } = require('@playwright/test');
+// Written for the earlier weekly-plan app, which now runs only behind the
+// legacy shell switch; these tests keep guarding it there.
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { window.__spcLegacyShell = true; }); });
 const fs = require('fs');
 const path = require('path');
 
@@ -29,6 +32,8 @@ const EXPECTED_KEYS = [
   'spc_c_profile', 'spc_c_state', 'spc_c_sessions', 'spc_c_bench',
   'spc_c_settings', 'spc_c_plan', 'spc_c_templates', 'spc_c_adhoc',
   'spc_c_workout', 'spc_c_day',
+  // the Foundation Path (added additively; older backups stay restorable)
+  'spc_c_program', 'spc_c_programrun', 'spc_c_programpkg', 'spc_c_programvariants',
   'puc_log', 'puc_plan', 'puc_settings', 'puc_session', 'puc_progression', 'puc_secondary'
 ];
 
@@ -68,9 +73,9 @@ function validBackup(overrides) {
 // ── Part A — pure module ────────────────────────────────────────────────
 
 test.describe('backup.js — key inventory', () => {
-  test('1 — the protected key list is exactly the 16 keys re-confirmed from source', () => {
+  test('1 — the protected key list is exactly the 20 keys re-confirmed from source', () => {
     expect(Backup.PROTECTED_KEYS.slice().sort()).toEqual(EXPECTED_KEYS.slice().sort());
-    expect(Backup.PROTECTED_KEYS.length).toBe(16);
+    expect(Backup.PROTECTED_KEYS.length).toBe(20);
   });
 
   test('registered inventory covers every Store.KEYS value and every LEGACY_KEYS value', () => {
@@ -487,5 +492,40 @@ test.describe('backup — Data settings UI', () => {
     const after = await page.evaluate(() => localStorage.getItem('spc_c_profile'));
     expect(after).toBe(before);
     fs.unlinkSync(tmp);
+  });
+});
+
+// Keys registered after backups already existed (the Foundation Path) must not
+// turn an older backup file into an unrestorable one.
+test.describe('backup.js — keys added later', () => {
+  test('an older backup without the Foundation Path keys still validates', () => {
+    var env = validBackup();
+    Backup.ADDED_KEYS.forEach(function (k) { delete env.keys[k]; });
+    expect(Backup.ADDED_KEYS).toEqual(['spc_c_program', 'spc_c_programrun', 'spc_c_programpkg', 'spc_c_programvariants']);
+    expect(Backup.validateEnvelope(env).ok).toBe(true);
+  });
+
+  test('restoring it leaves the newer keys exactly as they are', () => {
+    var env = validBackup();
+    Backup.ADDED_KEYS.forEach(function (k) { delete env.keys[k]; });
+    env.keys.spc_c_profile = { present: true, value: '{"onboarded":true}' };
+    var r = memRaw({ spc_c_program: '{"events":["kept"]}', spc_c_profile: 'old' });
+    var out = Backup.restoreAll(env, r.getRaw, r.setRaw, r.removeRaw);
+    expect(r.map.spc_c_program).toBe('{"events":["kept"]}');
+    expect(r.map.spc_c_profile).toBe('{"onboarded":true}');
+    expect(out.restored).not.toContain('spc_c_program');
+  });
+
+  test('a current backup still records, and restores, the Foundation Path keys', () => {
+    var env = validBackup();
+    env.keys.spc_c_program = { present: true, value: '{"events":[]}' };
+    var r = memRaw({ spc_c_programrun: '{"workoutId":"x"}' });
+    Backup.restoreAll(env, r.getRaw, r.setRaw, r.removeRaw);
+    expect(r.map.spc_c_program).toBe('{"events":[]}');
+    expect(r.map.spc_c_programrun).toBeUndefined(); // recorded as absent in this backup
+  });
+
+  test('an in-progress program workout counts as in progress for the restore warning', () => {
+    expect(Backup.hasInProgressState(memRaw({ spc_c_programrun: '{"workoutId":"P4W3-3"}' }).getRaw)).toBe(true);
   });
 });

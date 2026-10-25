@@ -9,6 +9,9 @@
 // localStorage still drives every decision the app makes. Two describe blocks
 // below exist to prove exactly that.
 const { test, expect } = require('@playwright/test');
+// Written for the earlier weekly-plan app, which now runs only behind the
+// legacy shell switch; these tests keep guarding it there.
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { window.__spcLegacyShell = true; }); });
 
 const bundle1 = require('../content/bundle-1.json');
 const semantics1 = require('../content/semantics-1.json');
@@ -580,7 +583,7 @@ test.describe('P5 context — delivery', () => {
       await page.waitForTimeout(250);
       cached = await read();
     }
-    expect(cached.name).toMatch(/skill-progression-coach-v27/);
+    expect(cached.name).toMatch(/skill-progression-coach-v28/);
     ['context.js', 'content/contexts.json', 'content/vocabulary.json',
       'content/bundle-1.json', 'content/semantics-1.json']
       .forEach((f) => expect(cached.urls.some((u) => u.indexOf(f) >= 0), f).toBe(true));

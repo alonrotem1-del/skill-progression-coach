@@ -3,6 +3,9 @@
 // (Extra / Apply-to-plan / Test), extra-load feeding the Weekly Coach, saved
 // templates, resume, and history classification. Reuses the same daily runner.
 const { test, expect } = require('@playwright/test');
+// Written for the earlier weekly-plan app, which now runs only behind the
+// legacy shell switch; these tests keep guarding it there.
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { window.__spcLegacyShell = true; }); });
 
 const Week = require('../week.js');
 const Daily = require('../daily.js');

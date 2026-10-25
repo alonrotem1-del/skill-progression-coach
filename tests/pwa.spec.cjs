@@ -4,6 +4,9 @@
 // `request` fixture; SW/cache checks use a real page (127.0.0.1 is a secure
 // context, so service workers register).
 const { test, expect } = require('@playwright/test');
+// Written for the earlier weekly-plan app, which now runs only behind the
+// legacy shell switch; these tests keep guarding it there.
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { window.__spcLegacyShell = true; }); });
 const fs = require('fs');
 const path = require('path');
 const ROOT = path.join(__dirname, '..');

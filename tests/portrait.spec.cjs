@@ -5,6 +5,9 @@
 // worked before this change (Add Full Round rest, the 5-second hold prep,
 // refresh persistence) regressed.
 const { test, expect } = require('@playwright/test');
+// Written for the earlier weekly-plan app, which now runs only behind the
+// legacy shell switch; these tests keep guarding it there.
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { window.__spcLegacyShell = true; }); });
 
 const WIDTHS = [
   { width: 360, height: 800 },

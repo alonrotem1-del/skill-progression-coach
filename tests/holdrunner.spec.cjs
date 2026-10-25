@@ -5,6 +5,9 @@
 // fake clock so the runner's timestamp-diff math (never a decrementing
 // counter) can be exercised deterministically and fast.
 const { test, expect } = require('@playwright/test');
+// Written for the earlier weekly-plan app, which now runs only behind the
+// legacy shell switch; these tests keep guarding it there.
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { window.__spcLegacyShell = true; }); });
 
 async function seed(page) {
   await page.addInitScript(() => {

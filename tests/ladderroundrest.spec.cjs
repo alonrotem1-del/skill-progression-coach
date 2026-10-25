@@ -6,6 +6,9 @@
 // the Timed Hold runner's w.hold pattern) that reuses the existing rest-timer
 // UI unchanged, and only reveals the round once that rest ends or is skipped.
 const { test, expect } = require('@playwright/test');
+// Written for the earlier weekly-plan app, which now runs only behind the
+// legacy shell switch; these tests keep guarding it there.
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { window.__spcLegacyShell = true; }); });
 
 async function seed(page) {
   await page.addInitScript(() => { window.__spcTodayId = 5; }); // Friday -> Pull-Up Ladder day

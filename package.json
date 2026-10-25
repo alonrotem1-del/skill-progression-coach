@@ -5,7 +5,9 @@
   "description": "Skill Progression Coach — standalone installable PWA (green). Reads Pull-Up Coach history read-only.",
   "scripts": {
     "test": "node tools/validate-content.cjs && playwright test",
-    "validate:content": "node tools/validate-content.cjs"
+    "validate:content": "node tools/validate-content.cjs",
+    "build:program": "node tools/build-program.cjs",
+    "verify:program": "node tools/verify-program.cjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"

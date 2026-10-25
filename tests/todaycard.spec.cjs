@@ -13,6 +13,9 @@
 // These tests pin the three questions the card has to answer: what am I doing
 // today, what exactly is prescribed, and where do I press to start.
 const { test, expect } = require('@playwright/test');
+// Written for the earlier weekly-plan app, which now runs only behind the
+// legacy shell switch; these tests keep guarding it there.
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { window.__spcLegacyShell = true; }); });
 
 async function seed(page, dayId) {
   if (dayId !== undefined) await page.addInitScript((d) => { window.__spcTodayId = d; }, dayId);

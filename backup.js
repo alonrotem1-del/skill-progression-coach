@@ -85,11 +85,22 @@
     'spc_c_settings', 'spc_c_plan', 'spc_c_templates', 'spc_c_adhoc',
     // spc_c_* outside Store.KEYS (in-progress execution state)
     'spc_c_workout', 'spc_c_day',
+    // the Foundation Path: athlete events, an in-progress run, the installed
+    // program package and the remembered Easy/Hard choices
+    'spc_c_program', 'spc_c_programrun', 'spc_c_programpkg', 'spc_c_programvariants',
     // legacy puc_* — read-only elsewhere in the app; protected here too
     'puc_log', 'puc_plan', 'puc_settings', 'puc_session', 'puc_progression', 'puc_secondary'
   ];
   var PROTECTED_SET = {};
   PROTECTED_KEYS.forEach(function (k) { PROTECTED_SET[k] = true; });
+  // Keys registered AFTER backups were already being made. A backup taken
+  // before they existed simply does not mention them: it must still validate,
+  // and restoring it must leave these keys as they are — never delete newer
+  // data that the older backup could not have known about. Every backup made
+  // from now on records them like any other key.
+  var ADDED_KEYS = ['spc_c_program', 'spc_c_programrun', 'spc_c_programpkg', 'spc_c_programvariants'];
+  var ADDED_SET = {};
+  ADDED_KEYS.forEach(function (k) { ADDED_SET[k] = true; });
 
   // Durable, non-derived IndexedDB stores (Technical Schema §16). Order is
   // presentation only. `cache` is deliberately absent and must stay absent.
@@ -218,7 +229,10 @@
     }
     for (var j = 0; j < PROTECTED_KEYS.length; j++) {
       var k = PROTECTED_KEYS[j];
-      if (seen.indexOf(k) < 0) return bad('backup is missing expected key: ' + k);
+      if (seen.indexOf(k) < 0) {
+        if (ADDED_SET[k]) continue; // an older backup, made before this key existed
+        return bad('backup is missing expected key: ' + k);
+      }
       var rec = env.keys[k];
       if (!isPlainObject(rec)) return bad('malformed entry for key: ' + k);
       if (typeof rec.present !== 'boolean') return bad('malformed entry for key: ' + k);
@@ -335,11 +349,14 @@
     var preImage = snapshotKeys(getRaw);
 
     try {
+      var restored = [];
       PROTECTED_KEYS.forEach(function (k) {
-        var rec = env.keys[k]; // validated above: always present in env.keys
+        var rec = env.keys[k]; // validated above: present, unless a later-added key an older backup predates
+        if (!rec) return;      // not in this backup: left exactly as it is
         if (rec.present) setRaw(k, rec.value); else removeRaw(k);
+        restored.push(k);
       });
-      return { ok: true, restored: PROTECTED_KEYS.slice() };
+      return { ok: true, restored: restored };
     } catch (writeErr) {
       var rollbackFailed = restoreKeysFrom(preImage, setRaw, removeRaw);
       var msg = 'Restore failed: ' + (writeErr && writeErr.message ? writeErr.message : String(writeErr));
@@ -389,6 +406,8 @@
     if (day && (day.activeExId != null || day.status === 'in_progress')) return true;
     var adhoc = safeParse(getRaw('spc_c_adhoc'));
     if (adhoc && (adhoc.activeExId != null || adhoc.status === 'in_progress')) return true;
+    var run = getRaw('spc_c_programrun');
+    if (run !== undefined && run !== null && run !== '') return true;
     return false;
   }
 
@@ -399,6 +418,7 @@
     STORAGE_SCHEMA_VERSION: STORAGE_SCHEMA_VERSION,
     APP_ID: APP_ID,
     PROTECTED_KEYS: PROTECTED_KEYS.slice(),
+    ADDED_KEYS: ADDED_KEYS.slice(),
     DURABLE_STORES: DURABLE_STORES.slice(),
     EXCLUDED_STORES: EXCLUDED_STORES.slice(),
     isProtectedKey: isProtectedKey,

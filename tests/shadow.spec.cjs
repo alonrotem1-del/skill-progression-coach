@@ -6,6 +6,9 @@
 // and, just as importantly, they pin the authority boundary: the shadow layer
 // may read legacy state, and nothing in the product may read shadow state back.
 const { test, expect } = require('@playwright/test');
+// Written for the earlier weekly-plan app, which now runs only behind the
+// legacy shell switch; these tests keep guarding it there.
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { window.__spcLegacyShell = true; }); });
 const path = require('path');
 const fs = require('fs');
 

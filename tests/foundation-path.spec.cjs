@@ -1,0 +1,220 @@
+// The Foundation Path in the running app: the Beginner Program as the home
+// screen, real execution against the authored prescription, Max Tests, the SPC
+// Foundation Exit and the minimum Academy. Needs the locally built program
+// package (private/, git-ignored course content); skips without it.
+const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
+
+const PKG_FILE = path.join(__dirname, '..', 'private', 'beginner-program.json');
+const HAVE = fs.existsSync(PKG_FILE);
+const pkg = HAVE ? JSON.parse(fs.readFileSync(PKG_FILE, 'utf8')) : null;
+test.skip(!HAVE, 'program package not built on this machine');
+
+const LEGACY_SESSION = [{ id: 'cs_legacy_1', kind: 'strength', templateId: 'pullup_ladder', date: '2026-10-01T10:00:00.000Z', exercises: [] }];
+
+// The athlete who used the earlier app: a profile and history, no program state.
+async function existingAthlete(page) {
+  await page.goto('index.html');
+  await page.evaluate((sessions) => {
+    localStorage.clear();
+    localStorage.setItem('spc_c_profile', JSON.stringify({ onboarded: true, activeWorld: 'muscleup', days: [0, 2, 4], duration: 'normal' }));
+    localStorage.setItem('spc_c_sessions', JSON.stringify(sessions));
+  }, LEGACY_SESSION);
+  await page.reload();
+  await expect(page.locator('.fp-node.current')).toBeVisible({ timeout: 15000 });
+}
+// Append athlete events the way the app does (through program.js), then reload.
+async function addEvents(page, evs) {
+  await page.evaluate((list) => {
+    let s = JSON.parse(localStorage.getItem('spc_c_program'));
+    list.forEach((e) => { s = window.CoachProgram.addEvent(s, e); });
+    localStorage.setItem('spc_c_program', JSON.stringify(s));
+  }, evs);
+  await page.reload();
+  await expect(page.locator('.fp-path, .fp-wh, .fp-runcard').first()).toBeVisible({ timeout: 15000 });
+}
+const required = (weekId, except) => pkg.weeks[weekId].workouts.filter((id) => !pkg.workouts[id].optional && id !== except)
+  .map((id) => ({ type: 'workout_completed', workoutId: id, source: 'app', result: [] }));
+
+test.describe('Foundation Path — first open', () => {
+  test('01 the app opens on the Path with existing data intact, and no old dashboard', async ({ page }) => {
+    await existingAthlete(page);
+    expect(await page.locator('.nav button').allTextContents()).toEqual(['Path', 'Academy']);
+    await expect(page.locator('[data-settings]')).toBeVisible();
+    expect(await page.locator('.rec.sched, .today-grid, [data-startday]').count()).toBe(0);
+    expect(await page.evaluate(() => localStorage.getItem('spc_c_sessions'))).toBe(JSON.stringify(LEGACY_SESSION));
+  });
+
+  test('02 the current position is Phase 4 Week 3, with Push done and the rest of the week available', async ({ page }) => {
+    await existingAthlete(page);
+    await expect(page.locator('.fp-head .fp-t')).toHaveText('Phase 4 · Week 3');
+    await expect(page.locator('.fp-node.current')).toContainText('Week 3');
+    const row = (id) => page.locator('.fp-week [data-pw="' + id + '"]');
+    await expect(row('P4W3-2')).toContainText('Done');
+    for (const id of ['P4W3-1', 'P4W3-3', 'P4W3-4']) await expect(row(id)).toContainText(/Next|Available/);
+    await expect(row('P4W3-L')).toContainText('Optional');
+    await expect(page.locator('.fp-week .fp-k')).toContainText('1 of 4 required done');
+  });
+
+  test('03 earlier phases are placed past, not completed', async ({ page }) => {
+    await existingAthlete(page);
+    await expect(page.locator('.fp-placed')).toContainText('Placed past');
+    await expect(page.locator('[data-node="P4W1"]')).toHaveClass(/placed/);
+    expect(await page.locator('.fp-node.done').count()).toBe(0);
+  });
+});
+
+test.describe('Foundation Path — a workout', () => {
+  test('04 a workout shows the source exercises in source order, with their prescription', async ({ page }) => {
+    await existingAthlete(page);
+    await page.locator('.fp-week [data-pw="P4W3-3"]').click();
+    const w = pkg.workouts['P4W3-3'];
+    const blocks = page.locator('.fp-block');
+    await expect(blocks).toHaveCount(w.blocks.length);
+    for (let i = 0; i < w.blocks.length; i++) {
+      const b = w.blocks[i], t = await blocks.nth(i).innerText();
+      const name = b.kind === 'emom' && b.style === 'single' ? b.exercise : b.easy;
+      expect(t, 'row ' + (i + 1)).toContain(name.replace(/^Pyramid EMOM:\s*/, ''));
+      if (b.kind === 'exercise') {
+        expect(t).toContain(b.sets + ' sets × ' + (b.dose.min === b.dose.max ? b.dose.min : b.dose.min + '–' + b.dose.max));
+      }
+      if (b.kind === 'emom') expect(t).toContain('every minute');
+    }
+  });
+
+  test('05 Easy and Hard stay two distinct exercises', async ({ page }) => {
+    await existingAthlete(page);
+    await page.locator('.fp-week [data-pw="P4W3-3"]').click();
+    const first = page.locator('.fp-block').first();
+    await expect(first).toContainText('Easy · Assisted Chin Ups');
+    await expect(first).toContainText('Hard · Chin Ups');
+  });
+
+  test('06 results are entered, a value inside the range counts, below is kept, and a reload resumes', async ({ page }) => {
+    await existingAthlete(page);
+    await page.locator('.fp-week [data-pw="P4W3-3"]').click();
+    await page.locator('[data-startpw]').click();
+    // Set 1: 6 on a 5–8 prescription = inside the range.
+    await page.locator('[data-inc="s0"]').click();           // starts at the bottom of the range (5)
+    await page.locator('[data-inc="s0"]').click();           // 6
+    await page.locator('[data-setdone="0"]').click();
+    await expect(page.locator('.fp-set').first()).toContainText('in range');
+    // Set 2: 4 = below the range.
+    await page.locator('[data-inc="s1"]').click();
+    await page.locator('[data-dec="s1"]').click();
+    await page.locator('[data-setdone="1"]').click();
+    await expect(page.locator('.fp-set').nth(1)).toContainText('below');
+    await page.reload();
+    await expect(page.locator('.fp-runcard')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.fp-set').first()).toContainText('6');
+    await expect(page.locator('.fp-set').nth(1)).toContainText('4');
+  });
+
+  test('07 finishing keeps what happened, never the prescription, and survives a reload', async ({ page }) => {
+    await existingAthlete(page);
+    const pkgBefore = await page.evaluate(() => localStorage.getItem('spc_c_programpkg'));
+    await page.locator('.fp-week [data-pw="P4W3-3"]').click();
+    await page.locator('[data-startpw]').click();
+    await page.locator('[data-inc="s0"]').click();
+    await page.locator('[data-dec="s0"]').click();           // 4: below 5–8
+    await page.locator('[data-setdone="0"]').click();
+    page.on('dialog', (d) => d.accept());
+    for (let i = 1; i < pkg.workouts['P4W3-3'].blocks.length; i++) await page.locator('[data-next]').click();
+    await page.locator('[data-finishrun]').click();
+    await expect(page.locator('.scr')).toContainText('Workout saved');
+    await expect(page.locator('.scr')).toContainText('below');
+    await page.reload();
+    await expect(page.locator('.fp-week [data-pw="P4W3-3"]')).toContainText('Done', { timeout: 15000 });
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('spc_c_program')).events.filter((e) => e.workoutId === 'P4W3-3')[0]);
+    expect(saved.result[0].sets[0].value).toBe(4);
+    expect(saved.summary.blocks[0].outcome).toBe('below');
+    expect(await page.evaluate(() => localStorage.getItem('spc_c_programpkg'))).toBe(pkgBefore);
+    expect(await page.evaluate(() => localStorage.getItem('spc_c_programrun'))).toBe(null);
+  });
+
+  test('08 the optional leg session stays optional', async ({ page }) => {
+    await existingAthlete(page);
+    await page.locator('.fp-week [data-pw="P4W3-L"]').click();
+    await expect(page.locator('.fp-wh')).toContainText('Optional session');
+    await page.locator('[data-backpath]').click();
+    await addEvents(page, required('P4W3', 'P4W3-2'));
+    await expect(page.locator('.fp-node.current')).toContainText('Week 4');
+  });
+});
+
+test.describe('Foundation Path — Max Test, Foundation Exit, Academy', () => {
+  test('09 the Max Test comes after Week 4, records results, passes nothing, and is kept', async ({ page }) => {
+    await existingAthlete(page);
+    await addEvents(page, required('P4W3', 'P4W3-2').concat(required('P4W4')));
+    await expect(page.locator('.fp-node.current')).toContainText('Max Test');
+    await page.locator('.fp-node.current').click();
+    const fams = page.locator('[data-fam]');
+    await expect(fams).toHaveCount(5);
+    expect(await fams.evaluateAll((els) => els.map((e) => e.dataset.fam))).toEqual(['hang', 'pull', 'push', 'dip', 'plank']);
+    const pull = page.locator('[data-fam="pull"]');
+    await pull.locator('[data-variant]').selectOption('Pull Ups');
+    await pull.locator('[data-grip]').selectOption('overhand');
+    await pull.locator('[data-val]').fill('7');
+    await pull.locator('[data-valid]').check();
+    for (const f of ['hang', 'push', 'dip', 'plank']) await page.locator('[data-fam="' + f + '"] [data-nt]').check();
+    await page.locator('[data-mtsave]').click();
+    await expect(page.locator('.fp-node.current')).toContainText('Deload', { timeout: 15000 });
+    await page.reload();
+    const rec = await page.evaluate(() => JSON.parse(localStorage.getItem('spc_c_program')).events.filter((e) => e.type === 'maxtest_recorded'));
+    expect(rec.length).toBe(1);
+    expect(rec[0].nodeId).toBe('MT4');
+    expect(rec[0].results.find((r) => r.family === 'pull')).toMatchObject({ variant: 'Pull Ups', value: 7, grip: 'overhand', valid: true });
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('spc_c_program')).events.some((e) => e.type === 'foundation_exit_passed'))).toBe(false);
+  });
+
+  test('10 the end of Phase 6 leads to the Foundation Exit, not into the Academy', async ({ page }) => {
+    await existingAthlete(page);
+    let evs = required('P4W3', 'P4W3-2').concat(required('P4W4'), [{ type: 'maxtest_recorded', nodeId: 'MT4', results: [] }]);
+    for (const p of [5, 6]) {
+      evs.push({ type: 'deload_completed', nodeId: 'P' + p + 'D' });
+      for (let w = 1; w <= 4; w++) evs = evs.concat(required('P' + p + 'W' + w));
+      evs.push({ type: 'maxtest_recorded', nodeId: 'MT' + p, results: [] });
+    }
+    await addEvents(page, evs);
+    await expect(page.locator('.fp-node.current')).toContainText('Foundation Exit');
+    await page.locator('.nav [data-s="academy"]').click();
+    await expect(page.locator('.scr')).toContainText('Opens after the Foundation Exit');
+  });
+
+  test('11 the Academy opens only when all six Foundation domains pass; Ring Muscle-Up then needs 6 + 6', async ({ page }) => {
+    await existingAthlete(page);
+    await page.evaluate(() => window.CoachApp._goto('pexit'));
+    async function record(test, values) {
+      await page.locator('[data-rectest="' + test + '"]').first().click();
+      const sheet = page.locator('.sheet');
+      for (const [k, v] of Object.entries(values)) await sheet.locator('[data-tv="' + k + '"]').fill(String(v));
+      for (const c of await sheet.locator('[data-vchk]').all()) await c.check();
+      await sheet.locator('[data-savetest]').click();
+    }
+    await record('pullup', { value: 5 });
+    await record('pushup', { value: 15 });
+    await record('pbdip', { value: 5 });
+    await record('deadhang', { value: 30 });
+    await record('forearmplank', { value: 60 });
+    await page.locator('.nav [data-s="academy"]').click();
+    await expect(page.locator('.scr')).toContainText('5 of 6 domains passed');
+    await page.evaluate(() => window.CoachApp._goto('pexit'));
+    await record('legs', { squats: 12, lungeR: 8, lungeL: 8 });
+    await expect(page.locator('.scr')).toContainText('The Academy is open');
+    await page.locator('[data-goacademy]').click();
+    const goal = (label) => page.locator('.fp-goal', { hasText: label });
+    await expect(goal('Pistol Squat')).toContainText('Open');
+    await expect(goal('Ring Muscle-Up')).toContainText('Entry check needed');
+    await record('pullup', { value: 6 });
+    await record('pbdip', { value: 6 });
+    await expect(goal('Ring Muscle-Up')).toContainText('Open');
+    await expect(goal('Ring Muscle-Up')).toContainText('still being finalized');
+  });
+
+  test('12 the program data is part of every backup', async ({ page }) => {
+    await existingAthlete(page);
+    const keys = await page.evaluate(() => window.CoachBackup.PROTECTED_KEYS);
+    expect(keys).toEqual(expect.arrayContaining(['spc_c_program', 'spc_c_programrun', 'spc_c_programpkg', 'spc_c_programvariants']));
+  });
+});
