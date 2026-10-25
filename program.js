@@ -213,16 +213,24 @@
     return s;
   }
   // A finished run becomes an immutable completion record. The prescription is
-  // referenced (package fingerprint + workout id), and its raw text is copied by
-  // value so history stays readable even if the package is rebuilt.
+  // referenced (package fingerprint + workout id), and copied by value — its raw
+  // text and which exercise every set or EMOM minute was — so history, and any
+  // evidence read from it, stays exact even if the package is rebuilt.
+  function snapshotUnit(b) {
+    if (b.kind === 'exercise') return b.dose.unit;
+    if (b.kind === 'emom') return b.perMinute ? b.perMinute.unit : b.style === 'pyramid' ? 'reps' : null; // the source defines pyramid steps in reps
+    return null;
+  }
   function completionEvent(pkg, workoutId, run, finishedAt) {
     var w = pkg.workouts[workoutId];
     return {
       type: 'workout_completed', workoutId: workoutId, source: 'app',
       startedAt: run.startedAt || null, finishedAt: finishedAt || new Date().toISOString(),
-      prescription: { packageMd5: pkg.source.md5, title: w.title, phase: w.phase, week: w.week,
+      prescription: JSON.parse(JSON.stringify({ packageMd5: pkg.source.md5, title: w.title, phase: w.phase, week: w.week,
         blocks: w.blocks.map(function (b) { return { order: b.order, kind: b.kind, easy: b.easy || null, hard: b.hard || null, raw: b.raw || null,
-          items: b.items ? b.items.map(function (it) { return { easy: it.easy, dose: it.dose.raw }; }) : null }; }) },
+          unit: snapshotUnit(b), per: (b.dose && b.dose.per) || null,
+          style: b.style || null, exercise: b.exercise || null, hardExercise: b.hardExercise || null, options: b.options || null, parts: b.parts || null,
+          items: b.items ? b.items.map(function (it) { return { easy: it.easy, dose: it.dose.raw }; }) : null }; }) })),
       result: JSON.parse(JSON.stringify(run.blocks || [])),
       summary: runSummary(w, run)
     };
@@ -244,6 +252,101 @@
     return ofType(state, 'maxtest_recorded').slice().sort(function (a, b) { return (a.date || a.at) < (b.date || b.at) ? -1 : 1; });
   }
 
+  // ---- SPC: a normal workout set as evidence (Stage 5A §3.1, §3.3) ----------------
+  // A set from a normal workout counts for an SPC test only when it IS that test.
+  // Each condition is checked here, never assumed:
+  //   - the workout record names exactly the test's exercise — no assisted,
+  //     negative, knee, incline, chin-up or other variant (exact name only);
+  //   - one logged value is one set: a set of a sets-and-reps exercise, or one
+  //     EMOM minute (the source defines every EMOM minute as one set). AMRAP
+  //     totals and circuit values are not single sets and never count;
+  //   - the athlete confirmed, for that set, what the record cannot show: the
+  //     grip / apparatus / no assistance, and every validity condition (F7).
+  // The value and the date are always read from the workout record; the
+  // confirmation never copies them, so a performance has exactly one truth.
+  var TRAINING_EQUIV = { pullups: 'pullup', pushups: 'pushup', dips: 'pbdip' };
+  var CONFIRM_NEEDS = {
+    pullup: { grip: 'overhand', assistance: 'none' },
+    pushup: { form: 'toes' },
+    pbdip: { apparatus: 'parallel-bars', assistance: 'none' }
+  };
+  function trainingTest(name) { return TRAINING_EQUIV[String(name || '').toLowerCase().replace(/[^a-z]/g, '')] || null; }
+  function minuteExercise(pb, variant, k) {
+    if (pb.style === 'single') return pb.options && pb.options.length === 1 ? pb.options[0] : null; // a choice of options: which one was done is not recorded
+    if (pb.style === 'alternating') { var half = k % 2 === 0 ? 'odd' : 'even'; var p = (pb.parts || []).filter(function (x) { return x.minutes === half; })[0]; return p ? p.exercise : null; }
+    if (pb.style === 'cycle') { var n = (pb.parts || []).length; var q = (pb.parts || []).filter(function (x) { return x.minute === (k % n) + 1; })[0]; return q ? q.exercise : null; }
+    if (pb.style === 'pyramid') return variant === 'hard' && pb.hardExercise ? pb.hardExercise : pb.exercise;
+    return null;
+  }
+  // Every single set a workout record holds, with the exercise it was.
+  function performedSets(ev) {
+    var out = [];
+    if (!ev || ev.type !== 'workout_completed' || ev.source !== 'app' || !ev.prescription) return out;
+    (ev.prescription.blocks || []).forEach(function (pb, bi) {
+      var r = (ev.result || [])[bi] || {};
+      if (r.skipped) return;
+      if (pb.kind === 'exercise' && !pb.per) {
+        var name = r.variant === 'hard' && pb.hard ? pb.hard : pb.easy;
+        (r.sets || []).forEach(function (s, k) {
+          if (s && s.done && s.value != null && s.value !== '') out.push({ block: bi, index: k, exercise: name, unit: pb.unit, value: +s.value });
+        });
+      } else if (pb.kind === 'emom' && pb.style) {
+        (r.minutes || []).forEach(function (v, k) {
+          var nm = minuteExercise(pb, r.variant, k);
+          if (nm && v != null && v !== '') out.push({ block: bi, index: k, exercise: nm, unit: pb.unit, value: +v, minute: k + 1 });
+        });
+      }
+    });
+    return out;
+  }
+  function threshold(test) { var d = FOUNDATION.filter(function (x) { return x.test === test; })[0]; return d ? d.need.value : Infinity; }
+  function trainingEvidence(state) {
+    var workouts = {}, latest = {};
+    ofType(state, 'workout_completed').forEach(function (e) { workouts[e.id] = e; });
+    ofType(state, 'evidence_confirmed').forEach(function (c) { latest[c.workoutEventId + '|' + c.block + '|' + c.index] = c; }); // a later answer for the same set replaces an earlier one
+    var out = [];
+    Object.keys(latest).forEach(function (key) {
+      var c = latest[key], w = workouts[c.workoutEventId]; if (!w) return;
+      var set = performedSets(w).filter(function (s) { return s.block === c.block && s.index === c.index; })[0];
+      var needs = CONFIRM_NEEDS[c.test];
+      if (!set || !needs || trainingTest(set.exercise) !== c.test || set.unit !== TESTS[c.test].unit) return;
+      if (!Object.keys(needs).every(function (k) { return c[k] === needs[k]; })) return; // another test (e.g. dips on chairs): no evidence for this one
+      out.push({ test: c.test, values: { value: set.value }, valid: !!c.valid, date: w.finishedAt || w.at, source: 'workout', eventId: c.id,
+        workoutEventId: w.id, workoutId: w.workoutId, exercise: set.exercise, block: set.block, index: set.index, minute: set.minute || null, assessor: c.assessor || 'self' });
+    });
+    return out;
+  }
+  // Sets that could count for an SPC test and have not been answered yet: the
+  // exact exercise, at least the Foundation threshold. The best set of each
+  // exercise in a workout is offered once.
+  function trainingCandidates(state, opts) {
+    opts = opts || {};
+    var answered = {};
+    ofType(state, 'evidence_confirmed').forEach(function (c) { answered[c.workoutEventId + '|' + c.block + '|' + c.test] = true; });
+    var out = [];
+    ofType(state, 'workout_completed').forEach(function (w) {
+      if (opts.workoutEventId && w.id !== opts.workoutEventId) return;
+      if (opts.maxAgeDays != null && ageDays(w.finishedAt || w.at, opts.now) > opts.maxAgeDays) return;
+      var best = {};
+      performedSets(w).forEach(function (s) {
+        var t = trainingTest(s.exercise), key = w.id + '|' + s.block + '|' + t;
+        if (!t || s.unit !== TESTS[t].unit || answered[key] || s.value < threshold(t)) return;
+        if (opts.tests && opts.tests.indexOf(t) < 0) return;
+        if (!best[key] || s.value > best[key].value) best[key] = Object.assign({ test: t, workoutEventId: w.id, workoutId: w.workoutId, date: w.finishedAt || w.at }, s);
+      });
+      Object.keys(best).forEach(function (k) { out.push(best[k]); });
+    });
+    return out;
+  }
+  // The tests new evidence can still matter for: all three before the Exit;
+  // afterwards only those an Academy entry still needs.
+  function evidenceWanted(state) {
+    if (!ofType(state, 'foundation_exit_passed').length) return Object.keys(CONFIRM_NEEDS);
+    var t = [];
+    academyStatus(state).goals.forEach(function (g) { g.needs.forEach(function (n) { if (!n.ok && CONFIRM_NEEDS[n.test] && t.indexOf(n.test) < 0) t.push(n.test); }); });
+    return t;
+  }
+
   // ---- evidence for the SPC tests ------------------------------------------------
   function evidence(state) {
     var out = [];
@@ -256,7 +359,7 @@
         if (t) out.push({ test: t, values: { value: +r.value }, valid: true, date: e.date || e.at, source: 'max-test', eventId: e.id, assessor: 'self' });
       });
     });
-    return out;
+    return out.concat(trainingEvidence(state));
   }
   function meets(need, values) {
     return Object.keys(need).every(function (k) { return values[k] != null && values[k] !== '' && +values[k] >= need[k]; });
@@ -304,15 +407,17 @@
 
   // ---- migration of the existing athlete ------------------------------------------
   // The athlete who used the earlier app is mid-program: Beginner Program,
-  // Phase 4, Week 3, with that week's Push workout done (as reported). Earlier
-  // content becomes "placed past", never fabricated completions.
+  // Phase 4, with the four required workouts of Week 3 done (as reported), so
+  // the path opens at Week 4. Only what was reported is recorded: no set data,
+  // and not the optional Legs session. Earlier content becomes "placed past",
+  // never fabricated completions.
   function migrationEvents() {
-    return [
-      { type: 'enrolled', programId: 'calixpert-beginner', start: 'P4W3', basis: 'migration',
-        note: 'Existing athlete: Beginner Program, Phase 4, Week 3 (reported).' },
-      { type: 'workout_completed', workoutId: 'P4W3-2', source: 'reported',
-        note: 'Reported by the athlete as done before this build. No set data.' }
-    ];
+    return [{ type: 'enrolled', programId: 'calixpert-beginner', start: 'P4W3', basis: 'migration',
+      note: 'Existing athlete: Beginner Program, Phase 4; the required workouts of Week 3 done (reported).' }]
+      .concat(['P4W3-1', 'P4W3-2', 'P4W3-3', 'P4W3-4'].map(function (id) {
+        return { type: 'workout_completed', workoutId: id, source: 'reported',
+          note: 'Reported by the athlete as done before this build. No set data.' };
+      }));
   }
 
   return {
@@ -324,6 +429,8 @@
     valueOutcome: valueOutcome, setOutcome: setOutcome, blockOutcome: blockOutcome, runSummary: runSummary, bilateral: bilateral,
     completionEvent: completionEvent, completions: completions,
     maxTestToTest: maxTestToTest, maxTestHistory: maxTestHistory, evidence: evidence,
+    CONFIRM_NEEDS: CONFIRM_NEEDS, trainingTest: trainingTest, performedSets: performedSets, trainingEvidence: trainingEvidence,
+    trainingCandidates: trainingCandidates, evidenceWanted: evidenceWanted,
     foundationStatus: foundationStatus, academyStatus: academyStatus, migrationEvents: migrationEvents
   };
 });

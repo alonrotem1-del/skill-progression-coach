@@ -508,6 +508,7 @@
     else if(name==='prun') renderProgramRun();
     else if(name==='psummary') renderProgramSummary();
     else if(name==='pexit') renderFoundationExit();
+    else if(name==='pdeload') renderDeload();
     else if(name==='today') renderToday();
     else if(name==='plan') renderWeek();
     else if(name==='goals') renderGoals();
@@ -4463,7 +4464,7 @@
       var wp=Program.weekProgress(pkg,st,n.id);
       sub=n.status==='placed'?'placed past':n.status==='current'?wp.done+' of '+wp.total+' done':n.status==='done'?'done':'';
     } else if(n.type==='maxtest') sub=n.status==='done'?'recorded':n.status==='placed'?'placed past':'benchmark';
-    else if(n.type==='deload') sub=n.status==='done'?'done':n.status==='placed'?'placed past':'about 50% intensity';
+    else if(n.type==='deload') sub=n.status==='done'?'recovery week done':n.status==='placed'?'placed past':'about 50% intensity';
     else if(n.type==='exit') sub=n.status==='done'?'passed':'all six domains';
     var lbl=n.type==='week'?'Week '+n.week:n.type==='maxtest'?'Max Test':n.type==='deload'?'Deload week':'Foundation Exit';
     return '<button class="fp-node '+n.status+' t-'+kind+' s'+(side%4)+'" data-node="'+n.id+'"><span class="fp-disc"><span class="fp-wc"></span><span class="fp-ic">'+(kind==='exit'&&n.status!=='done'?'🔒':kind==='maxtest'&&n.status!=='done'?'◆':icon)+'</span></span>'+
@@ -4490,7 +4491,7 @@
     var n=v.nodes.filter(function(x){return x.id===id;})[0]; if(!n) return;
     if(n.type==='week') return weekSheet(pkg,st,n);
     if(n.type==='maxtest') return n.status==='current'?renderMaxTest(n.id):maxTestSheet(pkg,st,n);
-    if(n.type==='deload') return deloadSheet(pkg,n);
+    if(n.type==='deload') return openDeload(n.id);
     if(n.type==='exit') return setScreen('pexit');
   }
   function weekSheet(pkg,st,n){
@@ -4503,15 +4504,36 @@
       on('[data-close]','click',closeSheet,sheet);
     });
   }
-  function deloadSheet(pkg,n){
-    var cur=n.status==='current';
-    showSheet('<div class="grip"></div><div class="fp-src">From the program</div><h2>Deload week</h2><div class="sub small muted">'+esc(nodeLabel(pkg,n))+'</div>'+
-      pkg.deload.text.map(function(t){return '<p class="small">'+esc(t)+'</p>';}).join('')+
-      (cur?'<button class="btn primary" data-deloaddone>Deload week done</button>':'<p class="small muted">'+(n.status==='done'?'Done.':n.status==='placed'?'Placed past.':'Comes before Week 1 of this phase.')+'</p>')+
-      '<button class="btn ghost" data-close>Close</button>',function(sheet){
-        on('[data-deloaddone]','click',function(){ progAdd({type:'deload_completed',nodeId:n.id}); closeSheet(); toast('Deload week done.'); renderPath(); },sheet);
-        on('[data-close]','click',closeSheet,sheet);
-      });
+  // ---- deload week (SOURCE: a planned easy week before Phases 4–6) ------------
+  // The program's own guidance, in full, before anything is marked. Completing
+  // it is one tap, recorded as a planned recovery week — never as a skipped one.
+  function openDeload(id){ UI.pdeload=id; setScreen('pdeload'); }
+  function renderDeload(){
+    var pkg=getPkg(), st=progState(), v=pkg&&Program.pathView(pkg,st);
+    var n=v&&v.nodes.filter(function(x){ return x.id===UI.pdeload&&x.type==='deload'; })[0];
+    if(!n) return setScreen('path');
+    var done=Program.ofType(st,'deload_completed').filter(function(e){ return e.nodeId===n.id; }).pop();
+    var lastWeek=v.nodes.slice(0,n.index).filter(function(x){ return x.type==='week'; }).pop();
+    // The text exactly as the program writes it; its "- " lines (the ways to make
+    // the week lighter) are shown as a list.
+    var body='', list=[];
+    function flush(){ if(list.length){ body+='<ul class="fp-ul">'+list.map(function(t){ return '<li>'+esc(t)+'</li>'; }).join('')+'</ul>'; list=[]; } }
+    pkg.deload.text.forEach(function(t){ var m=t.match(/^-\s*(.*)$/); if(m) list.push(m[1]); else { flush(); body+='<p>'+esc(t)+'</p>'; } });
+    flush();
+    var html='<div class="wk-top"><div class="between"><button class="link" data-backpath>&lsaquo; Path</button><b>Phase '+n.phase+'</b><span style="width:50px"></span></div></div>'+
+      '<div class="fp-wh"><div class="fp-k">Planned recovery week</div><h1>Deload week</h1><div class="small muted">Before Week 1 of Phase '+n.phase+'</div></div>'+
+      '<div class="fp-src">From the program</div><div class="fp-box fp-deload">'+body+'</div>'+
+      (lastWeek?'<button class="btn ghost sm" data-lastweek>Last week’s workouts · '+esc(nodeLabel(pkg,lastWeek))+'</button>':'');
+    if(done) html+='<div class="fp-done-note">✓ Deload week completed '+esc(fmtDate(done.date||done.at))+' · a planned recovery week</div>';
+    else if(n.status==='current') html+='<div class="fp-cta"><button class="btn primary" data-deloaddone>Deload week completed</button></div>';
+    else html+='<p class="small muted fp-foot">'+(n.status==='placed'?'Placed past.':'Comes before Week 1 of Phase '+n.phase+'.')+'</p>';
+    var wrap=shell(html,'path');
+    on('[data-backpath]','click',function(){ setScreen('path'); },wrap);
+    on('[data-lastweek]','click',function(){ weekSheet(pkg,st,lastWeek); },wrap);
+    on('[data-deloaddone]','click',function(){
+      progAdd({type:'deload_completed',nodeId:n.id,kind:'planned-recovery',date:new Date().toISOString()});
+      toast('Deload week completed.'); setScreen('path');
+    },wrap);
   }
 
   // ---- workout preview ------------------------------------------------------
@@ -4707,10 +4729,9 @@
     var sum=Program.runSummary(w,run);
     if(sum.notDone&&!confirm(sum.notDone+' exercise'+(sum.notDone>1?'s have':' has')+' no result. Finish the workout anyway? What you logged is kept as it is.')) return;
     stopTimer(); stopClock();
-    var ev=Program.completionEvent(pkg,run.workoutId,run);
-    progAdd(ev);
+    var s=progAdd(Program.completionEvent(pkg,run.workoutId,run));
     UI.prun=null; Store.del(RUN_KEY);
-    UI.psummary=ev; setScreen('psummary');
+    UI.psummary=s.events[s.events.length-1]; setScreen('psummary'); // the stored record, with its id
   }
   function renderProgramSummary(){
     var pkg=getPkg(), ev=UI.psummary; if(!ev){ return setScreen('path'); }
@@ -4725,13 +4746,19 @@
       return '<div class="fp-sumrow '+o+'"><span>'+esc(blockName(b,r.variant))+'</span><span>'+esc(r.skipped?'skipped':vals||'—')+' '+outcomeChip(o)+'</span></div>';
     }).join('');
     var st=progState(), v=Program.pathView(pkg,st);
+    // Sets of this workout that can stand in for a Foundation Exit test, and the
+    // answers already given for it.
+    var cands=Program.trainingCandidates(st,{workoutEventId:ev.id,tests:Program.evidenceWanted(st)});
+    var answers=Program.ofType(st,'evidence_confirmed').filter(function(c){ return c.workoutEventId===ev.id; });
     var html='<div class="fp-wh" style="text-align:center;padding-top:18px"><div class="fp-k">Workout saved</div><h1>'+esc(w.optional?'Legs':shortTitle(w))+'</h1><div class="small muted">Phase '+w.phase+' · Week '+w.week+'</div></div>'+
       '<div class="fp-box">'+lines+'</div>'+
       (ev.summary.below?'<p class="small muted">Results below the prescription are kept exactly as logged. Nothing is reset, and the program carries on as written.</p>':'')+
+      (cands.length||answers.length?'<div class="fp-box fp-evbox"><div class="fp-k">Foundation Exit</div>'+answers.map(function(c){ return answerHtml(st,c); }).join('')+cands.map(function(c,k){ return candHtml(c,k,false); }).join('')+'</div>':'')+
       '<p class="small"><b>Next on your path:</b> '+esc(v.current?nodeLabel(pkg,v.current):'—')+'</p>'+
       '<button class="btn primary" data-backpath>Back to the Path</button>';
     app.innerHTML=''; var wrap=h('<div class="scr">'+html+'</div>'); app.appendChild(wrap); window.scrollTo(0,0);
     on('[data-backpath]','click',function(){ UI.psummary=null; setScreen('path'); },wrap);
+    on('[data-evset]','click',function(e){ confirmSetSheet(cands[+e.currentTarget.dataset.evset],renderProgramSummary); },wrap);
   }
 
   // ---- Max Test (a benchmark: recorded, never pass/fail) ---------------------
@@ -4795,25 +4822,87 @@
     showSheet('<div class="grip"></div><div class="fp-src">From the program</div><h2>'+esc(nodeLabel(pkg,n))+'</h2>'+body+'<button class="btn ghost" data-close>Close</button>',function(sheet){ on('[data-close]','click',closeSheet,sheet); });
   }
 
+  // ---- a normal workout set as Foundation evidence (SPC Stage 5A §3.1) --------
+  // program.js decides what could count and whether it does; this asks the
+  // athlete, for one set, what the record cannot show.
+  var CONFIRM_FIELDS={
+    pullup:[{k:'grip',label:'Grip',opts:[['overhand','Overhand · palms away'],['underhand','Underhand (chin-up grip)'],['neutral','Neutral · palms facing'],['mixed','Mixed']]},
+      {k:'assistance',label:'Help',opts:[['none','None'],['band','A band'],['feet','Feet, a jump or a partner']]}],
+    pushup:[{k:'form',label:'Position',opts:[['toes','On the toes, hands on the floor'],['knees','On the knees'],['incline','Hands raised (incline)']]}],
+    pbdip:[{k:'apparatus',label:'Where',opts:[['parallel-bars','Stable parallel dip bars'],['two-chairs','Two chairs'],['straight-bar','A straight bar'],['rings','Rings'],['other','Somewhere else']]},
+      {k:'assistance',label:'Help',opts:[['none','None'],['band','A band'],['feet','Feet on the floor or a box']]}]
+  };
+  function domainOf(test){ return Program.FOUNDATION.filter(function(d){ return d.test===test; })[0]; }
+  function setLabel(s){ return s.minute?'minute '+s.minute:'set '+(s.index+1); }
+  function workoutLabel(id){ var w=getPkg().workouts[id]; return w?'Phase '+w.phase+' · Week '+w.week+' · '+(w.optional?'Legs':shortTitle(w)):id; }
+  function evidenceSource(ev){ return ev.source==='max-test'?'Max Test':ev.source==='workout'?'workout · '+ev.exercise+', '+setLabel(ev)+' · '+workoutLabel(ev.workoutId):'test'; }
+  function candHtml(c,k,withWorkout){
+    var d=domainOf(c.test);
+    return '<div class="fp-cand"><div><b>'+esc(c.exercise)+' · '+c.value+' reps</b><div class="small muted">'+esc(setLabel(c))+(withWorkout?' · '+esc(workoutLabel(c.workoutId))+' · '+esc(fmtDate(c.date)):'')+'</div>'+
+      '<div class="small">Can count for '+d.id+' ('+esc(d.pass)+') if it met that standard.</div></div><button class="btn ghost sm" data-evset="'+k+'">Check</button></div>';
+  }
+  function answerHtml(st,c){
+    var ev=Program.trainingEvidence(st).filter(function(r){ return r.eventId===c.id; })[0], d=domainOf(c.test);
+    var w=Program.ofType(st,'workout_completed').filter(function(e){ return e.id===c.workoutEventId; })[0];
+    var s=Program.performedSets(w).filter(function(x){ return x.block===c.block&&x.index===c.index; })[0];
+    var what=s?esc(s.exercise)+' · '+s.value+' reps · '+esc(setLabel(s)):'';
+    return '<div class="fp-ans '+(ev&&ev.valid?'ok':'')+'">'+what+'<div class="small">'+(ev&&ev.valid?'✓ Counts for '+d.id:ev?'Not counted: not every condition was confirmed':'Not counted: not the same test as '+d.id)+'</div></div>';
+  }
+  function confirmSetSheet(c,after){
+    var T=Program.TESTS[c.test], d=domainOf(c.test);
+    var checks=T.validity.concat(['All '+c.value+' reps were consecutive, in this one '+(c.minute?'minute':'set')]);
+    var body='<div class="grip"></div><div class="fp-src spc">Skill Progression Coach · Foundation Exit</div><h2>Count this set?</h2>'+
+      '<p class="small"><b>'+esc(c.exercise)+' · '+c.value+' reps</b> · '+esc(setLabel(c))+' · '+esc(workoutLabel(c.workoutId))+' · '+esc(fmtDate(c.date))+'</p>'+
+      '<p class="small">'+d.id+' needs '+esc(d.pass)+': '+esc(T.test)+'.</p>'+
+      CONFIRM_FIELDS[c.test].map(function(f){ return '<div class="fp-set"><span class="fp-sn">'+esc(f.label)+'</span><select class="input fp-cf" data-cf="'+f.k+'"><option value="">Choose…</option>'+f.opts.map(function(o){ return '<option value="'+o[0]+'">'+esc(o[1])+'</option>'; }).join('')+'</select></div>'; }).join('')+
+      '<div class="fp-k" style="margin-top:10px">Every counted rep needs all of these</div>'+
+      checks.map(function(v,k){ return '<label class="small fp-valid"><input type="checkbox" data-vchk="'+k+'"> '+esc(v)+'</label>'; }).join('')+
+      '<select class="input" data-assessor><option value="self">Self-recorded</option><option value="video">On video</option><option value="witnessed">Witnessed</option></select>'+
+      '<p class="tiny muted">It counts only if all of this is true. Either way, the workout stays exactly as you logged it.</p>'+
+      '<button class="btn primary" data-evsave>Save</button><button class="btn ghost" data-close>Cancel</button>';
+    showSheet(body,function(sheet){
+      on('[data-close]','click',closeSheet,sheet);
+      on('[data-evsave]','click',function(){
+        var ans={}; sheet.querySelectorAll('[data-cf]').forEach(function(el){ ans[el.dataset.cf]=el.value||null; });
+        if(Object.keys(ans).some(function(k){ return !ans[k]; })){ toast('Answer every question first.'); return; }
+        var ticks=[].slice.call(sheet.querySelectorAll('[data-vchk]')).map(function(x){ return x.checked; });
+        var need=Program.CONFIRM_NEEDS[c.test], same=Object.keys(need).every(function(k){ return ans[k]===need[k]; });
+        progAdd(Object.assign({type:'evidence_confirmed',workoutEventId:c.workoutEventId,block:c.block,index:c.index,test:c.test,
+          checks:ticks,valid:ticks.every(Boolean),assessor:sheet.querySelector('[data-assessor]').value,date:new Date().toISOString()},ans));
+        closeSheet();
+        toast(!same?'Saved — not counted: that is a different test from '+d.id+'.':!ticks.every(Boolean)?'Saved — not counted, because not every condition was ticked.':'Counted for '+d.id+'.');
+        if(checkFoundationPass()) return renderAcademyUnlock();
+        after();
+      },sheet);
+    });
+  }
+
   // ---- Foundation Exit (SPC Stage 5A, Calibration v1) ------------------------
   function renderFoundationExit(){
     UI.screen='pexit';
     var st=progState(), fs=Program.foundationStatus(st);
     var stTxt={pass:'Passed','stale':'Older than 45 days','not-yet':'Not yet','no-evidence':'No result yet'};
+    // Unanswered workout sets from the evidence window, offered where they could still count.
+    var cands=fs.passed?[]:Program.trainingCandidates(st,{maxAgeDays:Program.EXIT_EVIDENCE_DAYS}), shown=[];
     var html='<div class="wk-top"><div class="between"><button class="link" data-backpath>&lsaquo; Path</button><b>Foundation Exit</b><span style="width:50px"></span></div></div>'+
       '<div class="fp-src spc">Skill Progression Coach standard · v1</div>'+
       (fs.passed?'<div class="fp-done-note">✓ Passed on '+esc(fmtDate(fs.passedAt))+' · the Academy is open</div>':
-        '<p class="small">All six must pass to open the Academy. A result counts when it is exactly the test described and was recorded in the last '+Program.EXIT_EVIDENCE_DAYS+' days. Max Test results count when they are the very same test. You can record a test whenever you are ready.</p>')+
+        '<p class="small">All six must pass to open the Academy. A result counts when it is exactly the test described and was done in the last '+Program.EXIT_EVIDENCE_DAYS+' days: a test you record here, a Max Test of the very same test, or a set from a normal workout that you confirm met the standard. Only what is missing needs a test.</p>')+
       '<details class="fp-qa"><summary>What makes a rep count (F7)</summary><div>'+esc(Program.F7)+'</div></details>';
     fs.domains.forEach(function(d){
       var ev=d.evidence, evTxt='';
-      if(ev){ var vv=d.test==='legs'?('squats '+ev.values.squats+', lunges R '+ev.values.lungeR+' / L '+ev.values.lungeL):(ev.values.value+' '+Program.TESTS[d.test].unit); evTxt=esc(vv)+' · '+esc(fmtDate(ev.date))+' · '+(ev.source==='max-test'?'Max Test':'test'); }
+      if(ev){ var vv=d.test==='legs'?('squats '+ev.values.squats+', lunges R '+ev.values.lungeR+' / L '+ev.values.lungeL):(ev.values.value+' '+Program.TESTS[d.test].unit); evTxt=esc(vv)+' · '+esc(fmtDate(ev.date))+' · '+esc(evidenceSource(ev)); }
+      var open=!fs.passed&&d.status!=='pass';
+      var mine=open?cands.filter(function(c){ return c.test===d.test; }):[];
       html+='<div class="fp-box fp-dom '+d.status+'"><div class="between"><div><div class="fp-k">'+d.id+' · '+esc(d.label)+'</div><b>'+esc(d.pass)+'</b></div><span class="fp-chip '+(d.status==='pass'?'ok':d.status==='not-yet'?'below':'')+'">'+esc(stTxt[d.status])+'</span></div>'+
-        (evTxt?'<div class="small muted">'+evTxt+'</div>':'')+(fs.passed?'':'<button class="btn ghost sm" data-rectest="'+d.test+'">Record a test</button>')+'</div>';
+        (evTxt?'<div class="small muted">'+evTxt+'</div>':'')+
+        mine.map(function(c){ return candHtml(c,shown.push(c)-1,true); }).join('')+
+        (open?'<button class="btn ghost sm" data-rectest="'+d.test+'">Record a test</button>':'')+'</div>';
     });
     var wrap=shell(html,'path');
     on('[data-backpath]','click',function(){ setScreen('path'); },wrap);
     on('[data-rectest]','click',function(e){ recordTestSheet(e.currentTarget.dataset.rectest,null); },wrap);
+    on('[data-evset]','click',function(e){ confirmSetSheet(shown[+e.currentTarget.dataset.evset],renderFoundationExit); },wrap);
   }
   // One form for every SPC test (Foundation Exit domains, Ring Muscle-Up entry).
   function recordTestSheet(test,purpose){
@@ -4851,7 +4940,7 @@
   // ---- Academy (minimum: Ring Muscle-Up + Pistol Squat) ----------------------
   function renderAcademy(){
     UI.screen='academy';
-    var st=progState(), ac=Program.academyStatus(st), fs=Program.foundationStatus(st);
+    var st=progState(), ac=Program.academyStatus(st), fs=Program.foundationStatus(st), shown=[];
     var html='<div class="fp-head"><div class="fp-k">'+(ac.open?'Open':'Locked')+'</div><div class="fp-t">The Academy</div></div>';
     if(!ac.open){
       var n=fs.domains.filter(function(d){return d.status==='pass';}).length;
@@ -4860,7 +4949,12 @@
     ac.goals.forEach(function(g){
       var stt=g.status==='open'?'Open':g.status==='locked-entry'?'Entry check needed':'Locked';
       html+='<div class="fp-box fp-goal '+g.status+'"><div class="between"><b class="fp-t2">'+esc(g.label)+'</b><span class="fp-chip '+(g.status==='open'?'ok':'')+'">'+esc(stt)+'</span></div><div class="small muted">Entry: '+esc(g.entryText)+'</div>';
-      if(ac.open&&g.status==='locked-entry') html+=g.needs.map(function(n){ return '<div class="fp-li">'+esc(n.label)+'<span>'+(n.have==null?'—':n.have)+' / '+n.need+(n.ok?' ✓':'')+'</span></div>'+(n.ok?'':'<button class="btn ghost sm" data-rectest="'+n.test+'">Record '+esc(n.label.toLowerCase())+'</button>'); }).join('');
+      if(ac.open&&g.status==='locked-entry') html+=g.needs.map(function(n){
+        // the same evidence as the Foundation: a confirmed workout set counts here too
+        var cs=n.ok?[]:Program.trainingCandidates(st,{tests:[n.test]}).filter(function(c){ return c.value>=n.need; });
+        return '<div class="fp-li">'+esc(n.label)+'<span>'+(n.have==null?'—':n.have)+' / '+n.need+(n.ok?' ✓':'')+'</span></div>'+
+          cs.map(function(c){ return candHtml(c,shown.push(c)-1,true); }).join('')+
+          (n.ok?'':'<button class="btn ghost sm" data-rectest="'+n.test+'">Record '+esc(n.label.toLowerCase())+'</button>'); }).join('');
       if(g.status==='open') html+='<p class="small">Entry passed. The training inside this goal is still being finalized, so there is nothing to train here yet.</p>';
       html+='</div>';
     });
@@ -4868,6 +4962,7 @@
     var wrap=shell(html,'academy');
     on('[data-goexit]','click',function(){ setScreen('pexit'); },wrap);
     on('[data-rectest]','click',function(e){ recordTestSheet(e.currentTarget.dataset.rectest,'ring-muscle-up-entry'); },wrap);
+    on('[data-evset]','click',function(e){ confirmSetSheet(shown[+e.currentTarget.dataset.evset],renderAcademy); },wrap);
   }
 
   // ---- Settings → Program ---------------------------------------------------
@@ -4895,12 +4990,19 @@
   }
   function programHistoryHtml(){
     var pkg=getPkg(), st=progState(); if(!pkg||!st) return '';
-    var comps=Program.ofType(st,'workout_completed').slice().reverse();
+    // Workouts and deload weeks, newest first; a deload is a planned recovery week.
+    var when=function(e){ return e.finishedAt||e.date||e.at; };
+    var items=Program.ofType(st,'workout_completed').concat(Program.ofType(st,'deload_completed')).sort(function(a,b){ return when(a)<when(b)?1:when(a)>when(b)?-1:0; });
+    var counted=Program.trainingEvidence(st).filter(function(r){ return r.valid; });
     var mts=Program.maxTestHistory(st).slice().reverse();
-    var rows=comps.map(function(e){ var p=e.prescription||{}; var w=pkg.workouts[e.workoutId]||{};
+    var rows=items.map(function(e){
+      if(e.type==='deload_completed'){ var dn=pkg.sequence.filter(function(n){ return n.id===e.nodeId; })[0]||{};
+        return '<div class="hist-item"><div class="hist-h"><span class="hist-date">'+esc(fmtDate(when(e)))+'</span><span class="hist-nm">'+esc('Phase '+dn.phase+' · Deload week')+'</span></div><div class="small muted">Planned recovery week, completed</div></div>'; }
+      var p=e.prescription||{}; var w=pkg.workouts[e.workoutId]||{};
       var t=p.title||w.title||e.workoutId; var s=e.summary;
-      return '<div class="hist-item"><div class="hist-h"><span class="hist-date">'+esc(fmtDate(e.finishedAt||e.at))+'</span><span class="hist-nm">'+esc('Phase '+(p.phase||w.phase)+' · Week '+(p.week||w.week)+' · '+t)+'</span></div>'+
-        '<div class="small muted">'+(e.source==='reported'?'Reported before this app (no set data)':(s?s.met+' in range · '+s.below+' below · '+(s.done||0)+' logged · '+s.notDone+' no result':''))+'</div></div>'; }).join('');
+      var ev=counted.filter(function(r){ return r.workoutEventId===e.id; }).map(function(r){ return domainOf(r.test).id; });
+      return '<div class="hist-item"><div class="hist-h"><span class="hist-date">'+esc(fmtDate(when(e)))+'</span><span class="hist-nm">'+esc('Phase '+(p.phase||w.phase)+' · Week '+(p.week||w.week)+' · '+t)+'</span></div>'+
+        '<div class="small muted">'+(e.source==='reported'?'Reported before this app (no set data)':(s?s.met+' in range · '+s.below+' below · '+(s.done||0)+' logged · '+s.notDone+' no result':''))+(ev.length?' · counts for '+esc(ev.join(', ')):'')+'</div></div>'; }).join('');
     var mrows=mts.map(function(e){ return '<div class="hist-item"><div class="hist-h"><span class="hist-date">'+esc(fmtDate(e.date||e.at))+'</span><span class="hist-nm">Max Test</span></div><div class="small muted">'+(e.results||[]).map(function(r){ return esc(r.family)+': '+(r.notTested?'—':esc(r.variant)+' '+esc(r.value)); }).join(' · ')+'</div></div>'; }).join('');
     return '<div class="section">Foundation Path</div>'+(rows||'<p class="small muted">No program workouts yet.</p>')+(mrows?'<div class="section">Max Tests</div>'+mrows:'');
   }
