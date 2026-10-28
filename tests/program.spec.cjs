@@ -324,6 +324,61 @@ test.describe('SPC Foundation Exit — a set from a normal workout (Stage 5A §3
     expect(JSON.stringify(pkg.workouts['P4W4-2'])).toBe(before);
   });
 
+  // The 45-day window belongs to the INITIAL Foundation Exit only (Stage 5A §3.1).
+  // The Ring Muscle-Up 6 + 6 entry has no approved freshness window.
+  function sixAndSix(s, ago) {
+    s = did(s, 'P4W4-2', { 0: sets('hard', 6) }, ago);
+    s = confirm(s, P.trainingCandidates(s, { tests: ['pbdip'] })[0], DIPS);
+    s = did(s, 'P4W4-3', { 4: { variant: 'easy', minutes: [6] } }, ago);
+    return confirm(s, P.trainingCandidates(s, { tests: ['pullup'] })[0], PULL);
+  }
+  const restOfFoundation = (s) => ['pushup', 'deadhang', 'forearmplank', 'legs'].reduce((st, t) => P.addEvent(st, { type: 'exit_test_recorded', test: t,
+    values: t === 'legs' ? { squats: 12, lungeR: 8, lungeL: 8 } : { value: { pushup: 15, deadhang: 30, forearmplank: 60 }[t] }, valid: true, date: daysAgo(1) }), s);
+  const rmu = (s) => P.academyStatus(s).goals.find((g) => g.id === 'ring_muscle_up');
+
+  test('26 a 30-day-old qualifying set satisfies both the initial Foundation Exit and the Ring Muscle-Up entry', () => {
+    let s = restOfFoundation(sixAndSix(P.emptyState(), 30));
+    const fs = P.foundationStatus(s);
+    expect([fs.domains[0].status, fs.domains[2].status]).toEqual(['pass', 'pass']);
+    expect(fs.allPass).toBe(true);
+    s = P.addEvent(s, { type: 'foundation_exit_passed' });
+    expect(rmu(s).status).toBe('open');
+  });
+
+  test('27 a 60-day-old set cannot newly satisfy the initial Foundation Exit', () => {
+    const s = restOfFoundation(sixAndSix(P.emptyState(), 60));
+    const fs = P.foundationStatus(s);
+    expect([fs.domains[0].status, fs.domains[2].status]).toEqual(['stale', 'stale']);
+    expect(fs.allPass).toBe(false);
+    expect(P.trainingCandidates(did(P.emptyState(), 'P4W4-2', { 0: sets('hard', 6) }, 60), { maxAgeDays: P.EXIT_EVIDENCE_DAYS })).toEqual([]);
+  });
+
+  test('28 once the Exit is established, a 60-day-old exact 6 + 6 still satisfies the Ring Muscle-Up entry', () => {
+    let s = P.addEvent(P.emptyState(), { type: 'foundation_exit_passed' });
+    // Offered on the entry card even though it is older than 45 days ...
+    const old = did(s, 'P4W4-2', { 0: sets('hard', 6) }, 60);
+    expect(P.trainingCandidates(old, { tests: ['pbdip'] }).map((c) => c.value)).toEqual([6]);
+    // ... and counted once confirmed.
+    s = sixAndSix(s, 60);
+    expect(rmu(s).status).toBe('open');
+    expect(rmu(s).needs.map((n) => [n.test, n.have, n.ok])).toEqual([['pullup', 6, true], ['pbdip', 6, true]]);
+    // Exactness still applies: 60-day-old dips on two chairs do not count.
+    let t = P.addEvent(P.emptyState(), { type: 'foundation_exit_passed' });
+    t = did(t, 'P4W4-2', { 0: sets('hard', 6) }, 60);
+    t = confirm(t, P.trainingCandidates(t, { tests: ['pbdip'] })[0], { apparatus: 'two-chairs', assistance: 'none' });
+    expect(rmu(t).needs.find((n) => n.test === 'pbdip').ok).toBe(false);
+  });
+
+  test('29 no automatic specialist evidence expiry exists', () => {
+    // Years-old exact records, and any evaluation date, leave the entry open.
+    let s = P.addEvent(P.emptyState(), { type: 'foundation_exit_passed' });
+    s = sixAndSix(s, 1000);
+    expect(rmu(s).status).toBe('open');
+    // The Academy entry definitions carry no window, and the only window is the initial Exit's.
+    P.ACADEMY_GOALS.forEach((g) => g.entry.forEach((n) => expect(Object.keys(n).sort()).toEqual(['test', 'value'])));
+    expect(P.academyStatus.length).toBe(1);   // takes the state only: no "now", so nothing can expire
+  });
+
   test('25 after the Exit, only what an Academy entry still needs is asked about', () => {
     expect(P.evidenceWanted(P.emptyState()).sort()).toEqual(['pbdip', 'pullup', 'pushup']);
     let s = P.addEvent(P.emptyState(), { type: 'foundation_exit_passed' });

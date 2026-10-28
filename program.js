@@ -390,6 +390,9 @@
   }
 
   // ---- SPC: Academy ---------------------------------------------------------------
+  // Local entry uses the same exact-test evidence, but NOT the Foundation's 45-day
+  // window: that window is for the initial Exit only, and no freshness rule is
+  // approved for specialist entry. Shown capability is not expired by time.
   function academyStatus(state) {
     var open = ofType(state, 'foundation_exit_passed').length > 0;
     var ev = evidence(state);

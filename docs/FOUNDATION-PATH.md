@@ -121,7 +121,11 @@ never copies a value.
 9. Exit and entry tests are self-recorded with the full validity checklist
    (Stage 5A accepts a structured log with technique confirmation); the
    assessor (self / video / witnessed) is stored.
-10. Ring Muscle-Up 6 + 6: no freshness window is applied (none is approved).
+10. Ring Muscle-Up 6 + 6: no freshness window is applied (none is approved) —
+    to tests, Max Tests and workout sets alike. The 45-day window applies only
+    to evidence for the initial Foundation Exit; a set used for both must be
+    within 45 days for the Exit, and once the Exit stands its age no longer
+    matters for the Ring Muscle-Up entry. Exactness rules still apply.
 11. The Foundation Exit can be recorded at any time (fast-track, Stage 5A).
 12. The starting point can be changed in Settings → Program; it never deletes
     anything, earlier content becomes placed past.
