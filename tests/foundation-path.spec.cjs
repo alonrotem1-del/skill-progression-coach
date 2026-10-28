@@ -326,3 +326,59 @@ test.describe('Foundation Path — no hosting dependency', () => {
     expect(elsewhere).toEqual([]);
   });
 });
+
+test.describe('Foundation Path — EMOM in the runner', () => {
+  // Week 4, Workout 3 (Pull), block 5: EMOM Pull Ups, 3–5 reps every minute, 12 minutes.
+  async function toEmom(page) {
+    await page.locator('.fp-week [data-pw="P4W4-3"]').click();
+    await page.locator('[data-startpw]').click();
+    for (let i = 0; i < 4; i++) await page.locator('[data-next]').click();
+    await expect(page.locator('.fp-runcard h2')).toHaveText('Pull Ups');
+  }
+
+  test('17 an EMOM starts from a base — minutes and reps each — and any minute can be changed afterwards', async ({ page }) => {
+    await existingAthlete(page);
+    await toEmom(page);
+    await expect(page.locator('[data-useplan]')).toHaveText('Start: 12 × 3');   // the bottom of the prescription
+    await page.locator('[data-dec="pm"]').click();                               // 11 minutes
+    await page.locator('[data-inc="pr"]').click();                               // 4 reps
+    await page.locator('[data-useplan]').click();
+    await expect(page.locator('.fp-set.done')).toHaveCount(11);
+    await page.locator('[data-dec="m1"]').click();                               // minute 2 went to 3
+    await page.locator('[data-delmin]').click();                                 // one minute fewer
+    await page.locator('[data-addmin]').click();                                 // and back: a new minute copies the last one
+    await page.locator('[data-delmin]').click();
+    const run = await page.evaluate(() => JSON.parse(localStorage.getItem('spc_c_programrun')).blocks[4]);
+    expect(run.minutes).toEqual([4, 3, 4, 4, 4, 4, 4, 4, 4, 4]);
+    expect(run.plan).toBeUndefined();
+    await expect(page.locator('[data-useplan]')).toHaveCount(0);
+  });
+
+  test('18 the EMOM clock ticks on the last 3 seconds of each minute, then beeps', async ({ page }) => {
+    // A stand-in for the speaker: records every tone the app plays.
+    await page.addInitScript(() => {
+      window.__tones = [];
+      const param = () => ({ setValueAtTime() {}, exponentialRampToValueAtTime() {} });
+      class Ctx {
+        constructor() { this.state = 'running'; this.currentTime = 0; this.destination = {}; }
+        resume() {}
+        createGain() { return { gain: param(), connect() {} }; }
+        createOscillator() {
+          const f = {}; Object.defineProperty(f, 'value', { set: (v) => window.__tones.push(v), get: () => 0 });
+          return { frequency: f, type: '', connect() {}, start() {}, stop() {} };
+        }
+      }
+      window.AudioContext = Ctx; window.webkitAudioContext = Ctx;
+    });
+    await page.clock.install();
+    await existingAthlete(page);
+    await toEmom(page);
+    await page.locator('[data-useplan]').click();
+    await page.evaluate(() => { window.__tones = []; });
+    await page.locator('[data-clock]').click();
+    await page.clock.runFor(56000);
+    expect(await page.evaluate(() => window.__tones)).toEqual([]);
+    await page.clock.runFor(4000);                                               // seconds 57, 58, 59, then the new minute
+    expect(await page.evaluate(() => window.__tones)).toEqual([440, 440, 440, 660, 770, 880]);
+  });
+});

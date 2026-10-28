@@ -3807,7 +3807,7 @@
       '<div class="settings-list">'+
       tgl('sound','Beep at end of rest','A three-tone chime when the rest timer finishes')+
       tgl('vibrate','Vibrate at end of rest','Haptic buzz on supported devices')+
-      tgl('countdown','Countdown ticks','A tick on the last 3 seconds of each rest')+
+      tgl('countdown','Countdown ticks','A tick on the last 3 seconds of each rest and each EMOM minute')+
       '</div>';
     var wrap=shell(html,null); wireSettingsBack(wrap);
     on('[data-tgl]','click',function(e){var k=e.currentTarget.dataset.tgl;settings().timer[k]=!settings().timer[k];saveSettings();renderProfile();},wrap);
@@ -4629,8 +4629,18 @@
     } else if(b.kind==='emom'){
       var mins=r.minutes;
       html+='<div class="fp-clock" id="fpclock">'+clockHtml(b,r)+'</div>';
+      // Start from a base — how many minutes and how many reps each, from the
+      // prescription — then correct any minute that went differently.
+      if(!mins.length&&emomBase(b)){
+        var pl=r.plan||(r.plan=emomBase(b));
+        html+='<div class="fp-box fp-plan"><div class="fp-k">Your plan for this EMOM</div>'+
+          '<div class="fp-set"><span class="fp-sn fp-wide">Minutes (sets)</span>'+stepper('pm',pl.minutes)+'</div>'+
+          '<div class="fp-set"><span class="fp-sn fp-wide">Reps each minute</span>'+stepper('pr',pl.reps)+'</div>'+
+          '<button class="btn primary" data-useplan>Start: '+pl.minutes+' × '+pl.reps+'</button>'+
+          '<p class="tiny muted">You can change any minute afterwards.</p></div>';
+      }
       mins.forEach(function(v,k){ var lab=b.style==='alternating'?(((k+1)%2)?b.parts[0].exercise:b.parts[1].exercise):b.style==='cycle'?b.parts[k%b.parts.length].exercise:''; html+='<div class="fp-set done"><span class="fp-sn">Min '+(k+1)+'</span>'+(lab?'<span class="fp-ml">'+esc(lab)+'</span>':'')+stepper('m'+k,v)+'</div>'; });
-      html+='<button class="btn ghost" data-addmin>+ Log minute '+(mins.length+1)+'</button>';
+      if(mins.length||!emomBase(b)) html+='<div class="fp-opts"><button class="btn ghost" data-addmin>+ Minute '+(mins.length+1)+'</button>'+(mins.length?'<button class="btn ghost" data-delmin>Remove minute '+mins.length+'</button>':'')+'</div>';
     } else if(b.kind==='amrap'){
       html+=b.items.map(function(it){ return '<div class="fp-li">'+esc(it.easy)+'<span>'+doseText(it.dose)+'</span></div>'; }).join('');
       html+='<div class="fp-clock" id="fpclock">'+clockHtml(b,r)+'</div>';
@@ -4663,6 +4673,12 @@
     var minute=Math.floor(el/60)+1, left=60-(el%60);
     return '<div class="t">'+fmt(left)+'</div><div class="muted small">'+(c?'Minute '+minute:'Every minute on the minute')+'</div><button class="link" data-clock>'+(c&&c.running?'Pause':el?'Resume':'Start timer')+'</button>';
   }
+  // The EMOM base: the bottom of the prescribed minutes and reps. A pyramid has
+  // no fixed reps per minute, so it is logged minute by minute.
+  function emomBase(b){
+    if(b.kind!=='emom'||b.style==='pyramid'||!b.perMinute||b.perMinute.min==null) return null;
+    return { minutes:(b.minutes&&b.minutes.min)||1, reps:b.perMinute.min };
+  }
   function lastAmrap(wid){
     var pkg=getPkg(), w=pkg.workouts[wid];
     var same=Program.ofType(progState(),'workout_completed').filter(function(e){ var x=pkg.workouts[e.workoutId]; return x&&x.format==='amrap'&&x.phase===w.phase; });
@@ -4678,6 +4694,8 @@
         if(m[2]==='L') s.left=start(s.left,dmin); else if(m[2]==='R') s.right=start(s.right,dmin); else s.value=start(s.value,dmin); }
       else if((m=attr.match(/^m(\d+)$/))) r.minutes[+m[1]]=start(r.minutes[+m[1]],(b.perMinute&&b.perMinute.min)||1);
       else if((m=attr.match(/^c(\d+)$/))) r.items[+m[1]]=start(r.items[+m[1]],b.items[+m[1]].dose.min||0);
+      else if(attr==='pm') r.plan.minutes=Math.max(1,r.plan.minutes+delta);
+      else if(attr==='pr') r.plan.reps=Math.max(0,r.plan.reps+delta);
       else if(attr==='rounds') r.rounds=start(r.rounds,0);
       else if(attr==='partial') r.partial=start(r.partial,0);
       rerender();
@@ -4692,7 +4710,10 @@
       var more=r.sets.some(function(x){return !x.done;});
       if(more&&b.restSec) startRest(b.restSec);
     },wrap);
-    on('[data-addmin]','click',function(){ r.minutes.push((b.perMinute&&b.perMinute.min)||1); rerender(); },wrap);
+    on('[data-useplan]','click',function(){ for(var k=0;k<r.plan.minutes;k++) r.minutes.push(r.plan.reps); delete r.plan; rerender(); },wrap);
+    // a new minute starts from the one before it
+    on('[data-addmin]','click',function(){ r.minutes.push(r.minutes.length?r.minutes[r.minutes.length-1]:((b.perMinute&&b.perMinute.min)||1)); rerender(); },wrap);
+    on('[data-delmin]','click',function(){ r.minutes.pop(); rerender(); },wrap);
     on('[data-roundrest]','click',function(){ startRest(b.restBetweenRoundsSec,{label:'Rest between rounds'}); },wrap);
     // EMOM / AMRAP clock: a helper only. It beeps each new minute (EMOM) and at
     // the end; what the athlete logs is what counts.
@@ -4710,6 +4731,10 @@
         clock.t=setInterval(function(){
           if(!clock||!clock.running) return;
           clock.elapsed++;
+          // A tick on each of the last 3 seconds of every EMOM minute (and of
+          // the AMRAP), like the rest timer, then the usual beep.
+          var left=b.kind==='amrap'?total-clock.elapsed:60-(clock.elapsed%60);
+          if(left>0&&left<=3&&(!total||clock.elapsed<total)&&settings().timer.countdown) playCountdownTick();
           if(b.kind==='emom'&&clock.elapsed%60===0&&(!total||clock.elapsed<total)){ if(settings().timer.sound) playBeep(); if(settings().timer.vibrate) vibrate([150]); }
           if(total>0&&clock.elapsed>=total){ clock.running=false; if(settings().timer.sound) playBeep(); if(settings().timer.vibrate) vibrate([100,50,100,50,200]); }
           paintClock();
