@@ -382,3 +382,31 @@ test.describe('Foundation Path — EMOM in the runner', () => {
     expect(await page.evaluate(() => window.__tones)).toEqual([440, 440, 440, 660, 770, 880]);
   });
 });
+
+test.describe('Foundation Path — history from the athlete\'s own log', () => {
+  test('19 a history file imported in Settings → Program fills in the weeks, and its results show in History', async ({ page }) => {
+    await existingAthlete(page);
+    const log = { kind: 'spc-history', version: 1, source: 'test log', events: [
+      { id: 'log-1', type: 'workout_completed', workoutId: 'P4W1-2', date: null, note: 'from a sheet',
+        result: [{ variant: 'hard', sets: [5, 5, 5].map((v) => ({ value: v, done: true })), note: 'Completed: 3×5' }] },
+      { id: 'log-2', type: 'maxtest_recorded', nodeId: 'MT3', date: '2026-09-26T12:00:00.000Z',
+        results: [{ family: 'pull', variant: 'Pull Ups', unit: 'reps', value: 9, valid: false }] }] };
+    await page.locator('[data-settings]').click();                // the gear → Program
+    await page.locator('[data-sview="program"]').click();
+    const input = page.locator('[data-histfile]');
+    await input.setInputFiles({ name: 'history.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(log)) });
+    await expect(page.locator('.toast, body')).toContainText('Imported 1 workout and 1 Max Test');
+    await input.setInputFiles({ name: 'history.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(log)) });
+    await expect(page.locator('.toast, body')).toContainText('2 already here');
+    await page.evaluate(() => window.CoachApp._goto('path'));
+    await expect(page.locator('[data-node="MT3"]')).toBeAttached();
+    await page.evaluate(() => window.CoachApp._goto('history'));
+    const row = page.locator('[data-histev="log-1"]');
+    await expect(row).toContainText('From your log');
+    await row.click();
+    const sheet = page.locator('.sheet');
+    await expect(sheet).toContainText('Dips');
+    await expect(sheet).toContainText('5, 5, 5');
+    await expect(sheet).toContainText('Completed: 3×5');
+  });
+});

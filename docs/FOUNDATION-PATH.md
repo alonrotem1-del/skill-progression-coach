@@ -156,6 +156,16 @@ never copies a value.
     the Ring Muscle-Up entry card. After the Exit, only for what an Academy entry
     still needs.
 20. A domain that has passed no longer offers "Record a test".
+21. History from the athlete's own log (Settings → Program → Import workout
+    history): a `spc-history` file of workouts and Max Tests, added as events
+    (source `imported`) with the prescription snapshot like any record. It only
+    adds; an entry whose id is already present is skipped. Undated entries stay
+    undated. Imported workouts never count as Foundation evidence (no date to
+    check the 45-day window against, and no set confirmed in the app). A
+    "reported, no set data" mark gives way in History to real results for the
+    same workout. The file built from a personal log is personal data and is
+    never in this repository.
+22. History rows open the workout's results block by block, with notes.
 
 ## 4. Not in this build
 - **Follow-up before full Academy progression:** unify workout evidence with the

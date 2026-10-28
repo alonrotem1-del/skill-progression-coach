@@ -387,3 +387,52 @@ test.describe('SPC Foundation Exit — a set from a normal workout (Stage 5A §3
     expect(P.evidenceWanted(s)).toEqual(['pbdip']);
   });
 });
+
+test.describe('history from the athlete\'s own log', () => {
+  test.skip(!HAVE, 'program package not built on this machine');
+  const sets3 = (variant, v) => ({ variant, sets: [1, 2, 3].map(() => ({ value: v, done: true })) });
+  const file = (events) => ({ kind: P.HISTORY_KIND, version: 1, source: 'test log', events });
+  const LOG = file([
+    { id: 'log-a', type: 'maxtest_recorded', nodeId: 'MT3', date: '2026-09-26T12:00:00.000Z', results: [{ family: 'pull', variant: 'Pull Ups', value: 9, unit: 'reps', valid: false }] },
+    { id: 'log-b', type: 'workout_completed', workoutId: 'P4W1-2', date: null, result: [sets3('hard', 9)], note: 'from a sheet' },
+    { id: 'log-c', type: 'workout_completed', workoutId: 'NOPE-1', result: [] },
+    { id: 'log-d', type: 'deload_completed', nodeId: 'P4D' }
+  ]);
+
+  test('30 importing adds workouts and Max Tests once; the same file again adds nothing', () => {
+    const before = migrated();
+    const r = P.importHistory(pkg, before, LOG);
+    expect(r.added).toEqual({ workouts: 1, maxTests: 1 });
+    expect(r.errors.length).toBe(2);                                   // an unknown workout, a type it does not import
+    expect(r.state.events.slice(0, before.events.length)).toEqual(before.events);   // only adds
+    expect(P.workoutStatus(pkg, r.state, 'P4W1-2').status).toBe('completed');
+    expect(P.pathView(pkg, r.state).nodes.find((n) => n.id === 'MT3').status).toBe('done');
+    const again = P.importHistory(pkg, r.state, LOG);
+    expect(again.added).toEqual({ workouts: 0, maxTests: 0 });
+    expect(again.skipped).toBe(2);
+    expect(again.state.events.length).toBe(r.state.events.length);
+  });
+
+  test('31 an imported workout keeps its prescription snapshot, fills missing blocks as skipped, and is never Foundation evidence', () => {
+    const r = P.importHistory(pkg, P.emptyState(), LOG);
+    const ev = P.ofType(r.state, 'workout_completed')[0];
+    expect(ev).toMatchObject({ id: 'log-b', source: 'imported', finishedAt: null, dateUnknown: true, note: 'from a sheet' });
+    expect(ev.result.length).toBe(pkg.workouts['P4W1-2'].blocks.length);
+    expect(ev.result.slice(1).every((b) => b.skipped)).toBe(true);
+    expect(ev.prescription.blocks[0]).toMatchObject({ easy: 'Assisted Dips', hard: 'Dips' });
+    expect(ev.summary.blocks[0].outcome).toBe('met');
+    // 9 Dips, but no date and no confirmation in the app: not evidence, not offered.
+    expect(P.performedSets(ev)).toEqual([]);
+    expect(P.trainingCandidates(r.state)).toEqual([]);
+    expect(P.foundationStatus(r.state).domains.every((d) => d.status === 'no-evidence')).toBe(true);
+  });
+
+  test('32 anything that is not a history file changes nothing', () => {
+    const s = migrated();
+    for (const bad of [null, {}, { kind: 'spc-backup', events: [] }, { kind: P.HISTORY_KIND }]) {
+      const r = P.importHistory(pkg, s, bad);
+      expect(r.state).toBe(s);
+      expect(r.errors).toEqual(['not a history file']);
+    }
+  });
+});

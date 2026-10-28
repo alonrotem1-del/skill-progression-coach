@@ -408,6 +408,42 @@
     return { open: open, goals: goals, later: ACADEMY_LATER.slice() };
   }
 
+  // ---- history from the athlete's own log --------------------------------------------
+  // A history file carries workouts and Max Tests the athlete logged elsewhere
+  // (e.g. a spreadsheet). Importing only ADDS events; an entry whose id is already
+  // in the state is skipped, so importing the same file twice changes nothing.
+  // Imported workouts keep the prescription snapshot like any other record, are
+  // marked source 'imported', and never count as Foundation evidence (that needs
+  // a set confirmed in the app).
+  var HISTORY_KIND = 'spc-history';
+  function importHistory(pkg, state, file) {
+    var out = { state: state && state.events ? state : emptyState(), added: { workouts: 0, maxTests: 0 }, skipped: 0, errors: [] };
+    if (!file || file.kind !== HISTORY_KIND || !Array.isArray(file.events)) { out.errors.push('not a history file'); return out; }
+    var have = {}; events(out.state).forEach(function (e) { have[e.id] = true; });
+    file.events.forEach(function (x, i) {
+      var where = 'entry ' + (i + 1);
+      if (!x || !x.id) { out.errors.push(where + ': no id'); return; }
+      if (have[x.id]) { out.skipped++; return; }
+      var ev;
+      if (x.type === 'workout_completed') {
+        var w = pkg.workouts[x.workoutId];
+        if (!w) { out.errors.push(where + ': unknown workout ' + x.workoutId); return; }
+        var blocks = w.blocks.map(function (b, k) { return (x.result || [])[k] || { variant: 'easy', skipped: true }; });
+        ev = completionEvent(pkg, x.workoutId, { startedAt: null, blocks: blocks }, x.date || 'unknown');
+        ev.source = 'imported'; ev.finishedAt = x.date || null; ev.dateUnknown = !x.date; ev.note = x.note || null;
+        out.added.workouts++;
+      } else if (x.type === 'maxtest_recorded') {
+        if (!pkg.sequence.some(function (n) { return n.id === x.nodeId && n.type === 'maxtest'; })) { out.errors.push(where + ': unknown Max Test ' + x.nodeId); return; }
+        ev = { type: 'maxtest_recorded', nodeId: x.nodeId, date: x.date || null, results: JSON.parse(JSON.stringify(x.results || [])), source: 'imported', note: x.note || null };
+        out.added.maxTests++;
+      } else { out.errors.push(where + ': not a workout or a Max Test'); return; }
+      ev.id = x.id; ev.importedFrom = file.source || null;
+      out.state = addEvent(out.state, ev);
+      have[x.id] = true;
+    });
+    return out;
+  }
+
   // ---- migration of the existing athlete ------------------------------------------
   // The athlete who used the earlier app is mid-program: Beginner Program,
   // Phase 4, with the four required workouts of Week 3 done (as reported), so
@@ -434,6 +470,7 @@
     maxTestToTest: maxTestToTest, maxTestHistory: maxTestHistory, evidence: evidence,
     CONFIRM_NEEDS: CONFIRM_NEEDS, trainingTest: trainingTest, performedSets: performedSets, trainingEvidence: trainingEvidence,
     trainingCandidates: trainingCandidates, evidenceWanted: evidenceWanted,
+    HISTORY_KIND: HISTORY_KIND, importHistory: importHistory,
     foundationStatus: foundationStatus, academyStatus: academyStatus, migrationEvents: migrationEvents
   };
 });

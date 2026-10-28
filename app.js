@@ -847,6 +847,7 @@
   function renderHistory(){
     var wrap=shell(backHeader('History')+(LEGACY?'':programHistoryHtml()+'<div class="section">Earlier app history</div>')+historySection(),null);
     wireHistory(wrap);
+    if(!LEGACY) on('[data-histev]','click',function(e){ historySheet(e.currentTarget.dataset.histev); },wrap);
   }
   // After a history row is deleted, excluded or re-classified, redraw whichever
   // screen the row was on. (Progress is archived but still renders history.)
@@ -4548,7 +4549,7 @@
       '<div class="small muted">'+esc(w.header||'')+' · <a href="'+esc(w.url)+'" target="_blank" rel="noopener">Calixpert lesson ↗</a></div></div>';
     if(comps.length){
       var last=comps[comps.length-1];
-      html+='<div class="fp-done-note">✓ Done'+(last.source==='reported'?' (reported before this app — no set data)':' on '+fmtDate(last.finishedAt||last.at))+'</div>';
+      html+='<div class="fp-done-note">✓ Done'+(last.source==='reported'?' (reported before this app — no set data)':last.source==='imported'?' (from your log)':' on '+fmtDate(last.finishedAt||last.at))+'</div>';
     }
     if(w.warmup&&w.warmup.length) html+='<div class="fp-box"><div class="fp-k">Warm-up</div>'+w.warmup.map(function(x){ return '<div class="fp-li">'+esc(x.name)+'<span>'+esc(x.dose)+'</span></div>'; }).join('')+'</div>';
     html+='<div class="fp-blocks">';
@@ -4758,18 +4759,31 @@
     UI.prun=null; Store.del(RUN_KEY);
     UI.psummary=s.events[s.events.length-1]; setScreen('psummary'); // the stored record, with its id
   }
+  // What a workout record holds, block by block: the exercise done, every set
+  // or minute as logged, and the athlete's own note.
+  function resultLines(w,ev){
+    return w.blocks.map(function(b,i){
+      var r=(ev.result||[])[i]||{}, o=ev.summary?ev.summary.blocks[i].outcome:'';
+      var vals='';
+      if(b.kind==='exercise') vals=(r.sets||[]).map(function(s){ return Program.bilateral(b.dose)?('L'+(s.left==null?'—':s.left)+'/R'+(s.right==null?'—':s.right)):(s.value==null?'—':s.value); }).join(', ');
+      else if(b.kind==='emom') vals=(r.minutes||[]).join(', ')+(r.estimated&&r.minutes&&r.minutes.length?' (from a total)':'');
+      else if(b.kind==='amrap') vals=(r.rounds==null?'—':r.rounds)+' rounds'+(r.partial?' + '+r.partial:'');
+      else if(b.kind==='circuit') vals=(r.rounds==null?'—':r.rounds)+' rounds';
+      return '<div class="fp-sumrow '+o+'"><span>'+esc(blockName(b,r.variant))+'</span><span>'+esc(r.skipped?'skipped':vals||'—')+' '+outcomeChip(o)+'</span></div>'+
+        (r.note?'<div class="fp-note small muted">'+esc(r.note)+'</div>':'');
+    }).join('');
+  }
+  function historySheet(id){
+    var pkg=getPkg(), ev=Program.ofType(progState(),'workout_completed').filter(function(e){ return e.id===id; })[0]; if(!pkg||!ev) return;
+    var w=pkg.workouts[ev.workoutId];
+    showSheet('<div class="grip"></div><div class="fp-k">'+esc(ev.source==='imported'?'From your log':ev.dateUnknown?'':fmtDate(ev.finishedAt||ev.at))+'</div><h2>'+esc('Phase '+w.phase+' · Week '+w.week+' · '+(w.optional?'Legs':shortTitle(w)))+'</h2>'+
+      (ev.source==='reported'?'<p class="small muted">Reported before this app — no set data.</p>':'<div class="fp-box">'+resultLines(w,ev)+'</div>')+
+      (ev.note?'<p class="small muted">'+esc(ev.note)+'</p>':'')+'<button class="btn ghost" data-close>Close</button>',function(sheet){ on('[data-close]','click',closeSheet,sheet); });
+  }
   function renderProgramSummary(){
     var pkg=getPkg(), ev=UI.psummary; if(!ev){ return setScreen('path'); }
     var w=pkg.workouts[ev.workoutId];
-    var lines=w.blocks.map(function(b,i){
-      var r=ev.result[i]||{}, o=ev.summary.blocks[i].outcome;
-      var vals='';
-      if(b.kind==='exercise') vals=(r.sets||[]).map(function(s){ return Program.bilateral(b.dose)?('L'+(s.left==null?'—':s.left)+'/R'+(s.right==null?'—':s.right)):(s.value==null?'—':s.value); }).join(', ');
-      else if(b.kind==='emom') vals=(r.minutes||[]).join(', ');
-      else if(b.kind==='amrap') vals=(r.rounds==null?'—':r.rounds)+' rounds'+(r.partial?' + '+r.partial:'');
-      else if(b.kind==='circuit') vals=(r.rounds==null?'—':r.rounds)+' rounds';
-      return '<div class="fp-sumrow '+o+'"><span>'+esc(blockName(b,r.variant))+'</span><span>'+esc(r.skipped?'skipped':vals||'—')+' '+outcomeChip(o)+'</span></div>';
-    }).join('');
+    var lines=resultLines(w,ev);
     var st=progState(), v=Program.pathView(pkg,st);
     // Sets of this workout that can stand in for a Foundation Exit test, and the
     // answers already given for it.
@@ -4999,8 +5013,23 @@
       (v?'<div class="fp-box"><div class="fp-k">Your position</div><b>'+esc(v.current?nodeLabel(pkg,v.current):'Foundation complete')+'</b>'+
         '<p class="small muted">Started at '+esc(nodeLabel(pkg,v.nodes[v.startIndex]))+'. Changing your starting point never deletes what you did; content before it is shown as placed past.</p>'+
         '<select class="input" data-repos>'+v.nodes.filter(function(n){return n.type!=='exit';}).map(function(n){ return '<option value="'+n.id+'"'+(n.id===v.start?' selected':'')+'>'+esc(nodeLabel(pkg,n))+'</option>'; }).join('')+'</select>'+
-        '<button class="btn ghost sm" data-reposave>Set starting point</button></div>':'');
+        '<button class="btn ghost sm" data-reposave>Set starting point</button></div>':'')+
+      (pkg?'<div class="fp-box"><div class="fp-k">Workouts from your own log</div><p class="small muted">Add workouts and Max Tests you recorded elsewhere, from a history file. It only adds: nothing on this device is changed or deleted, and importing the same file again adds nothing twice.</p>'+
+        '<input type="file" accept="application/json,.json" data-histfile style="display:none"><button class="btn ghost sm" data-histimport>Import workout history…</button></div>':'');
     var wrap=shell(html,null); wireSettingsBack(wrap);
+    var hist=wrap.querySelector('[data-histfile]');
+    on('[data-histimport]','click',function(){ hist.click(); },wrap);
+    if(hist) hist.addEventListener('change',function(){
+      var f=hist.files&&hist.files[0]; if(!f) return;
+      var rd=new FileReader(); rd.onload=function(){
+        var data; try{ data=JSON.parse(rd.result); }catch(e){ toast('Could not read that file.'); return; }
+        var r=Program.importHistory(pkg,progState(),data);
+        if(r.errors.length&&!r.added.workouts&&!r.added.maxTests){ toast('Nothing imported: '+r.errors[0]); return; }
+        Store.set(PROG_KEY,r.state); checkFoundationPass();
+        toast('Imported '+r.added.workouts+' workout'+(r.added.workouts===1?'':'s')+' and '+r.added.maxTests+' Max Test'+(r.added.maxTests===1?'':'s')+(r.skipped?' · '+r.skipped+' already here':'')+(r.errors.length?' · '+r.errors.length+' not understood':'')+'.');
+        renderProgramSettings();
+      }; rd.readAsText(f);
+    });
     var file=wrap.querySelector('[data-pkgfile]');
     on('[data-pkgimport]','click',function(){ file.click(); },wrap);
     if(file) file.addEventListener('change',function(){
@@ -5016,8 +5045,15 @@
   function programHistoryHtml(){
     var pkg=getPkg(), st=progState(); if(!pkg||!st) return '';
     // Workouts and deload weeks, newest first; a deload is a planned recovery week.
+    // A "reported, no set data" mark gives way to real results for the same
+    // workout (from the app or the athlete's log). Undated imports sit at their
+    // import time, in the order the log gave them.
     var when=function(e){ return e.finishedAt||e.date||e.at; };
-    var items=Program.ofType(st,'workout_completed').concat(Program.ofType(st,'deload_completed')).sort(function(a,b){ return when(a)<when(b)?1:when(a)>when(b)?-1:0; });
+    var all=Program.ofType(st,'workout_completed');
+    var withData={}; all.forEach(function(e){ if(e.source!=='reported') withData[e.workoutId]=true; });
+    var order={}; st.events.forEach(function(e,k){ order[e.id]=k; });
+    var items=all.filter(function(e){ return e.source!=='reported'||!withData[e.workoutId]; }).concat(Program.ofType(st,'deload_completed'))
+      .sort(function(a,b){ return when(a)<when(b)?1:when(a)>when(b)?-1:order[b.id]-order[a.id]; });
     var counted=Program.trainingEvidence(st).filter(function(r){ return r.valid; });
     var mts=Program.maxTestHistory(st).slice().reverse();
     var rows=items.map(function(e){
@@ -5026,8 +5062,8 @@
       var p=e.prescription||{}; var w=pkg.workouts[e.workoutId]||{};
       var t=p.title||w.title||e.workoutId; var s=e.summary;
       var ev=counted.filter(function(r){ return r.workoutEventId===e.id; }).map(function(r){ return domainOf(r.test).id; });
-      return '<div class="hist-item"><div class="hist-h"><span class="hist-date">'+esc(fmtDate(when(e)))+'</span><span class="hist-nm">'+esc('Phase '+(p.phase||w.phase)+' · Week '+(p.week||w.week)+' · '+t)+'</span></div>'+
-        '<div class="small muted">'+(e.source==='reported'?'Reported before this app (no set data)':(s?s.met+' in range · '+s.below+' below · '+(s.done||0)+' logged · '+s.notDone+' no result':''))+(ev.length?' · counts for '+esc(ev.join(', ')):'')+'</div></div>'; }).join('');
+      return '<div class="hist-item fp-histev" data-histev="'+esc(e.id)+'"><div class="hist-h"><span class="hist-date">'+esc(e.dateUnknown?'Log':fmtDate(when(e)))+'</span><span class="hist-nm">'+esc('Phase '+(p.phase||w.phase)+' · Week '+(p.week||w.week)+' · '+t)+'</span></div>'+
+        '<div class="small muted">'+(e.source==='reported'?'Reported before this app (no set data)':(e.source==='imported'?'From your log · ':'')+(s?s.met+' in range · '+s.below+' below · '+(s.done||0)+' logged · '+s.notDone+' no result':''))+(ev.length?' · counts for '+esc(ev.join(', ')):'')+'</div></div>'; }).join('');
     var mrows=mts.map(function(e){ return '<div class="hist-item"><div class="hist-h"><span class="hist-date">'+esc(fmtDate(e.date||e.at))+'</span><span class="hist-nm">Max Test</span></div><div class="small muted">'+(e.results||[]).map(function(r){ return esc(r.family)+': '+(r.notTested?'—':esc(r.variant)+' '+esc(r.value)); }).join(' · ')+'</div></div>'; }).join('');
     return '<div class="section">Foundation Path</div>'+(rows||'<p class="small muted">No program workouts yet.</p>')+(mrows?'<div class="section">Max Tests</div>'+mrows:'');
   }
