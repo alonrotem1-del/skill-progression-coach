@@ -84,7 +84,17 @@
     var e = Object.assign({ id: newId(ev.type), at: new Date().toISOString() }, ev);
     return { version: STATE_VERSION, events: events(s).concat([e]) };
   }
-  function ofType(state, type) { return events(state).filter(function (e) { return e.type === type; }); }
+  // A workout saved by mistake is deleted by a 'workout_deleted' event: the log
+  // stays append-only, but the workout and any set confirmed from it are gone for
+  // everything derived from it. Its id stays known, so importing the same history
+  // file again does not bring it back.
+  function ofType(state, type) {
+    var all = events(state).filter(function (e) { return e.type === type; });
+    if (type !== 'workout_completed' && type !== 'evidence_confirmed') return all;
+    var gone = {};
+    events(state).forEach(function (e) { if (e.type === 'workout_deleted') gone[e.workoutEventId] = true; });
+    return all.filter(function (e) { return !gone[type === 'workout_completed' ? e.id : e.workoutEventId]; });
+  }
 
   // ---- package -------------------------------------------------------------------
   function validatePackage(pkg) {

@@ -4552,16 +4552,23 @@
       html+='<div class="fp-done-note">✓ Done'+(last.source==='reported'?' (reported before this app — no set data)':last.source==='imported'?' (from your log)':' on '+fmtDate(last.finishedAt||last.at))+'</div>';
     }
     if(w.warmup&&w.warmup.length) html+='<div class="fp-box"><div class="fp-k">Warm-up</div>'+w.warmup.map(function(x){ return '<div class="fp-li">'+esc(x.name)+'<span>'+esc(x.dose)+'</span></div>'; }).join('')+'</div>';
+    // A finished workout shows what was done; the prescription stays for a block
+    // with no result. A 'reported' mark has no results to show.
+    var rec=comps.filter(function(e){ return e.source!=='reported'&&e.result&&e.result.length; }).pop();
     html+='<div class="fp-blocks">';
     w.blocks.forEach(function(b,i){
-      var chosen=b.hard?lastVariant(b.easy):'easy';
+      var chosen=b.hard?lastVariant(b.easy):'easy', rr=rec&&rec.result[i];
       html+='<div class="fp-block"><div class="fp-bn">'+(i+1)+'</div><div class="fp-bb">';
-      if(b.kind==='exercise'||(b.kind==='emom'&&b.style==='pyramid')){
+      if(rr){
+        var oc=rec.summary&&rec.summary.blocks[i]?rec.summary.blocks[i].outcome:'';
+        html+='<div class="fp-ex">'+esc(blockName(b,rr.variant))+'</div>'+(b.kind==='emom'&&b.style!=='pyramid'?emomPlan(b):'')+
+          '<div class="fp-pres">'+(rr.skipped?'Skipped':'You did: '+esc(resultVals(b,rr)||'—'))+' '+outcomeChip(oc)+'</div>'+(rr.note?'<div class="small muted">'+esc(rr.note)+'</div>':'');
+      } else if(b.kind==='exercise'||(b.kind==='emom'&&b.style==='pyramid')){
         html+=b.hard?'<div class="fp-vars"><span class="'+(chosen==='easy'?'on':'')+'">Easy · '+esc(b.easy.replace(/^Pyramid EMOM:\s*/,''))+'</span><span class="'+(chosen==='hard'?'on':'')+'">Hard · '+esc(b.hard.replace(/^Pyramid EMOM:\s*/,''))+'</span></div>':'<div class="fp-ex">'+esc(blockName(b,'easy'))+'</div>';
       } else if(b.kind==='emom') html+='<div class="fp-ex">'+esc(b.style==='single'?b.exercise:'EMOM')+'</div>'+emomPlan(b);
       else html+='<div class="fp-ex">'+esc(b.kind==='amrap'?'AMRAP':'Circuit')+'</div>';
-      html+='<div class="fp-pres">'+blockPrescription(b)+'</div>';
-      if(b.items) html+=b.items.map(function(it){ return '<div class="fp-li">'+esc(it.easy)+(it.hard?' / '+esc(it.hard):'')+'<span>'+doseText(it.dose)+'</span></div>'; }).join('');
+      if(!rr) html+='<div class="fp-pres">'+blockPrescription(b)+'</div>';
+      if(b.items) html+=b.items.map(function(it){ return '<div class="fp-li">'+esc(it.easy)+(it.hard?' / '+esc(it.hard):'')+'<span>'+(rr?'':doseText(it.dose))+'</span></div>'; }).join('');
       var fk=formatKey(w,b); if(fk&&pkg.formats[fk]) html+='<details class="fp-qa"><summary>How this format works</summary><div>'+esc(pkg.formats[fk].text)+'</div></details>';
       html+=qaHtml(pkg,b.qa)+'</div></div>';
     });
@@ -4571,11 +4578,13 @@
     if(wqa.length) html+='<div class="fp-box">'+qaHtml(pkg,wqa)+'</div>';
     var easyHard=(pkg.globalNotes||[]).filter(function(n){return n.id==='easy-hard';})[0];
     if(w.blocks.some(function(b){return b.hard;})&&easyHard) html+='<p class="tiny muted fp-foot">Easy / Hard: '+esc(easyHard.text)+'</p>';
+    if(comps.length) html+='<div class="fp-cta"><button class="btn danger" data-delpw>Delete this workout</button></div>';
     if(ws.status==='available') html+='<div class="fp-cta"><button class="btn primary" data-startpw>'+(comps.length?'Start again':'Start workout')+'</button></div>';
     else html+='<p class="small muted fp-foot">'+esc(ws.status==='completed'?'':ws.status==='placed'?'Placed past — for viewing.':ws.status==='upcoming'?'Opens when the path reaches this week.':'')+'</p>';
     var wrap=shell(html,'path');
     on('[data-backpath]','click',function(){ setScreen('path'); },wrap);
     on('[data-startpw]','click',function(){ startProgramRun(id); },wrap);
+    on('[data-delpw]','click',function(){ deleteProgramWorkout(rec||comps[comps.length-1],renderProgramWorkout); },wrap);
   }
 
   // ---- runner ---------------------------------------------------------------
@@ -4759,17 +4768,21 @@
     UI.prun=null; Store.del(RUN_KEY);
     UI.psummary=s.events[s.events.length-1]; setScreen('psummary'); // the stored record, with its id
   }
+  // One block as logged: every set or minute, or the rounds.
+  function resultVals(b,r){
+    var u=b.kind==='emom'?' reps':b.dose&&b.dose.unit==='sec'?' sec':b.dose&&b.dose.unit==='reps'?' reps':'';
+    if(b.kind==='exercise'){ var sets=r.sets||[]; return sets.map(function(s){ return Program.bilateral(b.dose)?('L'+(s.left==null?'—':s.left)+'/R'+(s.right==null?'—':s.right)):(s.value==null?'—':s.value); }).join(', ')+(sets.length?u:''); }
+    if(b.kind==='emom'){ var m=r.minutes||[]; return m.length?m.join(', ')+u+(r.estimated?' (from a total)':''):''; }
+    if(b.kind==='amrap') return (r.rounds==null?'—':r.rounds)+' rounds'+(r.partial?' + '+r.partial:'');
+    if(b.kind==='circuit') return (r.rounds==null?'—':r.rounds)+' rounds';
+    return '';
+  }
   // What a workout record holds, block by block: the exercise done, every set
   // or minute as logged, and the athlete's own note.
   function resultLines(w,ev){
     return w.blocks.map(function(b,i){
       var r=(ev.result||[])[i]||{}, o=ev.summary?ev.summary.blocks[i].outcome:'';
-      var vals='';
-      if(b.kind==='exercise') vals=(r.sets||[]).map(function(s){ return Program.bilateral(b.dose)?('L'+(s.left==null?'—':s.left)+'/R'+(s.right==null?'—':s.right)):(s.value==null?'—':s.value); }).join(', ');
-      else if(b.kind==='emom') vals=(r.minutes||[]).join(', ')+(r.estimated&&r.minutes&&r.minutes.length?' (from a total)':'');
-      else if(b.kind==='amrap') vals=(r.rounds==null?'—':r.rounds)+' rounds'+(r.partial?' + '+r.partial:'');
-      else if(b.kind==='circuit') vals=(r.rounds==null?'—':r.rounds)+' rounds';
-      return '<div class="fp-sumrow '+o+'"><span>'+esc(blockName(b,r.variant))+'</span><span>'+esc(r.skipped?'skipped':vals||'—')+' '+outcomeChip(o)+'</span></div>'+
+      return '<div class="fp-sumrow '+o+'"><span>'+esc(blockName(b,r.variant))+'</span><span>'+esc(r.skipped?'skipped':resultVals(b,r)||'—')+' '+outcomeChip(o)+'</span></div>'+
         (r.note?'<div class="fp-note small muted">'+esc(r.note)+'</div>':'');
     }).join('');
   }
@@ -4778,7 +4791,26 @@
     var w=pkg.workouts[ev.workoutId];
     showSheet('<div class="grip"></div><div class="fp-k">'+esc(ev.source==='imported'?'From your log':ev.dateUnknown?'':fmtDate(ev.finishedAt||ev.at))+'</div><h2>'+esc('Phase '+w.phase+' · Week '+w.week+' · '+(w.optional?'Legs':shortTitle(w)))+'</h2>'+
       (ev.source==='reported'?'<p class="small muted">Reported before this app — no set data.</p>':'<div class="fp-box">'+resultLines(w,ev)+'</div>')+
-      (ev.note?'<p class="small muted">'+esc(ev.note)+'</p>':'')+'<button class="btn ghost" data-close>Close</button>',function(sheet){ on('[data-close]','click',closeSheet,sheet); });
+      (ev.note?'<p class="small muted">'+esc(ev.note)+'</p>':'')+'<button class="btn ghost" data-close>Close</button>'+
+      '<button class="btn danger fp-histdel" data-histdel>Delete this workout</button>',function(sheet){
+      on('[data-close]','click',closeSheet,sheet);
+      on('[data-histdel]','click',function(){ deleteProgramWorkout(ev,function(){ closeSheet(); refreshHistoryScreen(); }); },sheet);
+    });
+  }
+  // What a deletion changes differs by record: another record of the same workout
+  // keeps it done, and a confirmed set stops counting with its workout. A
+  // "reported, no set data" mark is not a record of its own once real results
+  // exist (History hides it), so it goes with them.
+  function deleteProgramWorkout(ev,after){
+    var st=progState(), rest=Program.completions(st,ev.workoutId).filter(function(e){ return e.id!==ev.id; });
+    var marks=ev.source==='reported'?[]:rest.filter(function(e){ return e.source==='reported'; });
+    var others=rest.length-marks.length;
+    var counted=Program.trainingEvidence(st).filter(function(r){ return r.valid&&r.workoutEventId===ev.id; }).map(function(r){ return domainOf(r.test).id; });
+    if(!confirm('Delete this workout from your history? This cannot be undone.\n\n'+
+      (others?'The workout stays done on the Path: another record of it remains.':'It goes back to not done on the Path.')+
+      (counted.length?'\nThe set it gave for '+counted.join(', ')+' stops counting.':''))) return;
+    marks.concat([ev]).forEach(function(e){ progAdd({type:'workout_deleted',workoutEventId:e.id}); });
+    toast('Workout deleted.'); after();
   }
   function renderProgramSummary(){
     var pkg=getPkg(), ev=UI.psummary; if(!ev){ return setScreen('path'); }

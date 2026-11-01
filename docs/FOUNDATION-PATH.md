@@ -44,7 +44,7 @@ Events: `enrolled`, `repositioned`, `workout_completed` (with per-set results,
 a summary, and the prescription copied by value — its raw text and which
 exercise every set or EMOM minute was), `deload_completed` (a planned recovery
 week), `maxtest_recorded`, `exit_test_recorded`, `evidence_confirmed`,
-`foundation_exit_passed`. Position, outcomes, Foundation Exit and Academy status
+`foundation_exit_passed`, `workout_deleted`. Position, outcomes, Foundation Exit and Academy status
 are all derived by `program.js` (pure, Node-tested). All four keys are in the
 backup inventory.
 
@@ -166,6 +166,16 @@ never copies a value.
     same workout. The file built from a personal log is personal data and is
     never in this repository.
 22. History rows open the workout's results block by block, with notes.
+23. A workout saved by mistake is deleted from its own screen on the Path or its
+    History sheet, after a confirmation. The latest record with results goes,
+    with any "reported, no set data" mark for the same workout. The event list stays append-only: `workout_deleted` points at
+    the record, and from then on the workout and any set confirmed from it are
+    gone for the path, History and evidence. A Foundation Exit already passed
+    stands (never revoked). Importing the same history file again does not bring
+    a deleted workout back.
+24. A finished workout's screen shows what was done in each block (the latest
+    record with results) in place of the prescription; a block with no result,
+    and a workout only reported as done, keep the prescription.
 
 ## 4. Not in this build
 - **Follow-up before full Academy progression:** unify workout evidence with the

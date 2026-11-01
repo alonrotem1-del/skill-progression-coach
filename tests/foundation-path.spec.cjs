@@ -409,4 +409,69 @@ test.describe('Foundation Path — history from the athlete\'s own log', () => {
     await expect(sheet).toContainText('5, 5, 5');
     await expect(sheet).toContainText('Completed: 3×5');
   });
+
+  test('20 a workout saved by mistake is deleted from its History sheet and goes back to not done on the Path', async ({ page }) => {
+    await existingAthlete(page);
+    await addEvents(page, [{ id: 'wrong-1', type: 'workout_completed', workoutId: 'P4W4-1', source: 'app', result: [], finishedAt: '2026-10-20T10:00:00.000Z' }]);
+    await expect(page.locator('.fp-week .fp-k')).toContainText('1 of 4 required done');
+    await page.evaluate(() => window.CoachApp._goto('history'));
+    const row = page.locator('[data-histev="wrong-1"]');
+
+    let asked = '';
+    page.once('dialog', (d) => { asked = d.message(); d.dismiss(); });
+    await row.click();
+    await page.locator('[data-histdel]').click();
+    expect(asked).toContain('goes back to not done');
+    await expect(row).toBeAttached();                              // cancelling changes nothing
+
+    page.once('dialog', (d) => d.accept());
+    await page.locator('[data-histdel]').click();
+    await expect(page.locator('.sheet')).toHaveCount(0);
+    await expect(row).toHaveCount(0);
+    await page.evaluate(() => window.CoachApp._goto('path'));
+    await expect(page.locator('.fp-week .fp-k')).toContainText('0 of 4 required done');
+    await page.reload();
+    await expect(page.locator('.fp-week .fp-k')).toContainText('0 of 4 required done');
+  });
+
+  test('21 a finished workout shows what was actually done, not the prescription; one not done keeps the prescription', async ({ page }) => {
+    await existingAthlete(page);
+    const sets = [7, 6, 5].map((v) => ({ value: v, done: true }));
+    await addEvents(page, [{ id: 'real-1', type: 'workout_completed', workoutId: 'P4W4-2', source: 'app', finishedAt: '2026-10-20T10:00:00.000Z',
+      result: [{ variant: 'hard', sets, note: 'felt strong' }, { variant: 'easy', skipped: true }] }]);
+    await page.locator('.fp-week [data-pw="P4W4-2"]').click();
+    const blocks = page.locator('.fp-block');
+    await expect(blocks.nth(0)).toContainText('You did: 7, 6, 5 reps');
+    await expect(blocks.nth(0)).toContainText('felt strong');
+    await expect(blocks.nth(0).locator('.fp-pres')).not.toContainText('×');
+    await expect(blocks.nth(1)).toContainText('Skipped');
+    await expect(blocks.nth(2).locator('.fp-pres')).toContainText('×');   // no result for it: the prescription stays
+    await page.locator('[data-backpath]').click();
+    await page.locator('.fp-week [data-pw="P4W4-3"]').click();
+    await expect(page.locator('.fp-blocks')).not.toContainText('You did');
+  });
+
+  test('22 a workout is deleted from its own screen on the Path, reported mark included, after asking', async ({ page }) => {
+    await existingAthlete(page);
+    await addEvents(page, [{ id: 'log-w3', type: 'workout_completed', workoutId: 'P4W3-1', source: 'imported', finishedAt: null, dateUnknown: true,
+      result: [{ variant: 'hard', sets: [{ value: 10, done: true }] }] }]);
+    await page.locator('[data-node="P4W3"]').click();
+    await page.locator('.sheet [data-pw="P4W3-1"]').click();
+    await expect(page.locator('.fp-blocks')).toContainText('You did: 10 reps');
+    expect(await page.locator('[data-delpw]').count()).toBe(1);
+
+    let asked = '';
+    page.once('dialog', (d) => { asked = d.message(); d.dismiss(); });
+    await page.locator('[data-delpw]').click();
+    expect(asked).toContain('goes back to not done');
+    await expect(page.locator('.fp-done-note')).toBeVisible();     // cancelling changes nothing
+
+    page.once('dialog', (d) => d.accept());
+    await page.locator('[data-delpw]').click();
+    await expect(page.locator('.fp-done-note')).toHaveCount(0);
+    await expect(page.locator('.fp-blocks')).not.toContainText('You did');
+    await expect(page.locator('[data-delpw]')).toHaveCount(0);
+    await page.locator('[data-backpath]').click();
+    await expect(page.locator('.fp-head .fp-t')).toHaveText('Phase 4 · Week 3');
+  });
 });

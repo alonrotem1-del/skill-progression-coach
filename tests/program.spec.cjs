@@ -386,6 +386,18 @@ test.describe('SPC Foundation Exit — a set from a normal workout (Stage 5A §3
     s = P.addEvent(s, { type: 'exit_test_recorded', test: 'pullup', values: { value: 6 }, valid: true, date: daysAgo(1) });
     expect(P.evidenceWanted(s)).toEqual(['pbdip']);
   });
+
+  test('34 deleting a workout takes its confirmed set with it, but a passed Foundation Exit stands', () => {
+    let s = did(P.emptyState(), 'P4W4-2', { 0: sets('hard', 8) });
+    const w = last(s);
+    s = confirm(s, P.trainingCandidates(s)[0], DIPS);
+    expect(P.foundationStatus(s).domains[2].status).toBe('pass');
+    s = P.addEvent(s, { type: 'foundation_exit_passed' });
+    s = P.addEvent(s, { type: 'workout_deleted', workoutEventId: w.id });
+    expect(P.foundationStatus(s).domains[2].status).toBe('no-evidence');
+    expect(P.ofType(s, 'evidence_confirmed')).toEqual([]);
+    expect(P.foundationStatus(s).passed).toBe(true);
+  });
 });
 
 test.describe('history from the athlete\'s own log', () => {
@@ -425,6 +437,22 @@ test.describe('history from the athlete\'s own log', () => {
     expect(P.performedSets(ev)).toEqual([]);
     expect(P.trainingCandidates(r.state)).toEqual([]);
     expect(P.foundationStatus(r.state).domains.every((d) => d.status === 'no-evidence')).toBe(true);
+  });
+
+  test('33 a deleted workout is no longer done, the path goes back to it, and the same file does not bring it back', () => {
+    const imported = P.importHistory(pkg, migrated(), LOG).state;
+    let s = completeWeek(imported, 'P4W4');
+    expect(P.pathView(pkg, s).current.id).not.toBe('P4W4');
+    const done = P.completions(s, 'P4W4-2')[0];
+    s = P.addEvent(s, { type: 'workout_deleted', workoutEventId: done.id });
+    expect(P.pathView(pkg, s).current.id).toBe('P4W4');
+    expect(P.workoutStatus(pkg, s, 'P4W4-2').status).toBe('available');
+    expect(s.events.some((e) => e.id === done.id)).toBe(true);          // the log only ever grows
+    const log = P.completions(s, 'P4W1-2')[0];
+    s = P.addEvent(s, { type: 'workout_deleted', workoutEventId: log.id });
+    const again = P.importHistory(pkg, s, LOG);
+    expect(again.added.workouts).toBe(0);
+    expect(P.workoutStatus(pkg, again.state, 'P4W1-2').status).not.toBe('completed');
   });
 
   test('32 anything that is not a history file changes nothing', () => {
