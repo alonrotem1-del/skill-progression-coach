@@ -454,6 +454,57 @@
     return out;
   }
 
+  // ---- one block as logged ---------------------------------------------------------
+  function blockName(b, variant) {
+    if (b.kind === 'emom' && b.style !== 'pyramid') return b.style === 'single' ? b.exercise : 'EMOM';
+    if (b.kind === 'emom') return variant === 'hard' && b.hardExercise ? b.hardExercise : b.exercise;
+    if (b.kind === 'amrap') return 'AMRAP';
+    if (b.kind === 'circuit') return 'Circuit';
+    return variant === 'hard' && b.hard ? b.hard : b.easy;
+  }
+  // Every set or minute, or the rounds; 'plain' leaves out the units.
+  function resultVals(b, r, plain) {
+    var unit = b.dose && b.dose.unit;
+    var u = plain ? '' : b.kind === 'emom' ? ' reps' : unit === 'sec' ? ' sec' : unit === 'reps' ? ' reps' : '';
+    if (b.kind === 'exercise') {
+      var sets = r.sets || [];
+      return sets.map(function (s) { return bilateral(b.dose) ? ('L' + (s.left == null ? '—' : s.left) + '/R' + (s.right == null ? '—' : s.right)) : (s.value == null ? '—' : s.value); }).join(', ') + (sets.length ? u : '');
+    }
+    if (b.kind === 'emom') { var m = r.minutes || []; return m.length ? m.join(', ') + u + (!plain && r.estimated ? ' (from a total)' : '') : ''; }
+    var rounds = (r.rounds == null ? '—' : r.rounds) + (plain ? '' : ' rounds');
+    if (b.kind === 'amrap') return rounds + (r.partial ? ' + ' + r.partial : '');
+    if (b.kind === 'circuit') return rounds;
+    return '';
+  }
+
+  // ---- the athlete's own sheet -----------------------------------------------------
+  // One row per block of a finished workout; tools/sheet-sync.gs writes them.
+  function blockTotal(b, r) {
+    var add = function (list) { return list.reduce(function (a, v) { return a + (+v || 0); }, 0); };
+    if (r.skipped) return { n: null, unit: '' };
+    if (b.kind === 'exercise') {
+      var vals = [];
+      (r.sets || []).forEach(function (s) { if (bilateral(b.dose)) vals.push(s.left, s.right); else vals.push(s.value); });
+      var unit = b.dose && b.dose.unit;
+      return vals.length ? { n: add(vals), unit: unit === 'sec' ? 'שניות' : unit === 'reps' ? 'חזרות' : '' } : { n: null, unit: '' };
+    }
+    if (b.kind === 'emom') return (r.minutes || []).length ? { n: add(r.minutes), unit: 'חזרות' } : { n: null, unit: '' };
+    return r.rounds == null ? { n: null, unit: '' } : { n: r.rounds, unit: 'סיבובים' };
+  }
+  function sheetRows(pkg, ev) {
+    var w = pkg.workouts[ev.workoutId];
+    var status = { met: 'בטווח', below: 'מתחת לטווח', done: 'נרשם', 'not-done': 'ללא תוצאה' };
+    return w.blocks.map(function (b, i) {
+      var r = (ev.result || [])[i] || {}, total = blockTotal(b, r);
+      var o = ev.summary && ev.summary.blocks[i] ? ev.summary.blocks[i].outcome : '';
+      return { id: ev.id, date: ev.finishedAt || ev.at, week: 'שלב ' + w.phase + ' · שבוע ' + w.week,
+        workout: w.optional ? 'Legs' : w.title.replace(/^Workout \d - /, ''), exercise: blockName(b, r.variant),
+        level: r.skipped || !(b.hard || b.hardExercise) ? '' : r.variant === 'hard' ? 'קשה' : 'קל',
+        actual: r.skipped ? 'לא בוצע' : resultVals(b, r, true), total: total.n, unit: total.unit,
+        status: r.skipped ? 'דולג' : status[o] || '', note: r.note || '' };
+    });
+  }
+
   // ---- migration of the existing athlete ------------------------------------------
   // The athlete who used the earlier app is mid-program: Beginner Program,
   // Phase 4, with the four required workouts of Week 3 done (as reported), so
@@ -477,6 +528,7 @@
     startNode: startNode, nodeComplete: nodeComplete, pathView: pathView, workoutStatus: workoutStatus, weekProgress: weekProgress,
     valueOutcome: valueOutcome, setOutcome: setOutcome, blockOutcome: blockOutcome, runSummary: runSummary, bilateral: bilateral,
     completionEvent: completionEvent, completions: completions,
+    blockName: blockName, resultVals: resultVals, sheetRows: sheetRows,
     maxTestToTest: maxTestToTest, maxTestHistory: maxTestHistory, evidence: evidence,
     CONFIRM_NEEDS: CONFIRM_NEEDS, trainingTest: trainingTest, performedSets: performedSets, trainingEvidence: trainingEvidence,
     trainingCandidates: trainingCandidates, evidenceWanted: evidenceWanted,

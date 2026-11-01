@@ -177,6 +177,17 @@ never copies a value.
     record with results) in place of the prescription; a block with no result,
     and a workout only reported as done, keep the prescription.
 
+25. In the runner, tapping the number between − and + types it. An empty set
+    starts from the set before it (+, − and Done alike), the first set from the
+    bottom of the range.
+26. The athlete's own Google Sheet (Settings → Program): workouts done in the app
+    go to a tab of their own, one row per exercise, through `tools/sheet-sync.gs`,
+    deployed by the athlete. Deleting a workout deletes its rows. The link is kept
+    only on the device (`spc_c_sheet`, not in backups); messages wait there until
+    delivered, and the script skips a workout it already has. Connecting sends what
+    was done in the app so far; imported workouts are not sent. One way only: edits
+    in the sheet do not come back.
+
 ## 4. Not in this build
 - **Follow-up before full Academy progression:** unify workout evidence with the
   persistent Evidence Ledger (IndexedDB). Today the Foundation evaluator reads
@@ -184,6 +195,8 @@ never copies a value.
   nothing is written to the older ledger, so there is no second copy that could
   disagree. The unification decides which store becomes the single source.
 - Private hosting, sign-in or sync of the program package (import only).
+- Sync back from the sheet, or a full copy of the data off the device: a backup
+  file is still the only copy of everything.
 - The readiness check at workout start (READY-6).
 - Academy goal content (e.g. the Pistol Mobility Check, Ring MU stages).
 - The True Beginner Program (not collected).

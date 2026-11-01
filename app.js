@@ -4373,13 +4373,7 @@
     if(b.kind==='circuit') return (b.rounds!=null?b.rounds+' rounds':'Circuit')+(b.restRaw?' · '+esc(b.restRaw):'');
     return '';
   }
-  function blockName(b,variant){
-    if(b.kind==='emom'&&b.style!=='pyramid') return b.style==='single'?b.exercise:'EMOM';
-    if(b.kind==='emom') return variant==='hard'&&b.hardExercise?b.hardExercise:b.exercise;
-    if(b.kind==='amrap') return 'AMRAP';
-    if(b.kind==='circuit') return 'Circuit';
-    return variant==='hard'&&b.hard?b.hard:b.easy;
-  }
+  function blockName(b,variant){ return Program.blockName(b,variant); }
   function emomPlan(b){
     if(b.style==='alternating') return b.parts.map(function(p){ return '<div class="fp-sub">'+(p.minutes==='odd'?'Odd minutes':'Even minutes')+': <b>'+esc(p.exercise)+'</b></div>'; }).join('');
     if(b.style==='cycle') return b.parts.map(function(p){ return '<div class="fp-sub">Minute '+p.minute+': <b>'+esc(p.exercise)+'</b></div>'; }).join('')+'<div class="fp-sub muted">then start again at minute 1</div>';
@@ -4612,7 +4606,7 @@
 
   var clock=null;
   function stopClock(){ if(clock){ clearInterval(clock.t); clock=null; } }
-  function stepper(attr,val,step){ return '<div class="stepper"><button data-dec="'+attr+'">−</button><span class="num">'+(val==null||val===''?'—':val)+'</span><button data-inc="'+attr+'">+</button></div>'; }
+  function stepper(attr,val,step){ return '<div class="stepper"><button data-dec="'+attr+'">−</button><span class="num" data-typed="'+attr+'">'+(val==null||val===''?'—':val)+'</span><button data-inc="'+attr+'">+</button></div>'; }
   function outcomeChip(o){ return o==='met'?'<span class="fp-chip ok">in range</span>':o==='below'?'<span class="fp-chip below">below</span>':o==='done'?'<span class="fp-chip ok">logged</span>':''; }
 
   function renderProgramRun(){
@@ -4697,11 +4691,16 @@
   }
   function wireProgramRun(wrap,pkg,w,b,r){
     function rerender(){ saveRun(); renderProgramRun(); }
+    function sideKey(side){ return side==='L'?'left':side==='R'?'right':'value'; }
+    // An empty set starts from the set before it; the first from the bottom of the range.
+    function setBase(k,key){
+      for(var j=k-1;j>=0;j--){ var v=r.sets[j][key]; if(v!=null&&v!=='') return v; }
+      return b.dose.min||0;
+    }
     function adjust(attr,delta){
       var start=function(cur,dflt){ return (cur==null||cur==='')?dflt:Math.max(0,(+cur)+delta); };
       var m;
-      if((m=attr.match(/^s(\d+)([LR])?$/))){ var s=r.sets[+m[1]], dmin=b.dose.min||0;
-        if(m[2]==='L') s.left=start(s.left,dmin); else if(m[2]==='R') s.right=start(s.right,dmin); else s.value=start(s.value,dmin); }
+      if((m=attr.match(/^s(\d+)([LR])?$/))){ var s=r.sets[+m[1]], key=sideKey(m[2]); s[key]=start(s[key],setBase(+m[1],key)); }
       else if((m=attr.match(/^m(\d+)$/))) r.minutes[+m[1]]=start(r.minutes[+m[1]],(b.perMinute&&b.perMinute.min)||1);
       else if((m=attr.match(/^c(\d+)$/))) r.items[+m[1]]=start(r.items[+m[1]],b.items[+m[1]].dose.min||0);
       else if(attr==='pm') r.plan.minutes=Math.max(1,r.plan.minutes+delta);
@@ -4710,12 +4709,34 @@
       else if(attr==='partial') r.partial=start(r.partial,0);
       rerender();
     }
+    // A typed value; what stands afterwards is returned (a minute or the plan is never left empty).
+    function assign(attr,v){
+      var m;
+      if((m=attr.match(/^s(\d+)([LR])?$/))) return r.sets[+m[1]][sideKey(m[2])]=v;
+      if((m=attr.match(/^m(\d+)$/))) return r.minutes[+m[1]]=v==null?r.minutes[+m[1]]:v;
+      if((m=attr.match(/^c(\d+)$/))) return r.items[+m[1]]=v;
+      if(attr==='pm') return r.plan.minutes=v>=1?v:r.plan.minutes;
+      if(attr==='pr') return r.plan.reps=v==null?r.plan.reps:v;
+      return r[attr]=v;
+    }
     on('[data-inc]','click',function(e){ adjust(e.currentTarget.dataset.inc,1); },wrap);
     on('[data-dec]','click',function(e){ adjust(e.currentTarget.dataset.dec,-1); },wrap);
+    // Tap the number to type it. No redraw here: the tap that closes the keyboard
+    // may be on Done, and that button has to still be there.
+    on('[data-typed]','click',function(e){
+      var num=e.currentTarget, attr=num.dataset.typed, shown=num.textContent==='—'?'':num.textContent;
+      var field=h('<input class="num" type="number" inputmode="numeric" min="0" value="'+esc(shown)+'">');
+      var stood;
+      function typed(){ stood=assign(attr,field.value===''?null:Math.max(0,Math.floor(+field.value))); saveRun(); }
+      field.addEventListener('input',typed);
+      field.addEventListener('keydown',function(ev){ if(ev.key==='Enter') field.blur(); });
+      field.addEventListener('blur',function(){ typed(); num.textContent=stood==null?'—':stood; field.replaceWith(num); });
+      num.replaceWith(field); field.focus(); field.select();
+    },wrap);
     on('[data-var]','click',function(e){ r.variant=e.currentTarget.dataset['var']; rememberVariant(b.easy,r.variant); rerender(); },wrap);
     on('[data-setdone]','click',function(e){
-      var k=+e.currentTarget.dataset.setdone, s=r.sets[k], dmin=b.dose.min;
-      if(Program.bilateral(b.dose)){ if(s.left==null) s.left=dmin; if(s.right==null) s.right=dmin; } else if(s.value==null) s.value=dmin;
+      var k=+e.currentTarget.dataset.setdone, s=r.sets[k];
+      if(Program.bilateral(b.dose)){ if(s.left==null) s.left=setBase(k,'left'); if(s.right==null) s.right=setBase(k,'right'); } else if(s.value==null) s.value=setBase(k,'value');
       s.done=true; saveRun(); renderProgramRun();
       var more=r.sets.some(function(x){return !x.done;});
       if(more&&b.restSec) startRest(b.restSec);
@@ -4767,16 +4788,9 @@
     var s=progAdd(Program.completionEvent(pkg,run.workoutId,run));
     UI.prun=null; Store.del(RUN_KEY);
     UI.psummary=s.events[s.events.length-1]; setScreen('psummary'); // the stored record, with its id
+    sheetQueue([{add:Program.sheetRows(pkg,UI.psummary)}]);
   }
-  // One block as logged: every set or minute, or the rounds.
-  function resultVals(b,r){
-    var u=b.kind==='emom'?' reps':b.dose&&b.dose.unit==='sec'?' sec':b.dose&&b.dose.unit==='reps'?' reps':'';
-    if(b.kind==='exercise'){ var sets=r.sets||[]; return sets.map(function(s){ return Program.bilateral(b.dose)?('L'+(s.left==null?'—':s.left)+'/R'+(s.right==null?'—':s.right)):(s.value==null?'—':s.value); }).join(', ')+(sets.length?u:''); }
-    if(b.kind==='emom'){ var m=r.minutes||[]; return m.length?m.join(', ')+u+(r.estimated?' (from a total)':''):''; }
-    if(b.kind==='amrap') return (r.rounds==null?'—':r.rounds)+' rounds'+(r.partial?' + '+r.partial:'');
-    if(b.kind==='circuit') return (r.rounds==null?'—':r.rounds)+' rounds';
-    return '';
-  }
+  function resultVals(b,r){ return Program.resultVals(b,r); }
   // What a workout record holds, block by block: the exercise done, every set
   // or minute as logged, and the athlete's own note.
   function resultLines(w,ev){
@@ -4810,6 +4824,7 @@
       (others?'The workout stays done on the Path: another record of it remains.':'It goes back to not done on the Path.')+
       (counted.length?'\nThe set it gave for '+counted.join(', ')+' stops counting.':''))) return;
     marks.concat([ev]).forEach(function(e){ progAdd({type:'workout_deleted',workoutEventId:e.id}); });
+    sheetQueue([{del:ev.id}]);
     toast('Workout deleted.'); after();
   }
   function renderProgramSummary(){
@@ -5036,6 +5051,55 @@
     on('[data-evset]','click',function(e){ confirmSetSheet(shown[+e.currentTarget.dataset.evset],renderAcademy); },wrap);
   }
 
+  // ---- the athlete's own Google Sheet ------------------------------------------
+  // Workouts done in the app also go to the athlete's sheet, through the script in
+  // tools/sheet-sync.gs. The link stays on this device, out of backups and out of
+  // this public code. Messages wait here until they are delivered, in order; the
+  // script skips a workout it already has, so sending one twice is harmless.
+  function sheetConf(){ try{ return JSON.parse(localStorage.getItem('spc_c_sheet'))||{}; }catch(e){ return {}; } }
+  function sheetSave(c){ try{ localStorage.setItem('spc_c_sheet',JSON.stringify(c)); }catch(e){} }
+  function sheetPost(url,msg){
+    return fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(msg)})
+      .then(function(r){ return r.json(); }).then(function(j){ if(!j||!j.ok) throw new Error((j&&j.error)||'no answer'); });
+  }
+  var sheetBusy=false;
+  function sheetFlush(){
+    var c=sheetConf(); if(sheetBusy||!c.url||!(c.queue||[]).length) return;
+    sheetBusy=true;
+    sheetPost(c.url,c.queue[0]).then(function(){
+      sheetBusy=false; var n=sheetConf(); (n.queue||[]).shift(); sheetSave(n); sheetFlush();
+    },function(){ sheetBusy=false; });
+  }
+  function sheetQueue(msgs){ var c=sheetConf(); if(!c.url) return; c.queue=(c.queue||[]).concat(msgs); sheetSave(c); sheetFlush(); }
+  // On connecting, everything done in the app so far. Imported workouts came from
+  // the athlete's own log, so they are in the sheet already.
+  function sheetConnect(url){
+    var pkg=getPkg();
+    return sheetPost(url,{}).then(function(){
+      var all=Program.ofType(progState(),'workout_completed').filter(function(e){ return e.source==='app'&&pkg.workouts[e.workoutId]; });
+      sheetSave({url:url,queue:[]}); sheetQueue(all.map(function(e){ return {add:Program.sheetRows(pkg,e)}; }));
+      return all.length;
+    });
+  }
+  function sheetBoxHtml(){
+    var c=sheetConf(), q=(c.queue||[]).length;
+    return '<div class="fp-box"><div class="fp-k">Google Sheet</div>'+(c.url?
+      '<b>Connected</b><p class="small muted">Every workout you finish is added to your sheet, and deleted from it if you delete it here.'+(q?' '+q+' waiting to send.':'')+'</p><button class="btn ghost sm" data-sheetoff>Disconnect</button>':
+      '<p class="small muted">Add every workout you finish to your own sheet. Paste the link of your sheet\'s script. It stays on this device.</p><input class="input" type="url" placeholder="https://script.google.com/…" data-sheeturl><button class="btn ghost sm" data-sheeton>Connect</button>')+'</div>';
+  }
+  function wireSheetBox(wrap){
+    on('[data-sheeton]','click',function(){
+      var url=wrap.querySelector('[data-sheeturl]').value.trim();
+      if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(url)){ toast('That is not a sheet script link.'); return; }
+      sheetConnect(url).then(function(n){ toast('Connected'+(n?' · sending '+n+' workout'+(n===1?'':'s'):'')+'.'); renderProgramSettings(); },
+        function(){ toast('Could not reach the sheet. Check the link.'); });
+    },wrap);
+    on('[data-sheetoff]','click',function(){
+      if(!confirm('Disconnect the sheet? What is already there stays.')) return;
+      sheetSave({}); renderProgramSettings();
+    },wrap);
+  }
+
   // ---- Settings → Program ---------------------------------------------------
   function renderProgramSettings(){
     var pkg=getPkg(), st=progState(), v=pkg?Program.pathView(pkg,st):null;
@@ -5047,8 +5111,8 @@
         '<select class="input" data-repos>'+v.nodes.filter(function(n){return n.type!=='exit';}).map(function(n){ return '<option value="'+n.id+'"'+(n.id===v.start?' selected':'')+'>'+esc(nodeLabel(pkg,n))+'</option>'; }).join('')+'</select>'+
         '<button class="btn ghost sm" data-reposave>Set starting point</button></div>':'')+
       (pkg?'<div class="fp-box"><div class="fp-k">Workouts from your own log</div><p class="small muted">Add workouts and Max Tests you recorded elsewhere, from a history file. It only adds: nothing on this device is changed or deleted, and importing the same file again adds nothing twice.</p>'+
-        '<input type="file" accept="application/json,.json" data-histfile style="display:none"><button class="btn ghost sm" data-histimport>Import workout history…</button></div>':'');
-    var wrap=shell(html,null); wireSettingsBack(wrap);
+        '<input type="file" accept="application/json,.json" data-histfile style="display:none"><button class="btn ghost sm" data-histimport>Import workout history…</button></div>'+sheetBoxHtml():'');
+    var wrap=shell(html,null); wireSettingsBack(wrap); wireSheetBox(wrap);
     var hist=wrap.querySelector('[data-histfile]');
     on('[data-histimport]','click',function(){ hist.click(); },wrap);
     if(hist) hist.addEventListener('change',function(){
@@ -5099,6 +5163,9 @@
     var mrows=mts.map(function(e){ return '<div class="hist-item"><div class="hist-h"><span class="hist-date">'+esc(fmtDate(e.date||e.at))+'</span><span class="hist-nm">Max Test</span></div><div class="small muted">'+(e.results||[]).map(function(r){ return esc(r.family)+': '+(r.notTested?'—':esc(r.variant)+' '+esc(r.value)); }).join(' · ')+'</div></div>'; }).join('');
     return '<div class="section">Foundation Path</div>'+(rows||'<p class="small muted">No program workouts yet.</p>')+(mrows?'<div class="section">Max Tests</div>'+mrows:'');
   }
+
+  window.addEventListener('online',sheetFlush);
+  sheetFlush();
 
   // ---- go -------------------------------------------------------------------
   // If the install prompt becomes available while the user is on the Data

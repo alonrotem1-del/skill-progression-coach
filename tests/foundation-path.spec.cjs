@@ -108,7 +108,8 @@ test.describe('Foundation Path — a workout', () => {
     await page.locator('[data-setdone="0"]').click();
     await expect(page.locator('.fp-set').first()).toContainText('in range');
     // Set 2: 5 = below the range.
-    await page.locator('[data-inc="s1"]').click();
+    await page.locator('[data-inc="s1"]').click();           // starts from set 1 (7)
+    await page.locator('[data-dec="s1"]').click();
     await page.locator('[data-dec="s1"]').click();
     await page.locator('[data-setdone="1"]').click();
     await expect(page.locator('.fp-set').nth(1)).toContainText('below');
@@ -449,6 +450,81 @@ test.describe('Foundation Path — history from the athlete\'s own log', () => {
     await page.locator('[data-backpath]').click();
     await page.locator('.fp-week [data-pw="P4W4-3"]').click();
     await expect(page.locator('.fp-blocks')).not.toContainText('You did');
+  });
+
+  test('23 a number is typed by tapping it, and the next set starts from the one before', async ({ page }) => {
+    await existingAthlete(page);
+    await page.locator('.fp-week [data-pw="P4W4-3"]').click();
+    await page.locator('[data-startpw]').click();
+    const sets = page.locator('.fp-set');
+    await page.locator('[data-typed="s0"]').click();
+    await sets.first().locator('input').fill('15');
+    await page.locator('[data-setdone="0"]').click();            // straight from the keyboard to Done
+    await expect(sets.first()).toContainText('15');
+    await expect(sets.first()).toContainText('in range');
+    await page.locator('[data-inc="s1"]').click();               // not the 6 of the range: the 15 of set 1
+    await expect(sets.nth(1).locator('[data-typed="s1"]')).toHaveText('15');
+    await page.locator('[data-inc="s1"]').click();
+    await expect(sets.nth(1).locator('[data-typed="s1"]')).toHaveText('16');
+    await page.locator('[data-setdone="1"]').click();
+    await page.locator('[data-setdone="2"]').click();            // Done on an empty set: the set before it
+    await expect(sets.nth(2).locator('[data-typed="s2"]')).toHaveText('16');
+    await page.locator('[data-typed="s2"]').click();
+    await sets.nth(2).locator('input').fill('');
+    await sets.nth(2).locator('input').press('Enter');
+    await expect(sets.nth(2).locator('[data-typed="s2"]')).toHaveText('—');
+    await page.reload();
+    await expect(page.locator('.fp-runcard')).toBeVisible({ timeout: 15000 });
+    await expect(sets.first()).toContainText('15');
+  });
+
+  test('24 finished workouts go to the sheet once connected, wait while offline, and are deleted from it', async ({ page }) => {
+    await existingAthlete(page);
+    const got = [];
+    let online = true;
+    await page.route('https://script.google.com/**', (route) => {
+      if (!online) return route.abort();
+      got.push(JSON.parse(route.request().postData()));
+      return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"ok":true}' });
+    });
+    const queue = () => page.evaluate(() => JSON.parse(localStorage.getItem('spc_c_sheet')).queue.length);
+    await addEvents(page, [{ id: 'old-app', type: 'workout_completed', workoutId: 'P4W4-1', source: 'app', result: [], finishedAt: '2026-10-20T10:00:00.000Z' }]);
+    await page.locator('[data-settings]').click();
+    await page.locator('[data-sview="program"]').click();
+    await page.locator('[data-sheeturl]').fill('https://example.com/not-a-script');
+    await page.locator('[data-sheeton]').click();
+    await expect(page.locator('[data-sheeturl]')).toBeVisible();
+    expect(got).toEqual([]);
+    await page.locator('[data-sheeturl]').fill('https://script.google.com/macros/s/abc/exec');
+    await page.locator('[data-sheeton]').click();
+    await expect(page.locator('.fp-box', { hasText: 'Google Sheet' })).toContainText('Connected');
+    await expect.poll(() => got.filter((m) => m.add).length).toBe(1);     // what was already done in the app
+    expect(got.find((m) => m.add).add[0].id).toBe('old-app');
+
+    online = false;
+    page.on('dialog', (d) => d.accept());
+    await page.evaluate(() => window.CoachApp._goto('path'));
+    await page.locator('.fp-week [data-pw="P4W4-3"]').click();
+    await page.locator('[data-startpw]').click();
+    await page.locator('[data-setdone="0"]').click();
+    for (let i = 1; i < pkg.workouts['P4W4-3'].blocks.length; i++) await page.locator('[data-next]').click();
+    await page.locator('[data-finishrun]').click();
+    await expect(page.locator('.scr')).toContainText('Workout saved');
+    await expect.poll(queue).toBe(1);                                     // kept, not lost
+
+    online = true;
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await expect.poll(() => got.filter((m) => m.add).length).toBe(2);
+    await expect.poll(queue).toBe(0);
+    const rows = got.filter((m) => m.add)[1].add;
+    expect(rows.length).toBe(pkg.workouts['P4W4-3'].blocks.length);
+    expect(rows[0]).toMatchObject({ exercise: 'Assisted Chin Ups', actual: '6, —, —', total: 6, unit: 'חזרות', status: 'מתחת לטווח', week: 'שלב 4 · שבוע 4' });
+
+    await page.evaluate(() => window.CoachApp._goto('path'));
+    await page.locator('.fp-week [data-pw="P4W4-3"]').click();
+    await page.locator('[data-delpw]').click();
+    await expect.poll(() => got.filter((m) => m.del).length).toBe(1);
+    expect(got.find((m) => m.del).del).toBe(rows[0].id);
   });
 
   test('22 a workout is deleted from its own screen on the Path, reported mark included, after asking', async ({ page }) => {
