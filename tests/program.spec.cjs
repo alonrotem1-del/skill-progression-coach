@@ -463,10 +463,10 @@ test.describe('history from the athlete\'s own log', () => {
     const ev = Object.assign(P.completionEvent(pkg, 'P4W4-1', { startedAt: null, blocks: result }, '2026-10-29T10:00:00.000Z'), { id: 'w1' });
     const rows = P.sheetRows(pkg, ev);
     expect(rows.length).toBe(blocks.length);
-    expect(rows[0]).toMatchObject({ id: 'w1', date: '2026-10-29T10:00:00.000Z', week: 'שלב 4 · שבוע 4', workout: 'Push & Pull', exercise: 'Wide Push Ups',
-      level: 'קשה', actual: '12, 12, 12', total: 36, unit: 'חזרות' });
-    expect(rows[1]).toMatchObject({ actual: 'לא בוצע', status: 'דולג', total: null, level: '' });
-    expect(rows[4]).toMatchObject({ actual: '8, 8, 7', total: 23, unit: 'חזרות' });
+    expect(rows[0]).toMatchObject({ id: 'w1', date: '2026-10-29T10:00:00.000Z', phase: 4, week: 4, workout: 'Push & Pull', exercise: 'Wide Push Ups',
+      level: 'hard', actual: '12, 12, 12', total: 36, unit: 'reps' });
+    expect(rows[1]).toMatchObject({ actual: '', status: 'skipped', total: null, level: '' });
+    expect(rows[4]).toMatchObject({ actual: '8, 8, 7', total: 23, unit: 'reps' });
   });
 
   test('32 anything that is not a history file changes nothing', () => {

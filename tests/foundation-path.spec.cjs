@@ -487,7 +487,7 @@ test.describe('Foundation Path — history from the athlete\'s own log', () => {
       got.push(JSON.parse(route.request().postData()));
       return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"ok":true}' });
     });
-    const queue = () => page.evaluate(() => JSON.parse(localStorage.getItem('spc_c_sheet')).queue.length);
+    const queue = () => page.evaluate(() => JSON.parse(localStorage.getItem('spc_sheet')).queue.length);
     await addEvents(page, [{ id: 'old-app', type: 'workout_completed', workoutId: 'P4W4-1', source: 'app', result: [], finishedAt: '2026-10-20T10:00:00.000Z' }]);
     await page.locator('[data-settings]').click();
     await page.locator('[data-sview="program"]').click();
@@ -518,7 +518,7 @@ test.describe('Foundation Path — history from the athlete\'s own log', () => {
     await expect.poll(queue).toBe(0);
     const rows = got.filter((m) => m.add)[1].add;
     expect(rows.length).toBe(pkg.workouts['P4W4-3'].blocks.length);
-    expect(rows[0]).toMatchObject({ exercise: 'Assisted Chin Ups', actual: '6, —, —', total: 6, unit: 'חזרות', status: 'מתחת לטווח', week: 'שלב 4 · שבוע 4' });
+    expect(rows[0]).toMatchObject({ exercise: 'Assisted Chin Ups', actual: '6, —, —', total: 6, unit: 'reps', status: 'below', phase: 4, week: 4 });
 
     await page.evaluate(() => window.CoachApp._goto('path'));
     await page.locator('.fp-week [data-pw="P4W4-3"]').click();

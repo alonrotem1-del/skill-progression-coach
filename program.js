@@ -478,7 +478,8 @@
   }
 
   // ---- the athlete's own sheet -----------------------------------------------------
-  // One row per block of a finished workout; tools/sheet-sync.gs writes them.
+  // One row per block of a finished workout, in codes; tools/sheet-sync.gs turns
+  // them into the sheet's own words.
   function blockTotal(b, r) {
     var add = function (list) { return list.reduce(function (a, v) { return a + (+v || 0); }, 0); };
     if (r.skipped) return { n: null, unit: '' };
@@ -486,22 +487,21 @@
       var vals = [];
       (r.sets || []).forEach(function (s) { if (bilateral(b.dose)) vals.push(s.left, s.right); else vals.push(s.value); });
       var unit = b.dose && b.dose.unit;
-      return vals.length ? { n: add(vals), unit: unit === 'sec' ? 'שניות' : unit === 'reps' ? 'חזרות' : '' } : { n: null, unit: '' };
+      return vals.length ? { n: add(vals), unit: unit === 'sec' || unit === 'reps' ? unit : '' } : { n: null, unit: '' };
     }
-    if (b.kind === 'emom') return (r.minutes || []).length ? { n: add(r.minutes), unit: 'חזרות' } : { n: null, unit: '' };
-    return r.rounds == null ? { n: null, unit: '' } : { n: r.rounds, unit: 'סיבובים' };
+    if (b.kind === 'emom') return (r.minutes || []).length ? { n: add(r.minutes), unit: 'reps' } : { n: null, unit: '' };
+    return r.rounds == null ? { n: null, unit: '' } : { n: r.rounds, unit: 'rounds' };
   }
   function sheetRows(pkg, ev) {
     var w = pkg.workouts[ev.workoutId];
-    var status = { met: 'בטווח', below: 'מתחת לטווח', done: 'נרשם', 'not-done': 'ללא תוצאה' };
     return w.blocks.map(function (b, i) {
       var r = (ev.result || [])[i] || {}, total = blockTotal(b, r);
       var o = ev.summary && ev.summary.blocks[i] ? ev.summary.blocks[i].outcome : '';
-      return { id: ev.id, date: ev.finishedAt || ev.at, week: 'שלב ' + w.phase + ' · שבוע ' + w.week,
+      return { id: ev.id, date: ev.finishedAt || ev.at, phase: w.phase, week: w.week,
         workout: w.optional ? 'Legs' : w.title.replace(/^Workout \d - /, ''), exercise: blockName(b, r.variant),
-        level: r.skipped || !(b.hard || b.hardExercise) ? '' : r.variant === 'hard' ? 'קשה' : 'קל',
-        actual: r.skipped ? 'לא בוצע' : resultVals(b, r, true), total: total.n, unit: total.unit,
-        status: r.skipped ? 'דולג' : status[o] || '', note: r.note || '' };
+        level: r.skipped || !(b.hard || b.hardExercise) ? '' : r.variant === 'hard' ? 'hard' : 'easy',
+        actual: r.skipped ? '' : resultVals(b, r, true), total: total.n, unit: total.unit,
+        status: r.skipped ? 'skipped' : o, note: r.note || '' };
     });
   }
 

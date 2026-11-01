@@ -5,6 +5,9 @@
 var TAB = 'מהאפליקציה';
 var HEAD = ['תאריך', 'שבוע', 'אימון', 'תרגיל', 'רמה', 'בפועל', 'סה"כ', 'מצב', 'הערה', 'מזהה'];
 var ID_COL = HEAD.length;
+var LEVEL = { easy: 'קל', hard: 'קשה' };
+var UNIT = { reps: 'חזרות', sec: 'שניות', rounds: 'סיבובים' };
+var STATUS = { met: 'בטווח', below: 'מתחת לטווח', done: 'נרשם', 'not-done': 'ללא תוצאה', skipped: 'דולג' };
 
 function reply(o) {
   return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
@@ -35,11 +38,12 @@ function rowsOf(sheet, id) {
 function addWorkout(sheet, rows) {
   if (!rows.length || rowsOf(sheet, rows[0].id).length) return; // sent again after a lost answer: nothing twice
   rows.forEach(function (r) {
-    sheet.appendRow([new Date(r.date), r.week, r.workout, r.exercise, r.level, '', r.total, r.status, r.note, r.id]);
+    var week = 'שלב ' + r.phase + ' · שבוע ' + r.week;
+    sheet.appendRow([new Date(r.date), week, r.workout, r.exercise, LEVEL[r.level] || '', '', r.total, STATUS[r.status] || '', r.note, r.id]);
     var row = sheet.getLastRow();
     sheet.getRange(row, 1).setNumberFormat('dd/mm/yyyy');
-    sheet.getRange(row, 6).setNumberFormat('@').setValue(r.actual); // text: "12, 12" is not a number to Sheets
-    if (r.unit) sheet.getRange(row, 7).setNumberFormat('0" ' + r.unit + '"');
+    sheet.getRange(row, 6).setNumberFormat('@').setValue(r.status === 'skipped' ? 'לא בוצע' : r.actual); // text: "12, 12" is not a number to Sheets
+    if (UNIT[r.unit]) sheet.getRange(row, 7).setNumberFormat('0" ' + UNIT[r.unit] + '"');
   });
 }
 

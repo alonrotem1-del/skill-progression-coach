@@ -5053,11 +5053,12 @@
 
   // ---- the athlete's own Google Sheet ------------------------------------------
   // Workouts done in the app also go to the athlete's sheet, through the script in
-  // tools/sheet-sync.gs. The link stays on this device, out of backups and out of
-  // this public code. Messages wait here until they are delivered, in order; the
+  // tools/sheet-sync.gs. The link stays on this device, out of backups (so its key
+  // is not an spc_c_ one) and out of this public code. Messages wait here until
+  // they are delivered, in order; the
   // script skips a workout it already has, so sending one twice is harmless.
-  function sheetConf(){ try{ return JSON.parse(localStorage.getItem('spc_c_sheet'))||{}; }catch(e){ return {}; } }
-  function sheetSave(c){ try{ localStorage.setItem('spc_c_sheet',JSON.stringify(c)); }catch(e){} }
+  function sheetConf(){ try{ return JSON.parse(localStorage.getItem('spc_sheet'))||{}; }catch(e){ return {}; } }
+  function sheetSave(c){ try{ localStorage.setItem('spc_sheet',JSON.stringify(c)); }catch(e){} }
   function sheetPost(url,msg){
     return fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(msg)})
       .then(function(r){ return r.json(); }).then(function(j){ if(!j||!j.ok) throw new Error((j&&j.error)||'no answer'); });

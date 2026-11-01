@@ -183,7 +183,7 @@ never copies a value.
 26. The athlete's own Google Sheet (Settings → Program): workouts done in the app
     go to a tab of their own, one row per exercise, through `tools/sheet-sync.gs`,
     deployed by the athlete. Deleting a workout deletes its rows. The link is kept
-    only on the device (`spc_c_sheet`, not in backups); messages wait there until
+    only on the device (`spc_sheet`, not in backups); messages wait there until
     delivered, and the script skips a workout it already has. Connecting sends what
     was done in the app so far; imported workouts are not sent. One way only: edits
     in the sheet do not come back.
