@@ -231,6 +231,20 @@
     if (b.kind === 'emom') return b.perMinute ? b.perMinute.unit : b.style === 'pyramid' ? 'reps' : null; // the source defines pyramid steps in reps
     return null;
   }
+  // ---- external load (SPC) ---------------------------------------------------------
+  // The Beginner Program prescribes no weights. These are its exercises that are
+  // commonly done with one, so the runner offers a weight for them; any other
+  // exercise can have one added in the runner. A load is stored per set, as
+  // performed: { value, unit: 'kg' }, as the athlete reads it (a Smith machine's
+  // 20 kg is 20 kg). A set without one never gets one, and 0 kg is a recorded
+  // value, not a missing one. A planned load, where a package has one, is
+  // block.load in the same shape and stays in the prescription.
+  var LOAD_UNIT = 'kg';
+  var LOAD_EXERCISES = ['bulgariansquats', 'sidelunges', 'stepups', 'calfraises', 'hyperextension'];
+  function loadRelevant(name) { return LOAD_EXERCISES.indexOf(String(name || '').toLowerCase().replace(/[^a-z]/g, '')) >= 0; }
+  function loadText(load) { return load && load.value != null && load.value !== '' ? (+load.value) + ' ' + (load.unit || LOAD_UNIT) : ''; }
+  function externalLoad(load) { return !!(load && +load.value > 0); }
+
   function completionEvent(pkg, workoutId, run, finishedAt) {
     var w = pkg.workouts[workoutId];
     return {
@@ -238,7 +252,7 @@
       startedAt: run.startedAt || null, finishedAt: finishedAt || new Date().toISOString(),
       prescription: JSON.parse(JSON.stringify({ packageMd5: pkg.source.md5, title: w.title, phase: w.phase, week: w.week,
         blocks: w.blocks.map(function (b) { return { order: b.order, kind: b.kind, easy: b.easy || null, hard: b.hard || null, raw: b.raw || null,
-          unit: snapshotUnit(b), per: (b.dose && b.dose.per) || null,
+          unit: snapshotUnit(b), per: (b.dose && b.dose.per) || null, load: b.load || null,
           style: b.style || null, exercise: b.exercise || null, hardExercise: b.hardExercise || null, options: b.options || null, parts: b.parts || null,
           items: b.items ? b.items.map(function (it) { return { easy: it.easy, dose: it.dose.raw }; }) : null }; }) })),
       result: JSON.parse(JSON.stringify(run.blocks || [])),
@@ -298,7 +312,7 @@
       if (pb.kind === 'exercise' && !pb.per) {
         var name = r.variant === 'hard' && pb.hard ? pb.hard : pb.easy;
         (r.sets || []).forEach(function (s, k) {
-          if (s && s.done && s.value != null && s.value !== '') out.push({ block: bi, index: k, exercise: name, unit: pb.unit, value: +s.value });
+          if (s && s.done && s.value != null && s.value !== '') out.push({ block: bi, index: k, exercise: name, unit: pb.unit, value: +s.value, load: s.load || null });
         });
       } else if (pb.kind === 'emom' && pb.style) {
         (r.minutes || []).forEach(function (v, k) {
@@ -320,9 +334,10 @@
       var set = performedSets(w).filter(function (s) { return s.block === c.block && s.index === c.index; })[0];
       var needs = CONFIRM_NEEDS[c.test];
       if (!set || !needs || trainingTest(set.exercise) !== c.test || set.unit !== TESTS[c.test].unit) return;
+      if (externalLoad(set.load)) return; // the SPC tests are bodyweight: a weighted set is another test
       if (!Object.keys(needs).every(function (k) { return c[k] === needs[k]; })) return; // another test (e.g. dips on chairs): no evidence for this one
       out.push({ test: c.test, values: { value: set.value }, valid: !!c.valid, date: w.finishedAt || w.at, source: 'workout', eventId: c.id,
-        workoutEventId: w.id, workoutId: w.workoutId, exercise: set.exercise, block: set.block, index: set.index, minute: set.minute || null, assessor: c.assessor || 'self' });
+        workoutEventId: w.id, workoutId: w.workoutId, exercise: set.exercise, block: set.block, index: set.index, minute: set.minute || null, load: set.load || null, assessor: c.assessor || 'self' });
     });
     return out;
   }
@@ -340,7 +355,7 @@
       var best = {};
       performedSets(w).forEach(function (s) {
         var t = trainingTest(s.exercise), key = w.id + '|' + s.block + '|' + t;
-        if (!t || s.unit !== TESTS[t].unit || answered[key] || s.value < threshold(t)) return;
+        if (!t || s.unit !== TESTS[t].unit || answered[key] || s.value < threshold(t) || externalLoad(s.load)) return;
         if (opts.tests && opts.tests.indexOf(t) < 0) return;
         if (!best[key] || s.value > best[key].value) best[key] = Object.assign({ test: t, workoutEventId: w.id, workoutId: w.workoutId, date: w.finishedAt || w.at }, s);
       });
@@ -462,13 +477,18 @@
     if (b.kind === 'circuit') return 'Circuit';
     return variant === 'hard' && b.hard ? b.hard : b.easy;
   }
-  // Every set or minute, or the rounds; 'plain' leaves out the units.
+  // Every set or minute, or the rounds; 'plain' leaves out the units. A load shown
+  // once when every set had the same one, otherwise set by set.
   function resultVals(b, r, plain) {
     var unit = b.dose && b.dose.unit;
     var u = plain ? '' : b.kind === 'emom' ? ' reps' : unit === 'sec' ? ' sec' : unit === 'reps' ? ' reps' : '';
     if (b.kind === 'exercise') {
       var sets = r.sets || [];
-      return sets.map(function (s) { return bilateral(b.dose) ? ('L' + (s.left == null ? '—' : s.left) + '/R' + (s.right == null ? '—' : s.right)) : (s.value == null ? '—' : s.value); }).join(', ') + (sets.length ? u : '');
+      var vals = sets.map(function (s) { return bilateral(b.dose) ? ('L' + (s.left == null ? '—' : s.left) + '/R' + (s.right == null ? '—' : s.right)) : (s.value == null ? '—' : s.value); });
+      var loads = sets.map(function (s) { return loadText(s.load); });
+      if (!loads.some(Boolean)) return vals.join(', ') + (sets.length ? u : '');
+      if (loads.every(function (l) { return l === loads[0]; })) return loads[0] + ' · ' + vals.join(', ') + u;
+      return vals.map(function (v, k) { return (loads[k] ? loads[k] + ' × ' : '') + v; }).join(', ') + u;
     }
     if (b.kind === 'emom') { var m = r.minutes || []; return m.length ? m.join(', ') + u + (!plain && r.estimated ? ' (from a total)' : '') : ''; }
     var rounds = (r.rounds == null ? '—' : r.rounds) + (plain ? '' : ' rounds');
@@ -529,6 +549,7 @@
     valueOutcome: valueOutcome, setOutcome: setOutcome, blockOutcome: blockOutcome, runSummary: runSummary, bilateral: bilateral,
     completionEvent: completionEvent, completions: completions,
     blockName: blockName, resultVals: resultVals, sheetRows: sheetRows,
+    LOAD_UNIT: LOAD_UNIT, loadRelevant: loadRelevant, loadText: loadText,
     maxTestToTest: maxTestToTest, maxTestHistory: maxTestHistory, evidence: evidence,
     CONFIRM_NEEDS: CONFIRM_NEEDS, trainingTest: trainingTest, performedSets: performedSets, trainingEvidence: trainingEvidence,
     trainingCandidates: trainingCandidates, evidenceWanted: evidenceWanted,

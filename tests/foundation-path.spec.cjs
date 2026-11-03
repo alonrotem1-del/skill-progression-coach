@@ -512,7 +512,7 @@ test.describe('Foundation Path — history from the athlete\'s own log', () => {
     await expect(page.locator('.scr')).toContainText('Workout saved');
     await expect.poll(queue).toBe(1);                                     // kept, not lost
 
-    online = true;
+    online = true;                                                       // back online, even while the failed try is still ending
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
     await expect.poll(() => got.filter((m) => m.add).length).toBe(2);
     await expect.poll(queue).toBe(0);
@@ -549,5 +549,62 @@ test.describe('Foundation Path — history from the athlete\'s own log', () => {
     await expect(page.locator('[data-delpw]')).toHaveCount(0);
     await page.locator('[data-backpath]').click();
     await expect(page.locator('.fp-head .fp-t')).toHaveText('Phase 4 · Week 3');
+  });
+});
+
+test.describe('Foundation Path — weight', () => {
+  test('25 a weight is entered per set, fills the next sets, and is kept through saving, reload, History and the workout screen', async ({ page }) => {
+    await existingAthlete(page);
+    page.on('dialog', (d) => d.accept());
+    await page.locator('.fp-week [data-pw="P4W4-L"]').click();
+    await page.locator('[data-startpw]').click();
+    await expect(page.locator('[data-typed="s0W"]')).toHaveCount(0);           // Assisted Negative Pistol Squat: no weight field
+    await expect(page.locator('[data-addload]')).toBeVisible();
+    await page.locator('[data-next]').click();
+    await page.locator('[data-next]').click();
+    // Bulgarian Squats, per leg: 20 kg on the first set fills the other two.
+    const type = async (attr, v) => { await page.locator('[data-typed="' + attr + '"]').click(); await page.locator('.fp-set input').fill(v); await page.locator('.fp-set input').press('Enter'); };
+    await type('s0W', '20');
+    await expect(page.locator('[data-typed="s1W"]')).toHaveText('20');
+    await expect(page.locator('[data-typed="s2W"]')).toHaveText('20');
+    await type('s0L', '8');
+    await type('s0R', '8');
+    for (const k of [0, 1, 2]) await page.locator('[data-setdone="' + k + '"]').click();
+    await page.locator('[data-next]').click();                                   // Wall Sit: no weight unless added
+    await expect(page.locator('[data-typed="s0W"]')).toHaveCount(0);
+    await page.locator('[data-next]').click();
+    await page.locator('[data-next]').click();                                   // Calf Raises: 7.5, then a step up to 10
+    await type('s0W', '7,5');
+    await expect(page.locator('[data-typed="s0W"]')).toHaveText('7.5');
+    await page.locator('[data-inc="s1W"]').click();
+    await expect(page.locator('[data-typed="s1W"]')).toHaveText('10');
+    for (const k of [0, 1, 2]) await page.locator('[data-setdone="' + k + '"]').click();
+    await page.locator('[data-finishrun]').click();
+    const saved = page.locator('.scr');
+    await expect(saved).toContainText('Workout saved');
+    await expect(saved).toContainText('20 kg · L8/R8, L8/R8, L8/R8 reps');
+    await expect(saved).toContainText('7.5 kg × 6, 10 kg × 6, 10 kg × 6 reps');
+    const ev = await page.evaluate(() => JSON.parse(localStorage.getItem('spc_c_program')).events.filter((e) => e.workoutId === 'P4W4-L')[0]);
+    expect(ev.result[2].sets.map((s) => s.load)).toEqual([1, 2, 3].map(() => ({ value: 20, unit: 'kg' })));
+    expect(ev.result[0].sets[0].load).toBeUndefined();                           // never invented
+    await page.reload();
+    await page.evaluate(() => window.CoachApp._goto('history'));
+    await page.locator('[data-histev="' + ev.id + '"]').click();
+    await expect(page.locator('.sheet')).toContainText('20 kg · L8/R8, L8/R8, L8/R8 reps');
+    await page.locator('.sheet [data-close]').click();
+    await page.evaluate(() => window.CoachApp._goto('path'));
+    await page.locator('.fp-week [data-pw="P4W4-L"]').click();
+    await expect(page.locator('.fp-blocks')).toContainText('You did: 7.5 kg × 6, 10 kg × 6, 10 kg × 6 reps');
+  });
+
+  test('26 a weight can be added to any exercise in the runner', async ({ page }) => {
+    await existingAthlete(page);
+    await page.locator('.fp-week [data-pw="P4W4-2"]').click();
+    await page.locator('[data-startpw]').click();
+    await page.locator('[data-addload]').click();
+    await page.locator('[data-inc="s0W"]').click();                             // nothing to start from: 0 kg
+    await page.locator('[data-inc="s0W"]').click();
+    await expect(page.locator('[data-typed="s0W"]')).toHaveText('2.5');
+    await expect(page.locator('[data-addload]')).toHaveCount(0);
   });
 });

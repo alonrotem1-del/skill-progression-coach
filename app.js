@@ -4363,7 +4363,7 @@
   }
   function restText(s){ if(s==null) return ''; return s%60===0?(s/60)+' min':(s/60).toFixed(1).replace('.0','')+' min'; }
   function blockPrescription(b){
-    if(b.kind==='exercise') return (b.sets!=null?b.sets+' '+b.setsLabel+' × ':'')+doseText(b.dose)+(b.restSec!=null?' · rest '+restText(b.restSec):'');
+    if(b.kind==='exercise') return (b.sets!=null?b.sets+' '+b.setsLabel+' × ':'')+doseText(b.dose)+(b.load?' @ '+esc(Program.loadText(b.load)):'')+(b.restSec!=null?' · rest '+restText(b.restSec):'');
     if(b.kind==='emom'){
       if(b.style==='pyramid') return 'Pyramid EMOM · '+esc(b.rule||'');
       var t=b.minutes&&b.minutes.min!=null?(b.minutes.min===b.minutes.max?b.minutes.min:b.minutes.min+'–'+b.minutes.max)+(b.minutes.unitWritten?' min':' (no unit written)'):'';
@@ -4622,13 +4622,15 @@
     }
     html+='<h2>'+esc(blockName(b,r.variant))+'</h2><div class="fp-pres">'+blockPrescription(b)+'</div>'+(b.kind==='emom'?emomPlan(b):'');
     if(b.kind==='exercise'){
-      var bil=Program.bilateral(b.dose);
+      var bil=Program.bilateral(b.dose), withLoad=loadShown(b,r);
       r.sets.forEach(function(s,k){
         var o=Program.setOutcome(b.dose,s);
         html+='<div class="fp-set'+(s.done?' done':'')+'"><span class="fp-sn">'+(b.setsLabel==='rounds'?'Round ':'Set ')+(k+1)+'</span>'+
+          (withLoad?'<span class="fp-lr fp-load">'+stepper('s'+k+'W',s.load?s.load.value:null)+' '+Program.LOAD_UNIT+'</span>':'')+
           (bil?'<span class="fp-lr">L '+stepper('s'+k+'L',s.left)+'</span><span class="fp-lr">R '+stepper('s'+k+'R',s.right)+'</span>':stepper('s'+k,s.value))+
           (s.done?outcomeChip(o):'<button class="btn sm primary" data-setdone="'+k+'">Done</button>')+'</div>';
       });
+      if(!withLoad) html+='<button class="link small fp-addload" data-addload>+ Weight</button>';
       html+='<div id="rest"></div>';
     } else if(b.kind==='emom'){
       var mins=r.minutes;
@@ -4689,8 +4691,31 @@
     for(var k=same.length-1;k>=0;k--){ var bl=(same[k].result||[])[0]; if(bl&&bl.rounds!=null) return bl.rounds; }
     return null;
   }
+  // A weight is offered where the exercise is commonly loaded, where the athlete
+  // added one, or where a set already has one.
+  function loadShown(b,r){
+    return !!(r.loadOn||Program.loadRelevant(blockName(b,r.variant))||b.load||(r.sets||[]).some(function(s){ return s.load; }));
+  }
   function wireProgramRun(wrap,pkg,w,b,r){
     function rerender(){ saveRun(); renderProgramRun(); }
+    // The load an empty set starts from: the set before it, else the planned load;
+    // none when there is neither (a load is never invented).
+    function loadBase(k){
+      for(var j=k-1;j>=0;j--){ var l=r.sets[j].load; if(l) return l.value; }
+      return b.load?b.load.value:null;
+    }
+    // A load is per set; sets still to come that were empty, or were following
+    // this one, take the new value too.
+    function setLoad(k,v){
+      var was=r.sets[k].load?r.sets[k].load.value:null;
+      r.sets[k].load=v==null?null:{value:v,unit:Program.LOAD_UNIT};
+      for(var j=k+1;j<r.sets.length;j++){
+        var s=r.sets[j]; if(s.done) continue;
+        if(s.load==null||s.load.value===was) s.load=v==null?null:{value:v,unit:Program.LOAD_UNIT};
+      }
+      return v;
+    }
+    function paintLoads(){ r.sets.forEach(function(s,k){ var el=wrap.querySelector('[data-typed="s'+k+'W"]'); if(el&&el.tagName!=='INPUT') el.textContent=s.load?s.load.value:'—'; }); }
     function sideKey(side){ return side==='L'?'left':side==='R'?'right':'value'; }
     // An empty set starts from the set before it; the first from the bottom of the range.
     function setBase(k,key){
@@ -4700,7 +4725,9 @@
     function adjust(attr,delta){
       var start=function(cur,dflt){ return (cur==null||cur==='')?dflt:Math.max(0,(+cur)+delta); };
       var m;
-      if((m=attr.match(/^s(\d+)([LR])?$/))){ var s=r.sets[+m[1]], key=sideKey(m[2]); s[key]=start(s[key],setBase(+m[1],key)); }
+      if((m=attr.match(/^s(\d+)W$/))){ var cur=r.sets[+m[1]].load, lb=loadBase(+m[1]);
+        setLoad(+m[1],cur==null?(lb==null?0:lb):Math.max(0,cur.value+delta*2.5)); }
+      else if((m=attr.match(/^s(\d+)([LR])?$/))){ var s=r.sets[+m[1]], key=sideKey(m[2]); s[key]=start(s[key],setBase(+m[1],key)); }
       else if((m=attr.match(/^m(\d+)$/))) r.minutes[+m[1]]=start(r.minutes[+m[1]],(b.perMinute&&b.perMinute.min)||1);
       else if((m=attr.match(/^c(\d+)$/))) r.items[+m[1]]=start(r.items[+m[1]],b.items[+m[1]].dose.min||0);
       else if(attr==='pm') r.plan.minutes=Math.max(1,r.plan.minutes+delta);
@@ -4712,6 +4739,7 @@
     // A typed value; what stands afterwards is returned (a minute or the plan is never left empty).
     function assign(attr,v){
       var m;
+      if((m=attr.match(/^s(\d+)W$/))) return setLoad(+m[1],v);
       if((m=attr.match(/^s(\d+)([LR])?$/))) return r.sets[+m[1]][sideKey(m[2])]=v;
       if((m=attr.match(/^m(\d+)$/))) return r.minutes[+m[1]]=v==null?r.minutes[+m[1]]:v;
       if((m=attr.match(/^c(\d+)$/))) return r.items[+m[1]]=v;
@@ -4725,17 +4753,24 @@
     // may be on Done, and that button has to still be there.
     on('[data-typed]','click',function(e){
       var num=e.currentTarget, attr=num.dataset.typed, shown=num.textContent==='—'?'':num.textContent;
-      var field=h('<input class="num" type="number" inputmode="numeric" min="0" value="'+esc(shown)+'">');
+      // a weight takes decimals (7.5), typed with a dot or a comma
+      var kg=/W$/.test(attr);
+      var field=h(kg?'<input class="num" type="text" inputmode="decimal" value="'+esc(shown)+'">':'<input class="num" type="number" inputmode="numeric" min="0" value="'+esc(shown)+'">');
       var stood;
-      function typed(){ stood=assign(attr,field.value===''?null:Math.max(0,Math.floor(+field.value))); saveRun(); }
+      function typed(){
+        var raw=field.value.replace(',','.').trim(), v=raw===''||isNaN(+raw)?null:Math.max(0,kg?Math.round(+raw*100)/100:Math.floor(+raw));
+        stood=assign(attr,v); saveRun();
+      }
       field.addEventListener('input',typed);
       field.addEventListener('keydown',function(ev){ if(ev.key==='Enter') field.blur(); });
-      field.addEventListener('blur',function(){ typed(); num.textContent=stood==null?'—':stood; field.replaceWith(num); });
+      field.addEventListener('blur',function(){ typed(); num.textContent=stood==null?'—':stood; field.replaceWith(num); if(kg) paintLoads(); });
       num.replaceWith(field); field.focus(); field.select();
     },wrap);
     on('[data-var]','click',function(e){ r.variant=e.currentTarget.dataset['var']; rememberVariant(b.easy,r.variant); rerender(); },wrap);
+    on('[data-addload]','click',function(){ r.loadOn=true; rerender(); },wrap);
     on('[data-setdone]','click',function(e){
       var k=+e.currentTarget.dataset.setdone, s=r.sets[k];
+      if(s.load==null&&loadShown(b,r)){ var lb=loadBase(k); if(lb!=null) s.load={value:lb,unit:Program.LOAD_UNIT}; }
       if(Program.bilateral(b.dose)){ if(s.left==null) s.left=setBase(k,'left'); if(s.right==null) s.right=setBase(k,'right'); } else if(s.value==null) s.value=setBase(k,'value');
       s.done=true; saveRun(); renderProgramRun();
       var more=r.sets.some(function(x){return !x.done;});
@@ -5063,13 +5098,16 @@
     return fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(msg)})
       .then(function(r){ return r.json(); }).then(function(j){ if(!j||!j.ok) throw new Error((j&&j.error)||'no answer'); });
   }
-  var sheetBusy=false;
+  // A flush asked for while one is under way (back online while the last try is
+  // still failing) runs once that one ends, so nothing waits for the next trigger.
+  var sheetBusy=false, sheetAgain=false;
   function sheetFlush(){
-    var c=sheetConf(); if(sheetBusy||!c.url||!(c.queue||[]).length) return;
-    sheetBusy=true;
+    var c=sheetConf(); if(!c.url||!(c.queue||[]).length) return;
+    if(sheetBusy){ sheetAgain=true; return; }
+    sheetBusy=true; sheetAgain=false;
     sheetPost(c.url,c.queue[0]).then(function(){
       sheetBusy=false; var n=sheetConf(); (n.queue||[]).shift(); sheetSave(n); sheetFlush();
-    },function(){ sheetBusy=false; });
+    },function(){ sheetBusy=false; if(sheetAgain) sheetFlush(); });
   }
   function sheetQueue(msgs){ var c=sheetConf(); if(!c.url) return; c.queue=(c.queue||[]).concat(msgs); sheetSave(c); sheetFlush(); }
   // On connecting, everything done in the app so far. Imported workouts came from

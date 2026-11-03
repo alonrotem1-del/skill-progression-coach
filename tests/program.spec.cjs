@@ -478,3 +478,73 @@ test.describe('history from the athlete\'s own log', () => {
     }
   });
 });
+
+test.describe('external load (weight), per set', () => {
+  test.skip(!HAVE, 'program package not built on this machine');
+  const Backup = require('../backup.js');
+  const kg = (value) => ({ value, unit: 'kg' });
+  const block = (wid, i) => pkg.workouts[wid].blocks[i];
+  const run = (wid, results) => ({ startedAt: null, blocks: pkg.workouts[wid].blocks.map((b, i) => results[i] || { variant: 'easy', skipped: true }) });
+  const legs = (k, sets) => { const r = {}; r[k] = { variant: 'easy', sets }; return r; };
+
+  test('36 reps only and timed results read exactly as before; a bodyweight set gets no load', () => {
+    expect(P.resultVals(block('P4W4-2', 5), { sets: [10, 10, 9].map((v) => ({ value: v, done: true })) })).toBe('10, 10, 9 reps');
+    expect(P.resultVals(block('P4W4-L', 3), { sets: [15, 15, 12].map((v) => ({ value: v, done: true })) })).toBe('15, 15, 12 sec');
+    const ev = P.completionEvent(pkg, 'P4W4-2', run('P4W4-2', { 5: { variant: 'easy', sets: [{ value: 10, done: true }] } }));
+    expect(ev.result[5].sets[0]).toEqual({ value: 10, done: true });
+    expect(P.loadRelevant('Pull Ups')).toBe(false);
+    expect(P.loadRelevant('Wall Sit')).toBe(false);
+    expect(P.loadRelevant('Bulgarian Squats')).toBe(true);
+  });
+
+  test('37 the same load on three sets, left / right kept: Bulgarian Squats on a Smith machine, 20 kg, 3 × L8/R8', () => {
+    const sets = [1, 2, 3].map(() => ({ left: 8, right: 8, done: true, load: kg(20) }));
+    const ev = P.completionEvent(pkg, 'P4W4-L', run('P4W4-L', legs(2, sets)));
+    expect(ev.result[2].sets).toEqual(sets);                                   // per set, never collapsed
+    expect(ev.summary.blocks[2].outcome).toBe('met');                          // reps still decide the range
+    expect(P.resultVals(block('P4W4-L', 2), ev.result[2])).toBe('20 kg · L8/R8, L8/R8, L8/R8 reps');
+    expect(P.sheetRows(pkg, Object.assign(ev, { id: 'w' }))[2].actual).toBe('20 kg · L8/R8, L8/R8, L8/R8');
+  });
+
+  test('38 different loads stay set by set, decimals included; 0 kg is not a missing load', () => {
+    const calf = block('P4W4-L', 5);
+    const sets = [kg(7.5), kg(10), kg(10)].map((l) => ({ value: 6, done: true, load: l }));
+    expect(P.resultVals(calf, { sets })).toBe('7.5 kg × 6, 10 kg × 6, 10 kg × 6 reps');
+    expect(P.resultVals(calf, { sets: [{ value: 6, done: true, load: kg(0) }, { value: 6, done: true }] })).toBe('0 kg × 6, 6 reps');
+    expect(P.loadText(kg(0))).toBe('0 kg');
+    expect(P.loadText(null)).toBe('');
+  });
+
+  test('39 a planned load stays in the prescription and the actual load in the result', () => {
+    const p2 = JSON.parse(JSON.stringify(pkg));
+    p2.workouts['P4W4-L'].blocks[5].load = kg(20);
+    const ev = P.completionEvent(p2, 'P4W4-L', run('P4W4-L', { 5: { variant: 'easy', sets: [{ value: 8, done: true, load: kg(22.5) }] } }));
+    expect(ev.prescription.blocks[5].load).toEqual(kg(20));
+    expect(ev.result[5].sets[0].load).toEqual(kg(22.5));
+    expect(p2.workouts['P4W4-L'].blocks[5].load).toEqual(kg(20));             // the package is untouched
+    expect(P.completionEvent(pkg, 'P4W4-L', run('P4W4-L', {})).prescription.blocks[5].load).toBe(null);
+  });
+
+  test('40 workout evidence keeps the set\'s load; a weighted dip is not the bodyweight test', () => {
+    const dips = (load) => P.addEvent(P.emptyState(), P.completionEvent(pkg, 'P4W4-2',
+      run('P4W4-2', { 0: { variant: 'hard', sets: [{ value: 9, done: true, load } ] } })));
+    const plain = dips(undefined), weighted = dips(kg(10)), zero = dips(kg(0));
+    expect(P.performedSets(P.ofType(weighted, 'workout_completed')[0])[0].load).toEqual(kg(10));
+    expect(P.trainingCandidates(weighted)).toEqual([]);
+    expect(P.trainingCandidates(plain).length).toBe(1);
+    expect(P.trainingCandidates(zero).length).toBe(1);                         // 0 kg added is bodyweight
+  });
+
+  test('41 a load survives a backup and its restore, and an old record without one still reads', () => {
+    const ev = P.completionEvent(pkg, 'P4W4-L', run('P4W4-L', legs(2, [{ left: 8, right: 8, done: true, load: kg(20) }])));
+    const state = JSON.stringify(P.addEvent(P.emptyState(), ev));
+    const src = { spc_c_program: state };
+    const storage = { schemaVersion: Backup.STORAGE_SCHEMA_VERSION, stores: {} };
+    Backup.DURABLE_STORES.forEach((n) => { storage.stores[n] = []; });
+    const env = Backup.exportAll((k) => (k in src ? src[k] : null), { storage });
+    const dst = {};
+    Backup.restoreAll(JSON.parse(JSON.stringify(env)), (k) => (k in dst ? dst[k] : null), (k, v) => { dst[k] = v; }, (k) => { delete dst[k]; });
+    expect(JSON.parse(dst.spc_c_program).events[0].result[2].sets[0].load).toEqual(kg(20));
+    expect(P.resultVals(block('P4W4-L', 2), { sets: [{ left: 8, right: 8, done: true }] })).toBe('L8/R8 reps');
+  });
+});

@@ -188,6 +188,20 @@ never copies a value.
     was done in the app so far; imported workouts are not sent. One way only: edits
     in the sheet do not come back.
 
+27. External load (weight). Per set, as performed: `set.load = { value, unit: 'kg' }`,
+    alongside the reps or seconds and left / right; decimals allowed; 0 kg is a
+    value, an absent load is `null` or no field. The runner shows a weight for the
+    exercises commonly done with one (`LOAD_EXERCISES` in `program.js`: Bulgarian
+    Squats, Side Lunges, Step Ups, Calf Raises, Hyperextension), for any exercise the
+    athlete adds one to ("+ Weight"), and where a package block has a planned
+    `load`. A set's weight fills the sets still to come; an empty set starts from
+    the set before it, else the planned load; none is invented. Machine loads are
+    recorded as read, never corrected. The record keeps it per set; summaries,
+    History, the workout screen and the sheet show it. Workout evidence keeps the
+    set's load; a set with an external load is not the bodyweight SPC test and is
+    not offered. EMOM, AMRAP and circuits take no load. Old records without one
+    render as before.
+
 ## 4. Not in this build
 - **Follow-up before full Academy progression:** unify workout evidence with the
   persistent Evidence Ledger (IndexedDB). Today the Foundation evaluator reads
@@ -195,6 +209,8 @@ never copies a value.
   nothing is written to the older ledger, so there is no second copy that could
   disagree. The unification decides which store becomes the single source.
 - Private hosting, sign-in or sync of the program package (import only).
+- A weight in the archived weekly-plan runner and its IndexedDB Evidence Ledger
+  (not reachable; see item 15).
 - Sync back from the sheet, or a full copy of the data off the device: a backup
   file is still the only copy of everything.
 - The readiness check at workout start (READY-6).
