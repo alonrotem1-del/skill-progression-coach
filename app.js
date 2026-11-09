@@ -46,6 +46,10 @@
     week:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M7.5 13h2M14.5 13h2M7.5 17h2M14.5 17h2"/></svg>',
     path:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="7" cy="18" r="2.5"/><circle cx="17" cy="6" r="2.5"/><path d="M9.5 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h5.5"/></svg>',
     academy:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 9 12 4l9 5"/><path d="M5 9v9M9.5 9v9M14.5 9v9M19 9v9"/><path d="M3 20h18"/></svg>',
+    // the three tabs of the new shell: line icons, 1.5 px, in ink
+    tabToday:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/></svg>',
+    tabPlan:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>',
+    tabGoals:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 21V4"/><path d="M6 4.5h11l-2.2 4 2.2 4H6"/></svg>',
     gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>'
   };
 
@@ -423,10 +427,11 @@
   }
 
   // ---- boot -----------------------------------------------------------------
-  // The Foundation Path is the app. The earlier weekly-plan app (Today, Goals,
-  // the legacy plan and its runners) is still in this file and still under
-  // test, but only behind the __spcLegacyShell switch the older suites set: no
-  // athlete-facing route leads to it any more.
+  // The app is Today | Plan | Goals over the Beginner Program (the new shell,
+  // further down). The earlier weekly-plan app (its Today, Goals, the legacy
+  // plan and its runners) is still in this file and still under test, but only
+  // behind the __spcLegacyShell switch the older suites set: no athlete-facing
+  // route leads to it any more.
   var LEGACY=!!window.__spcLegacyShell;
   function boot(){
     if(LEGACY) return bootLegacy();
@@ -438,12 +443,12 @@
     if(restoreProgramRun()) return loadProgramPackage();
     if(restoreWorkoutState()) return loadProgramPackage();
     var had=getPkg()&&getPkg().source.md5;
-    if(had) setScreen('path'); else { UI.screen='boot'; app.innerHTML='<div class="scr"><p class="muted">Loading the program…</p></div>'; }
+    if(had) setScreen('today'); else { UI.screen='boot'; app.innerHTML='<div class="scr"><p class="muted">Loading the program…</p></div>'; }
     return loadProgramPackage().then(function(){
       var now=getPkg()&&getPkg().source.md5;
-      // Draw the Path once the package is known, or again if a newer one arrived
+      // Draw Today once the package is known, or again if a newer one arrived
       // while the athlete is still looking at it.
-      if(UI.screen==='boot'||(UI.screen==='path'&&now!==had)) setScreen('path');
+      if(UI.screen==='boot'||(UI.screen==='today'&&now!==had)) setScreen('today');
     });
   }
   function bootLegacy(){
@@ -456,28 +461,37 @@
   }
 
   // ---- shell / nav ----------------------------------------------------------
-  // Path = where I am and what to do now, Academy = specialization, Settings
-  // (the gear) = control. A workout is a mode, not a destination.
-  var PRIMARY=LEGACY?['today','goals']:['path','academy'];
+  // Today = what to do now, Plan = this week and the program, Goals = why and
+  // what is in the way; the gear = control. A workout is a mode, not a
+  // destination. (The legacy shell keeps its own two tabs.)
+  var PRIMARY=LEGACY?['today','goals']:['today','plan','goals'];
+  function navHtml(active){
+    return '<div class="nav">'+(LEGACY?
+      navBtn('today','Today',ICON.today,active)+navBtn('goals','Goals',ICON.chart,active):
+      navBtn('today','Today',ICON.tabToday,active)+navBtn('plan','Plan',ICON.tabPlan,active)+navBtn('goals','Goals',ICON.tabGoals,active))+'</div>';
+  }
+  // A screen with the tab bar. In the new shell the primary screens draw their
+  // own top bar (tabShell); everything else drawn here is a screen pushed on
+  // top of a tab, with its own way back, and still highlights that tab.
   function shell(inner,active){
     app.innerHTML='';
     var wrap=h('<div></div>');
-    // The date + gear bar belongs to the two root screens only; screens pushed
-    // on top of them (a goal's detail, the workout chooser) keep their own
-    // back header and still highlight the tab they came from.
-    var top=(PRIMARY.indexOf(active)>=0&&UI.screen===active)?topBar():'';
-    wrap.appendChild(h('<div class="scr">'+top+inner+'</div>'));
-    var nav=h('<div class="nav">'+(LEGACY?
-      navBtn('today','Today',ICON.today,active)+navBtn('goals','Goals',ICON.chart,active):
-      navBtn('path','Path',ICON.path,active)+navBtn('academy','Academy',ICON.academy,active))+'</div>');
+    // The date + gear bar belongs to the legacy root screens only.
+    var top=(LEGACY&&PRIMARY.indexOf(active)>=0&&UI.screen===active)?topBar():'';
+    wrap.appendChild(h('<div class="scr'+(LEGACY?'':' qp-sub')+'">'+top+inner+'</div>'));
+    var nav=h(navHtml(active));
     wrap.appendChild(nav);
     app.appendChild(wrap);
-    on('.nav button','click',function(e){ setScreen(e.currentTarget.getAttribute('data-s')); },nav);
-    on('[data-settings]','click',function(){ setScreen('settings'); },wrap);
-    on('[data-tosettings]','click',function(){ settingsView='home'; setScreen('settings'); },wrap);
+    wireShell(wrap,nav);
     return wrap;
   }
-  function navBtn(id,label,ic,active){return '<button data-s="'+id+'" class="'+(active===id?'on':'')+'"><span class="ic">'+ic+'</span>'+label+'</button>';}
+  function wireShell(wrap,nav){
+    on('.nav button','click',function(e){ setScreen(e.currentTarget.getAttribute('data-s')); },nav);
+    // The gear always opens Settings at its start.
+    on('[data-settings]','click',function(){ if(!LEGACY) settingsView='home'; setScreen('settings'); },wrap);
+    on('[data-tosettings]','click',function(){ settingsView='home'; setScreen('settings'); },wrap);
+  }
+  function navBtn(id,label,ic,active){return '<button data-s="'+id+'" class="'+(active===id?'on':'')+'"'+(active===id?' aria-current="page"':'')+'><span class="ic">'+ic+'</span>'+label+'</button>';}
   function topBar(){
     var d=new Date(), days=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
       months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -495,20 +509,23 @@
     // screen state only ever holds the canonical name.
     if(name==='week') name='plan';
     if(name==='profile') name='settings';
-    // Outside the legacy shell, the old destinations resolve to the new ones:
-    // every exit the older runners take ("back to Today") lands on the Path.
-    if(!LEGACY&&name==='today') name='path';
-    if(!LEGACY&&name==='goals') name='academy';
+    // Outside the legacy shell, the earlier home screens resolve to the new
+    // ones: every exit the runner, the Max Test and the summary take lands on
+    // Today.
+    if(!LEGACY&&name==='path') name='today';
+    if(!LEGACY&&name==='academy') name='goals';
     UI.screen=name;
     window.scrollTo(0,0); // a full screen swap always starts at the top — the
                            // browser does not reset scroll on innerHTML replacement
-    if(name==='path') renderPath();
-    else if(name==='academy') renderAcademy();
-    else if(name==='pworkout') renderProgramWorkout();
-    else if(name==='prun') renderProgramRun();
+    if(!LEGACY){
+      if(name==='today') return renderTodayTab();
+      if(name==='plan') return renderPlanTab();
+      if(name==='goals') return renderGoalsTab();
+      if(name==='program') return renderProgramOverview();
+    }
+    if(name==='prun') renderProgramRun();
     else if(name==='psummary') renderProgramSummary();
     else if(name==='pexit') renderFoundationExit();
-    else if(name==='pdeload') renderDeload();
     else if(name==='today') renderToday();
     else if(name==='plan') renderWeek();
     else if(name==='goals') renderGoals();
@@ -3732,6 +3749,8 @@
     if(settingsView==='exercises') return renderExerciseLibrary();
     if(settingsView==='data') return renderDataSettings();
     if(settingsView==='program') return renderProgramSettings();
+    if(settingsView==='days'&&!LEGACY) return renderTrainingDays();
+    if(settingsView==='sheet'&&!LEGACY) return renderSheetSettings();
     return renderSettingsHome();
   }
   function settingsBackHeader(title){
@@ -3745,7 +3764,7 @@
     return '<button class="settings-row" data-sgo="'+screen+'"><div class="sr-main"><div class="sr-title">'+esc(title)+'</div><div class="muted small">'+esc(sub)+'</div></div><span class="sr-arrow">&rsaquo;</span></button>';
   }
   function renderSettingsHome(){
-    if(!LEGACY) return renderPathSettingsHome();
+    if(!LEGACY) return renderShellSettingsHome();
     var html='<div class="wk-top"><div class="between"><button class="link" data-sclose>&lsaquo; Today</button><b>Settings</b><span style="width:60px"></span></div></div>'+
       '<div class="settings-list">'+
       '<div class="section">Training</div>'+
@@ -3764,24 +3783,31 @@
     on('[data-sgo]','click',function(e){ setScreen(e.currentTarget.dataset.sgo); },wrap);
     on('[data-sclose]','click',function(){ setScreen('today'); },wrap);
   }
-  // The Foundation Path's control area. The legacy plan settings (This Week,
-  // Training Days, Workout Defaults, Exercise Library) belong to the earlier
-  // app and are only offered in the legacy shell.
-  function renderPathSettingsHome(){
-    var html='<div class="wk-top"><div class="between"><button class="link" data-sclose>&lsaquo; Path</button><b>Settings</b><span style="width:60px"></span></div></div>'+
+  // Settings in the new shell: control and records, one row each (APP-BLUEPRINT
+  // §4). The legacy plan settings (This Week, Workout Defaults, Exercise
+  // Library) belong to the earlier app and are only offered in the legacy
+  // shell. Done returns to the tab Settings was opened from.
+  function renderShellSettingsHome(){
+    var p=Store.getProfile()||{}, pkg=getPkg(), c=sheetConf();
+    var days=(p.days||[]).slice().sort().map(function(i){ return WeekPlan.DAY_SHORT[i]; }).join(' · ');
+    var pos=pkg?positionText(WeekPlan.weekView(pkg,progState(),planState(),planOpts()).position):'';
+    var html='<div class="qp-top"><div class="qp-top-l"><h1 class="qp-title">Settings</h1></div><div class="qp-top-r"><button class="qp-toplink" data-sclose>Done</button></div></div>'+
       '<div class="settings-list">'+
       '<div class="section">Training</div>'+
-      settingsRow('program','Program','Beginner Program, your position, the program file')+
-      settingsScreenRow('history','History','Every workout and Max Test you have logged')+
-      settingsScreenRow('pexit','Foundation Exit','The standard that opens the Academy')+
+      settingsRow('days','Training days',days||'Not set yet')+
+      settingsRow('program','Program',pkg?pkg.title+(pos?' · '+pos:''):'Not on this device yet')+
+      '<div class="section">Records</div>'+
+      settingsScreenRow('history','History','Workouts, Max Tests, recovery weeks')+
+      '<div class="section">Connections</div>'+
+      settingsRow('sheet','Google Sheet',c.url?'Connected':'Not connected')+
       '<div class="section">App</div>'+
-      settingsRow('timer','Timer & Alerts','Sound, vibration, countdown ticks')+
-      settingsRow('data','Data & Backup','Backup, restore, install, reset')+
-      '</div>';
+      settingsRow('timer','Timer & sounds','Beep, vibrate, countdown ticks')+
+      settingsRow('data','Data & backup','Backup, restore, install, reset')+
+      '</div><p class="qp-build">Build '+esc(BUILD)+'</p>';
     var wrap=shell(html,null);
     on('[data-sview]','click',function(e){ settingsView=e.currentTarget.dataset.sview; renderProfile(); },wrap);
     on('[data-sgo]','click',function(e){ setScreen(e.currentTarget.dataset.sgo); },wrap);
-    on('[data-sclose]','click',function(){ setScreen('path'); },wrap);
+    on('[data-sclose]','click',function(){ setScreen(UI.tab||'today'); },wrap);
   }
   function wireSettingsBack(wrap){ on('[data-sback]','click',function(){ settingsView='home'; renderProfile(); },wrap); }
 
@@ -3804,7 +3830,7 @@
     var tm=settings().timer;
     function tgl(k,label,sub){return '<div class="settings-row static"><div class="sr-main"><div class="sr-title">'+esc(label)+'</div><div class="muted small">'+esc(sub)+'</div></div>'+
       '<button class="toggle '+(tm[k]?'on':'')+'" data-tgl="'+k+'" role="switch" aria-checked="'+(!!tm[k])+'"><span class="knob"></span></button></div>';}
-    var html=settingsBackHeader('Timer & Alerts')+
+    var html=settingsBackHeader(LEGACY?'Timer & Alerts':'Timer & sounds')+
       '<div class="settings-list">'+
       tgl('sound','Beep at end of rest','A three-tone chime when the rest timer finishes')+
       tgl('vibrate','Vibrate at end of rest','Haptic buzz on supported devices')+
@@ -3823,7 +3849,7 @@
     return '<div class="section">Install</div><div class="card tight"><p class="small">Add Skill Progression Coach to your home screen as its own app. In your browser menu choose <b>Add to Home Screen</b> (on iPhone: Share &rarr; Add to Home Screen).</p></div>';
   }
   function renderDataSettings(){
-    var html=settingsBackHeader('Data & Backup')+
+    var html=settingsBackHeader(LEGACY?'Data & Backup':'Data & backup')+
       installSection()+
       '<div class="section">Backup</div>'+
       '<div class="card tight"><p class="small">Save a complete backup file of everything this app has stored on this device — your own coach data and the Pull-Up Coach history it reads. Keep it somewhere safe before switching devices, reinstalling, or trying something risky.</p></div>'+
@@ -3833,7 +3859,9 @@
       '<p class="footnote muted tiny" data-backup-status></p>'+
       '<div class="section">About</div>'+
       '<div class="card tight"><p class="small">This app reads <b>Pull-Up Coach</b> history read-only and writes only its own <code>spc_c_*</code> keys. It never modifies the Pull-Up Coach app. Its own service worker is scoped to <code>/skill-progression-coach/</code> and does not affect Pull-Up Coach.</p></div>'+
-      '<button class="btn ghost" data-redo>Re-run Onboarding</button>'+
+      // The earlier app's onboarding has no place in the new shell (an athlete
+      // with data never sees onboarding; the new one is not built yet).
+      (LEGACY?'<button class="btn ghost" data-redo>Re-run Onboarding</button>':'')+
       '<button class="btn danger" data-reset>Reset Coach Data (spc_c_*)</button>'+
       '<p class="footnote muted tiny">Reset only deletes coach data. Your Pull-Up Coach history and progress are untouched.</p>'+
       '<p class="footnote muted tiny" data-idb-status></p>'+
@@ -4343,9 +4371,9 @@
   function shortTitle(w){ return w.title.replace(/^Workout \d - /,''); }
   function nodeLabel(pkg,n){
     if(n.type==='week') return 'Phase '+n.phase+' · Week '+n.week;
-    if(n.type==='deload') return 'Phase '+n.phase+' · Deload week';
+    if(n.type==='deload') return 'Phase '+n.phase+' · Recovery week';
     if(n.type==='maxtest') return n.id==='MT0'?'Max Test · before Phase 1':'Max Test · after Phase '+n.afterPhase;
-    if(n.type==='exit') return 'Foundation Exit';
+    if(n.type==='exit') return 'Foundation';
     return n.id;
   }
   function phaseSplit(pkg,p){
@@ -4399,187 +4427,9 @@
   function lastVariant(easy){ try{ var m=JSON.parse(localStorage.getItem('spc_c_programvariants')||'{}'); return m[easy]||'easy'; }catch(e){ return 'easy'; } }
   function rememberVariant(easy,v){ try{ var m=JSON.parse(localStorage.getItem('spc_c_programvariants')||'{}'); m[easy]=v; localStorage.setItem('spc_c_programvariants',JSON.stringify(m)); }catch(e){} }
 
-  // ---- Path (home) ----------------------------------------------------------
-  function renderPath(){
-    UI.screen='path';
-    var pkg=getPkg();
-    if(!pkg){
-      shell('<div class="fp-empty"><h1>Foundation Path</h1><p class="muted">The Beginner Program is not installed on this device yet.</p>'+
-        '<p class="small muted">Import the program file once in Settings → Program. It stays on this device and works offline.</p>'+
-        '<button class="btn primary" data-goprog>Open Settings → Program</button></div>','path');
-      on('[data-goprog]','click',function(){ settingsView='program'; setScreen('settings'); });
-      return;
-    }
-    var st=progState(), v=Program.pathView(pkg,st);
-    var run=Store.get(RUN_KEY);
-    var cur=v.current;
-    var startPhase=(v.nodes[v.startIndex]||{}).phase||1;
-    var firstOfStartPhase=v.nodes.findIndex(function(n){ return n.phase===startPhase&&(n.type==='week'||n.type==='deload'); });
-    var placedBefore=v.nodes.filter(function(n,i){ return n.status==='placed'&&i<firstOfStartPhase; });
-    var html='<div class="fp-head"><div class="fp-k">Beginner Program · Foundation Path</div>'+
-      (cur?'<div class="fp-t">'+esc(nodeLabel(pkg,cur))+'</div>':'<div class="fp-t">Foundation complete</div>')+'</div>';
-    if(run&&run.workoutId&&pkg.workouts[run.workoutId]){
-      html+='<div class="fp-resume"><div><b>Workout in progress</b><div class="small muted">'+esc(nodeLabel(pkg,{type:'week',phase:pkg.workouts[run.workoutId].phase,week:pkg.workouts[run.workoutId].week}))+' · '+esc(shortTitle(pkg.workouts[run.workoutId]))+'</div></div><button class="btn sm primary" data-resumerun>Resume</button></div>';
-    }
-    html+='<div class="fp-path">';
-    if(placedBefore.length){
-      var labels=[]; placedBefore.forEach(function(n){ var l=n.type==='maxtest'?(n.id==='MT0'?'Max Test':null):'Phase '+n.phase; if(l&&labels.indexOf(l)<0) labels.push(l); });
-      html+='<button class="fp-placed" data-placedinfo><div class="fp-k">Placed past</div><div class="fp-chips">'+labels.map(function(l){return '<span>'+esc(l)+'</span>';}).join('')+'</div>'+
-        '<div class="small muted">Not done here, and not marked as done.</div></button>';
-    }
-    var lastPhase=null, side=0;
-    v.nodes.forEach(function(n,i){
-      if(i<firstOfStartPhase&&n.status==='placed') return;
-      var ph=n.phase||n.afterPhase;
-      if(n.type!=='maxtest'&&n.type!=='exit'&&ph&&ph!==lastPhase){
-        lastPhase=ph;
-        html+='<div class="fp-phase'+(cur&&cur.phase===ph?' now':'')+'"><div class="fp-k">Phase '+ph+(cur&&cur.phase===ph?' · you are here':'')+'</div><div class="fp-ps">'+esc(phaseSplit(pkg,ph))+'</div></div>';
-      }
-      if(n.type==='exit') html+='<div class="fp-phase"><div class="fp-k">Skill Progression Coach</div><div class="fp-ps">The standard that opens the Academy</div></div>';
-      side++;
-      html+=nodeHtml(pkg,st,n,side);
-      if(n.status==='current'&&n.type==='week') html+=weekPanelHtml(pkg,st,n);
-    });
-    var ac=Program.academyStatus(st);
-    html+='<button class="fp-acad" data-goacademy><div class="fp-k">'+(ac.open?'Open':'🔒 Academy')+'</div><div class="fp-t2">The Academy</div><div class="small muted">'+(ac.open?'Your specialization paths.':'Opens when every Foundation Exit domain has passed.')+'</div></button>';
-    html+='</div>';
-    var wrap=shell(html,'path');
-    on('[data-node]','click',function(e){ openNode(e.currentTarget.dataset.node); },wrap);
-    on('[data-pw]','click',function(e){ openProgramWorkout(e.currentTarget.dataset.pw); },wrap);
-    on('[data-resumerun]','click',function(){ resumeProgramRun(); },wrap);
-    on('[data-goacademy]','click',function(){ setScreen('academy'); },wrap);
-    on('[data-placedinfo]','click',function(){ placedSheet(pkg,v); },wrap);
-    var c=wrap.querySelector('.fp-node.current'); if(c&&c.scrollIntoView){ try{ c.scrollIntoView({block:'center'}); }catch(e){ c.scrollIntoView(); } }
-  }
-  function nodeHtml(pkg,st,n,side){
-    var icon={done:'✓',current:'★',upcoming:'',placed:'·'}[n.status]||'';
-    var kind=n.type;
-    var sub='';
-    if(n.type==='week'){
-      var wp=Program.weekProgress(pkg,st,n.id);
-      sub=n.status==='placed'?'placed past':n.status==='current'?wp.done+' of '+wp.total+' done':n.status==='done'?'done':'';
-    } else if(n.type==='maxtest') sub=n.status==='done'?'recorded':n.status==='placed'?'placed past':'benchmark';
-    else if(n.type==='deload') sub=n.status==='done'?'recovery week done':n.status==='placed'?'placed past':'about 50% intensity';
-    else if(n.type==='exit') sub=n.status==='done'?'passed':'all six domains';
-    var lbl=n.type==='week'?'Week '+n.week:n.type==='maxtest'?'Max Test':n.type==='deload'?'Deload week':'Foundation Exit';
-    return '<button class="fp-node '+n.status+' t-'+kind+' s'+(side%4)+'" data-node="'+n.id+'"><span class="fp-disc"><span class="fp-wc"></span><span class="fp-ic">'+(kind==='exit'&&n.status!=='done'?'🔒':kind==='maxtest'&&n.status!=='done'?'◆':icon)+'</span></span>'+
-      '<span class="fp-lab">'+esc(lbl)+(n.status==='current'?' · <b>you are here</b>':'')+'<span class="fp-sl">'+esc(sub)+'</span></span></button>';
-  }
-  function weekPanelHtml(pkg,st,n){
-    var wp=Program.weekProgress(pkg,st,n.id);
-    var next=wp.required.filter(function(r){return r.status==='available';})[0];
-    function row(r){
-      var w=pkg.workouts[r.id];
-      var chip=r.status==='completed'?'<span class="fp-chip ok">✓ Done'+(r.reported?' (reported)':'')+'</span>':
-        r.optional?'<span class="fp-chip opt">Optional</span>':
-        next&&r.id===next.id?'<span class="fp-chip next">Next</span>':'<span class="fp-chip av">Available</span>';
-      return '<button class="fp-wrow '+r.status+(r.optional?' optional':'')+'" data-pw="'+r.id+'"><span class="fp-wn">'+(r.optional?'+':w.slot)+'</span><span class="fp-wt">'+esc(r.optional?'Legs':shortTitle(w))+'</span>'+chip+'<span class="sr-arrow">&rsaquo;</span></button>';
-    }
-    return '<div class="fp-week"><div class="fp-k">This week · '+wp.done+' of '+wp.total+' required done</div>'+wp.required.map(row).join('')+wp.optional.map(row).join('')+'</div>';
-  }
-  function placedSheet(pkg,v){
-    var items=v.nodes.filter(function(n){return n.status==='placed';}).map(function(n){ return '<div class="dd-kv"><span>'+esc(nodeLabel(pkg,n))+'</span><b>placed past</b></div>'; }).join('');
-    showSheet('<div class="grip"></div><h2>Placed past</h2><p class="small muted">Your Foundation Path starts at '+esc(nodeLabel(pkg,v.nodes[v.startIndex]))+'. Everything before it is placed past: not done here, and not counted as done. You can still open any of its workouts to look at them.</p>'+items+'<button class="btn ghost" data-close>Close</button>',function(sheet){ on('[data-close]','click',closeSheet,sheet); });
-  }
-  function openNode(id){
-    var pkg=getPkg(), st=progState(), v=Program.pathView(pkg,st);
-    var n=v.nodes.filter(function(x){return x.id===id;})[0]; if(!n) return;
-    if(n.type==='week') return weekSheet(pkg,st,n);
-    if(n.type==='maxtest') return n.status==='current'?renderMaxTest(n.id):maxTestSheet(pkg,st,n);
-    if(n.type==='deload') return openDeload(n.id);
-    if(n.type==='exit') return setScreen('pexit');
-  }
-  function weekSheet(pkg,st,n){
-    var wp=Program.weekProgress(pkg,st,n.id);
-    var why=n.status==='upcoming'?'<p class="small muted">Opens when the path reaches it: the weeks before it are completed in order.</p>':n.status==='placed'?'<p class="small muted">Placed past: not done here, and not counted as done. You can look at the workouts.</p>':'';
-    var rows=wp.required.concat(wp.optional).map(function(r){ var w=pkg.workouts[r.id];
-      return '<button class="fp-wrow '+r.status+'" data-pw="'+r.id+'"><span class="fp-wn">'+(r.optional?'+':w.slot)+'</span><span class="fp-wt">'+esc(r.optional?'Legs (optional)':shortTitle(w))+'</span><span class="fp-chip '+(r.status==='completed'?'ok':'')+'">'+esc(r.status==='completed'?'✓ Done':r.status==='available'?'Available':r.status==='placed'?'Placed past':r.status==='missed'?'Not done':'Upcoming')+'</span></button>'; }).join('');
-    showSheet('<div class="grip"></div><h2>'+esc(nodeLabel(pkg,n))+'</h2>'+why+rows+'<button class="btn ghost" data-close>Close</button>',function(sheet){
-      on('[data-pw]','click',function(e){ closeSheet(); openProgramWorkout(e.currentTarget.dataset.pw); },sheet);
-      on('[data-close]','click',closeSheet,sheet);
-    });
-  }
-  // ---- deload week (SOURCE: a planned easy week before Phases 4–6) ------------
-  // The program's own guidance, in full, before anything is marked. Completing
-  // it is one tap, recorded as a planned recovery week — never as a skipped one.
-  function openDeload(id){ UI.pdeload=id; setScreen('pdeload'); }
-  function renderDeload(){
-    var pkg=getPkg(), st=progState(), v=pkg&&Program.pathView(pkg,st);
-    var n=v&&v.nodes.filter(function(x){ return x.id===UI.pdeload&&x.type==='deload'; })[0];
-    if(!n) return setScreen('path');
-    var done=Program.ofType(st,'deload_completed').filter(function(e){ return e.nodeId===n.id; }).pop();
-    var lastWeek=v.nodes.slice(0,n.index).filter(function(x){ return x.type==='week'; }).pop();
-    // The text exactly as the program writes it; its "- " lines (the ways to make
-    // the week lighter) are shown as a list.
-    var body='', list=[];
-    function flush(){ if(list.length){ body+='<ul class="fp-ul">'+list.map(function(t){ return '<li>'+esc(t)+'</li>'; }).join('')+'</ul>'; list=[]; } }
-    pkg.deload.text.forEach(function(t){ var m=t.match(/^-\s*(.*)$/); if(m) list.push(m[1]); else { flush(); body+='<p>'+esc(t)+'</p>'; } });
-    flush();
-    var html='<div class="wk-top"><div class="between"><button class="link" data-backpath>&lsaquo; Path</button><b>Phase '+n.phase+'</b><span style="width:50px"></span></div></div>'+
-      '<div class="fp-wh"><div class="fp-k">Planned recovery week</div><h1>Deload week</h1><div class="small muted">Before Week 1 of Phase '+n.phase+'</div></div>'+
-      '<div class="fp-src">From the program</div><div class="fp-box fp-deload">'+body+'</div>'+
-      (lastWeek?'<button class="btn ghost sm" data-lastweek>Last week’s workouts · '+esc(nodeLabel(pkg,lastWeek))+'</button>':'');
-    if(done) html+='<div class="fp-done-note">✓ Deload week completed '+esc(fmtDate(done.date||done.at))+' · a planned recovery week</div>';
-    else if(n.status==='current') html+='<div class="fp-cta"><button class="btn primary" data-deloaddone>Deload week completed</button></div>';
-    else html+='<p class="small muted fp-foot">'+(n.status==='placed'?'Placed past.':'Comes before Week 1 of Phase '+n.phase+'.')+'</p>';
-    var wrap=shell(html,'path');
-    on('[data-backpath]','click',function(){ setScreen('path'); },wrap);
-    on('[data-lastweek]','click',function(){ weekSheet(pkg,st,lastWeek); },wrap);
-    on('[data-deloaddone]','click',function(){
-      progAdd({type:'deload_completed',nodeId:n.id,kind:'planned-recovery',date:new Date().toISOString()});
-      toast('Deload week completed.'); setScreen('path');
-    },wrap);
-  }
-
-  // ---- workout preview ------------------------------------------------------
-  function openProgramWorkout(id){ UI.pworkout=id; setScreen('pworkout'); }
-  function renderProgramWorkout(){
-    var pkg=getPkg(), id=UI.pworkout, w=pkg&&pkg.workouts[id];
-    if(!w){ return setScreen('path'); }
-    var st=progState(), ws=Program.workoutStatus(pkg,st,id);
-    var comps=Program.completions(st,id);
-    var html='<div class="wk-top"><div class="between"><button class="link" data-backpath>&lsaquo; Path</button><b>Phase '+w.phase+' · Week '+w.week+'</b><span style="width:50px"></span></div></div>'+
-      '<div class="fp-wh"><div class="fp-k">'+esc(w.optional?'Optional session':'Workout '+w.slot+' of 4')+'</div><h1>'+esc(w.optional?'Legs':shortTitle(w))+'</h1>'+
-      '<div class="small muted">'+esc(w.header||'')+' · <a href="'+esc(w.url)+'" target="_blank" rel="noopener">Calixpert lesson ↗</a></div></div>';
-    if(comps.length){
-      var last=comps[comps.length-1];
-      html+='<div class="fp-done-note">✓ Done'+(last.source==='reported'?' (reported before this app — no set data)':last.source==='imported'?' (from your log)':' on '+fmtDate(last.finishedAt||last.at))+'</div>';
-    }
-    if(w.warmup&&w.warmup.length) html+='<div class="fp-box"><div class="fp-k">Warm-up</div>'+w.warmup.map(function(x){ return '<div class="fp-li">'+esc(x.name)+'<span>'+esc(x.dose)+'</span></div>'; }).join('')+'</div>';
-    // A finished workout shows what was done; the prescription stays for a block
-    // with no result. A 'reported' mark has no results to show.
-    var rec=comps.filter(function(e){ return e.source!=='reported'&&e.result&&e.result.length; }).pop();
-    html+='<div class="fp-blocks">';
-    w.blocks.forEach(function(b,i){
-      var chosen=b.hard?lastVariant(b.easy):'easy', rr=rec&&rec.result[i];
-      html+='<div class="fp-block"><div class="fp-bn">'+(i+1)+'</div><div class="fp-bb">';
-      if(rr){
-        var oc=rec.summary&&rec.summary.blocks[i]?rec.summary.blocks[i].outcome:'';
-        html+='<div class="fp-ex">'+esc(blockName(b,rr.variant))+'</div>'+(b.kind==='emom'&&b.style!=='pyramid'?emomPlan(b):'')+
-          '<div class="fp-pres">'+(rr.skipped?'Skipped':'You did: '+esc(resultVals(b,rr)||'—'))+' '+outcomeChip(oc)+'</div>'+(rr.note?'<div class="small muted">'+esc(rr.note)+'</div>':'');
-      } else if(b.kind==='exercise'||(b.kind==='emom'&&b.style==='pyramid')){
-        html+=b.hard?'<div class="fp-vars"><span class="'+(chosen==='easy'?'on':'')+'">Easy · '+esc(b.easy.replace(/^Pyramid EMOM:\s*/,''))+'</span><span class="'+(chosen==='hard'?'on':'')+'">Hard · '+esc(b.hard.replace(/^Pyramid EMOM:\s*/,''))+'</span></div>':'<div class="fp-ex">'+esc(blockName(b,'easy'))+'</div>';
-      } else if(b.kind==='emom') html+='<div class="fp-ex">'+esc(b.style==='single'?b.exercise:'EMOM')+'</div>'+emomPlan(b);
-      else html+='<div class="fp-ex">'+esc(b.kind==='amrap'?'AMRAP':'Circuit')+'</div>';
-      if(!rr) html+='<div class="fp-pres">'+blockPrescription(b)+'</div>';
-      if(b.items) html+=b.items.map(function(it){ return '<div class="fp-li">'+esc(it.easy)+(it.hard?' / '+esc(it.hard):'')+'<span>'+(rr?'':doseText(it.dose))+'</span></div>'; }).join('');
-      var fk=formatKey(w,b); if(fk&&pkg.formats[fk]) html+='<details class="fp-qa"><summary>How this format works</summary><div>'+esc(pkg.formats[fk].text)+'</div></details>';
-      html+=qaHtml(pkg,b.qa)+'</div></div>';
-    });
-    html+='</div>';
-    if(w.cooldown) html+='<div class="fp-box"><div class="fp-k">'+esc(w.cooldown.label)+'</div><div class="fp-li">'+esc(w.cooldown.name)+'<span>'+esc(w.cooldown.dose)+'</span></div></div>';
-    var wqa=(w.qa||[]).filter(function(q){ return !w.blocks.some(function(b){ return (b.qa||[]).indexOf(q)>=0; }); });
-    if(wqa.length) html+='<div class="fp-box">'+qaHtml(pkg,wqa)+'</div>';
-    var easyHard=(pkg.globalNotes||[]).filter(function(n){return n.id==='easy-hard';})[0];
-    if(w.blocks.some(function(b){return b.hard;})&&easyHard) html+='<p class="tiny muted fp-foot">Easy / Hard: '+esc(easyHard.text)+'</p>';
-    if(comps.length) html+='<div class="fp-cta"><button class="btn danger" data-delpw>Delete this workout</button></div>';
-    if(ws.status==='available') html+='<div class="fp-cta"><button class="btn primary" data-startpw>'+(comps.length?'Start again':'Start workout')+'</button></div>';
-    else html+='<p class="small muted fp-foot">'+esc(ws.status==='completed'?'':ws.status==='placed'?'Placed past — for viewing.':ws.status==='upcoming'?'Opens when the path reaches this week.':'')+'</p>';
-    var wrap=shell(html,'path');
-    on('[data-backpath]','click',function(){ setScreen('path'); },wrap);
-    on('[data-startpw]','click',function(){ startProgramRun(id); },wrap);
-    on('[data-delpw]','click',function(){ deleteProgramWorkout(rec||comps[comps.length-1],renderProgramWorkout); },wrap);
-  }
+  // The Path home, its week panel and node sheets, the workout preview and the
+  // deload screen were replaced by the new shell (Today, Plan, Plan › The
+  // program, and the View workout / Recovery week sheets) further down.
 
   // ---- runner ---------------------------------------------------------------
   function newRun(pkg,id){
@@ -4610,7 +4460,7 @@
   function outcomeChip(o){ return o==='met'?'<span class="fp-chip ok">in range</span>':o==='below'?'<span class="fp-chip below">below</span>':o==='done'?'<span class="fp-chip ok">logged</span>':''; }
 
   function renderProgramRun(){
-    var pkg=getPkg(), run=UI.prun; if(!pkg||!run){ return setScreen('path'); }
+    var pkg=getPkg(), run=UI.prun; if(!pkg||!run){ return setScreen('today'); }
     UI.screen='prun';
     var w=pkg.workouts[run.workoutId], i=run.cursor, b=w.blocks[i], r=run.blocks[i];
     var outcome=r.skipped?'':Program.blockOutcome(b,r);
@@ -4812,7 +4662,7 @@
     on('[data-prev]','click',function(){ stopTimer(); stopClock(); UI.prun.cursor--; rerender(); },wrap);
     on('[data-next]','click',function(){ stopTimer(); stopClock(); UI.prun.cursor++; rerender(); },wrap);
     on('[data-skip]','click',function(){ r.skipped=!r.skipped; rerender(); },wrap);
-    on('[data-exitrun]','click',function(){ stopTimer(); stopClock(); saveRun(); UI.prun=null; setScreen('path'); },wrap);
+    on('[data-exitrun]','click',function(){ stopTimer(); stopClock(); saveRun(); UI.prun=null; setScreen('today'); },wrap);
     on('[data-finishrun]','click',function(){ finishProgramRun(); },wrap);
   }
   function finishProgramRun(){
@@ -4835,7 +4685,9 @@
         (r.note?'<div class="fp-note small muted">'+esc(r.note)+'</div>':'');
     }).join('');
   }
-  function historySheet(id){
+  // Session results: one record, exactly as logged, and the way to delete it.
+  // `after` redraws whatever the sheet was opened from (History by default).
+  function historySheet(id,after){
     var pkg=getPkg(), ev=Program.ofType(progState(),'workout_completed').filter(function(e){ return e.id===id; })[0]; if(!pkg||!ev) return;
     var w=pkg.workouts[ev.workoutId];
     showSheet('<div class="grip"></div><div class="fp-k">'+esc(ev.source==='imported'?'From your log':ev.dateUnknown?'':fmtDate(ev.finishedAt||ev.at))+'</div><h2>'+esc('Phase '+w.phase+' · Week '+w.week+' · '+(w.optional?'Legs':shortTitle(w)))+'</h2>'+
@@ -4843,7 +4695,7 @@
       (ev.note?'<p class="small muted">'+esc(ev.note)+'</p>':'')+'<button class="btn ghost" data-close>Close</button>'+
       '<button class="btn danger fp-histdel" data-histdel>Delete this workout</button>',function(sheet){
       on('[data-close]','click',closeSheet,sheet);
-      on('[data-histdel]','click',function(){ deleteProgramWorkout(ev,function(){ closeSheet(); refreshHistoryScreen(); }); },sheet);
+      on('[data-histdel]','click',function(){ deleteProgramWorkout(ev,function(){ closeSheet(); (after||refreshHistoryScreen)(); }); },sheet);
     });
   }
   // What a deletion changes differs by record: another record of the same workout
@@ -4856,29 +4708,29 @@
     var others=rest.length-marks.length;
     var counted=Program.trainingEvidence(st).filter(function(r){ return r.valid&&r.workoutEventId===ev.id; }).map(function(r){ return domainOf(r.test).id; });
     if(!confirm('Delete this workout from your history? This cannot be undone.\n\n'+
-      (others?'The workout stays done on the Path: another record of it remains.':'It goes back to not done on the Path.')+
+      (others?'The workout stays done in your program: another record of it remains.':'It goes back to not done in your program.')+
       (counted.length?'\nThe set it gave for '+counted.join(', ')+' stops counting.':''))) return;
     marks.concat([ev]).forEach(function(e){ progAdd({type:'workout_deleted',workoutEventId:e.id}); });
     sheetQueue([{del:ev.id}]);
     toast('Workout deleted.'); after();
   }
   function renderProgramSummary(){
-    var pkg=getPkg(), ev=UI.psummary; if(!ev){ return setScreen('path'); }
+    var pkg=getPkg(), ev=UI.psummary; if(!ev){ return setScreen('today'); }
     var w=pkg.workouts[ev.workoutId];
     var lines=resultLines(w,ev);
-    var st=progState(), v=Program.pathView(pkg,st);
-    // Sets of this workout that can stand in for a Foundation Exit test, and the
+    var st=progState(), nx=nextText();
+    // Sets of this workout that can stand in for a Foundation test, and the
     // answers already given for it.
     var cands=Program.trainingCandidates(st,{workoutEventId:ev.id,tests:Program.evidenceWanted(st)});
     var answers=Program.ofType(st,'evidence_confirmed').filter(function(c){ return c.workoutEventId===ev.id; });
     var html='<div class="fp-wh" style="text-align:center;padding-top:18px"><div class="fp-k">Workout saved</div><h1>'+esc(w.optional?'Legs':shortTitle(w))+'</h1><div class="small muted">Phase '+w.phase+' · Week '+w.week+'</div></div>'+
       '<div class="fp-box">'+lines+'</div>'+
       (ev.summary.below?'<p class="small muted">Results below the prescription are kept exactly as logged. Nothing is reset, and the program carries on as written.</p>':'')+
-      (cands.length||answers.length?'<div class="fp-box fp-evbox"><div class="fp-k">Foundation Exit</div>'+answers.map(function(c){ return answerHtml(st,c); }).join('')+cands.map(function(c,k){ return candHtml(c,k,false); }).join('')+'</div>':'')+
-      '<p class="small"><b>Next on your path:</b> '+esc(v.current?nodeLabel(pkg,v.current):'—')+'</p>'+
-      '<button class="btn primary" data-backpath>Back to the Path</button>';
+      (cands.length||answers.length?'<div class="fp-box fp-evbox"><div class="fp-k">Foundation</div>'+answers.map(function(c){ return answerHtml(st,c); }).join('')+cands.map(function(c,k){ return candHtml(c,k,false); }).join('')+'</div>':'')+
+      (nx?'<p class="small"><b>Next:</b> '+esc(nx)+'</p>':'')+
+      '<button class="btn primary" data-backpath>Done</button>';
     app.innerHTML=''; var wrap=h('<div class="scr">'+html+'</div>'); app.appendChild(wrap); window.scrollTo(0,0);
-    on('[data-backpath]','click',function(){ UI.psummary=null; setScreen('path'); },wrap);
+    on('[data-backpath]','click',function(){ UI.psummary=null; setScreen('today'); },wrap);
     on('[data-evset]','click',function(e){ confirmSetSheet(cands[+e.currentTarget.dataset.evset],renderProgramSummary); },wrap);
   }
 
@@ -4887,7 +4739,7 @@
     UI.screen='pmaxtest'; UI.pmt=UI.pmt&&UI.pmt.nodeId===nodeId?UI.pmt:{nodeId:nodeId,results:{}};
     var pkg=getPkg(), mt=pkg.maxTest, st=progState(), hist=Program.maxTestHistory(st);
     function lastOf(fam){ for(var k=hist.length-1;k>=0;k--){ var r=(hist[k].results||[]).filter(function(x){return x.family===fam&&!x.notTested;})[0]; if(r) return r.variant+' · '+r.value+' '+(r.unit||'')+' · '+fmtDate(hist[k].date||hist[k].at); } return null; }
-    var html='<div class="wk-top"><div class="between"><button class="link" data-backpath>&lsaquo; Path</button><b>Max Test</b><span style="width:50px"></span></div></div>'+
+    var html='<div class="wk-top"><div class="between"><button class="link" data-backpath>&lsaquo; Today</button><b>Max Test</b><span style="width:50px"></span></div></div>'+
       '<div class="fp-src">From the program</div><p class="small">Five tests in this order: hang, pull, push-up, dip, plank. Pick the variation that fits you today, rest at least two minutes between tests, and write down what you managed. There is no pass mark — it measures where you are.</p>'+
       '<div id="rest"></div><button class="btn ghost" data-mtrest>Rest 2:00</button>';
     mt.families.forEach(function(f){
@@ -4909,7 +4761,7 @@
     html+='<button class="btn primary" data-mtsave>Save Max Test</button>';
     if(hist.length) html+='<div class="fp-box"><div class="fp-k">Earlier Max Tests</div>'+hist.map(function(e){ return '<div class="fp-li"><span>'+esc(fmtDate(e.date||e.at))+'</span><span>'+(e.results||[]).filter(function(x){return !x.notTested;}).map(function(x){return esc(x.family)+' '+esc(x.value);}).join(' · ')+'</span></div>'; }).join('')+'</div>';
     var wrap=shell(html,'path');
-    on('[data-backpath]','click',function(){ setScreen('path'); },wrap);
+    on('[data-backpath]','click',function(){ setScreen('today'); },wrap);
     on('[data-mtrest]','click',function(){ startRest(120,{label:'Rest before the next test'}); },wrap);
     wrap.querySelectorAll('[data-fam]').forEach(function(box){
       var r=UI.pmt.results[box.dataset.fam];
@@ -4932,7 +4784,7 @@
       var passed=checkFoundationPass();
       toast('Max Test saved.');
       if(passed) return renderAcademyUnlock();
-      setScreen('path');
+      setScreen('today');
     },wrap);
   }
   function maxTestSheet(pkg,st,n){
@@ -4972,7 +4824,7 @@
   function confirmSetSheet(c,after){
     var T=Program.TESTS[c.test], d=domainOf(c.test);
     var checks=T.validity.concat(['All '+c.value+' reps were consecutive, in this one '+(c.minute?'minute':'set')]);
-    var body='<div class="grip"></div><div class="fp-src spc">Skill Progression Coach · Foundation Exit</div><h2>Count this set?</h2>'+
+    var body='<div class="grip"></div><div class="fp-src spc">Coach · Foundation</div><h2>Count this set?</h2>'+
       '<p class="small"><b>'+esc(c.exercise)+' · '+c.value+' reps</b> · '+esc(setLabel(c))+' · '+esc(workoutLabel(c.workoutId))+' · '+esc(fmtDate(c.date))+'</p>'+
       '<p class="small">'+d.id+' needs '+esc(d.pass)+': '+esc(T.test)+'.</p>'+
       CONFIRM_FIELDS[c.test].map(function(f){ return '<div class="fp-set"><span class="fp-sn">'+esc(f.label)+'</span><select class="input fp-cf" data-cf="'+f.k+'"><option value="">Choose…</option>'+f.opts.map(function(o){ return '<option value="'+o[0]+'">'+esc(o[1])+'</option>'; }).join('')+'</select></div>'; }).join('')+
@@ -5005,10 +4857,12 @@
     var stTxt={pass:'Passed','stale':'Older than 45 days','not-yet':'Not yet','no-evidence':'No result yet'};
     // Unanswered workout sets from the evidence window, offered where they could still count.
     var cands=fs.passed?[]:Program.trainingCandidates(st,{maxAgeDays:Program.EXIT_EVIDENCE_DAYS}), shown=[];
-    var html='<div class="wk-top"><div class="between"><button class="link" data-backpath>&lsaquo; Path</button><b>Foundation Exit</b><span style="width:50px"></span></div></div>'+
-      '<div class="fp-src spc">Skill Progression Coach standard · v1</div>'+
-      (fs.passed?'<div class="fp-done-note">✓ Passed on '+esc(fmtDate(fs.passedAt))+' · the Academy is open</div>':
-        '<p class="small">All six must pass to open the Academy. A result counts when it is exactly the test described and was done in the last '+Program.EXIT_EVIDENCE_DAYS+' days: a test you record here, a Max Test of the very same test, or a set from a normal workout that you confirm met the standard. Only what is missing needs a test.</p>')+
+    // TRANSITIONAL: reached from Goals until the Foundation detail of the Goals
+    // rebuild (APP-BLUEPRINT §6 H2) replaces it.
+    var html='<div class="wk-top"><div class="between"><button class="link" data-backpath>&lsaquo; Goals</button><b>Foundation</b><span style="width:50px"></span></div></div>'+
+      '<div class="fp-src spc">Coach · Skill Progression Coach standard v1</div>'+
+      (fs.passed?'<div class="fp-done-note">✓ Complete since '+esc(fmtDate(fs.passedAt))+' · your goals are open</div>':
+        '<p class="small">Both goals open when all six are confirmed. A result counts when it is exactly the test described and was done in the last '+Program.EXIT_EVIDENCE_DAYS+' days: a test you record here, a Max Test of the very same test, or a set from a normal workout that you confirm met the standard. Only what is missing needs a test.</p>')+
       '<details class="fp-qa"><summary>What makes a rep count (F7)</summary><div>'+esc(Program.F7)+'</div></details>';
     fs.domains.forEach(function(d){
       var ev=d.evidence, evTxt='';
@@ -5020,8 +4874,8 @@
         mine.map(function(c){ return candHtml(c,shown.push(c)-1,true); }).join('')+
         (open?'<button class="btn ghost sm" data-rectest="'+d.test+'">Record a test</button>':'')+'</div>';
     });
-    var wrap=shell(html,'path');
-    on('[data-backpath]','click',function(){ setScreen('path'); },wrap);
+    var wrap=shell(html,'goals');
+    on('[data-backpath]','click',function(){ setScreen('goals'); },wrap);
     on('[data-rectest]','click',function(e){ recordTestSheet(e.currentTarget.dataset.rectest,null); },wrap);
     on('[data-evset]','click',function(e){ confirmSetSheet(shown[+e.currentTarget.dataset.evset],renderFoundationExit); },wrap);
   }
@@ -5046,44 +4900,23 @@
         closeSheet();
         if(!valid) toast('Saved — not counted, because not every condition was ticked.'); else toast('Result saved.');
         if(checkFoundationPass()) return renderAcademyUnlock();
-        if(UI.screen==='academy') renderAcademy(); else renderFoundationExit();
+        if(UI.screen==='goals') renderGoalsTab(); else renderFoundationExit();
       },sheet);
     });
   }
+  // The Foundation-complete moment (APP-BLUEPRINT §6 T): what it opens, read
+  // from the engine — Ring Muscle-Up still needs its own entry until 6 + 6.
   function renderAcademyUnlock(){
     UI.screen='punlock';
     app.innerHTML='';
-    var wrap=h('<div class="scr fp-unlock"><div class="fp-k">Foundation Exit passed</div><h1>The Academy is open</h1><p class="muted">You have built the foundation. Now choose where to specialize.</p><button class="btn primary" data-goacademy>Enter the Academy</button></div>');
+    var ac=Program.academyStatus(progState());
+    var open=ac.goals.filter(function(g){ return g.status==='open'; }).map(function(g){ return g.label; });
+    var rest=ac.goals.filter(function(g){ return g.status==='locked-entry'; });
+    var line=(open.length?open.join(' and ')+(open.length>1?' are':' is')+' open.':'')+
+      rest.map(function(g){ return ' '+g.label+' starts after '+entryNeedsText(g)+'.'; }).join('');
+    var wrap=h('<div class="scr fp-unlock"><div class="fp-k">Foundation complete</div><h1>You’ve built the foundation</h1><p class="muted">'+esc(line.trim())+'</p><button class="btn primary" data-gogoals>See your goals</button></div>');
     app.appendChild(wrap);
-    on('[data-goacademy]','click',function(){ setScreen('academy'); },wrap);
-  }
-
-  // ---- Academy (minimum: Ring Muscle-Up + Pistol Squat) ----------------------
-  function renderAcademy(){
-    UI.screen='academy';
-    var st=progState(), ac=Program.academyStatus(st), fs=Program.foundationStatus(st), shown=[];
-    var html='<div class="fp-head"><div class="fp-k">'+(ac.open?'Open':'Locked')+'</div><div class="fp-t">The Academy</div></div>';
-    if(!ac.open){
-      var n=fs.domains.filter(function(d){return d.status==='pass';}).length;
-      html+='<div class="fp-box"><b>Opens after the Foundation Exit</b><p class="small muted">'+n+' of 6 domains passed. Every domain must pass; there is no partial entry.</p><button class="btn ghost sm" data-goexit>See the Foundation Exit</button></div>';
-    }
-    ac.goals.forEach(function(g){
-      var stt=g.status==='open'?'Open':g.status==='locked-entry'?'Entry check needed':'Locked';
-      html+='<div class="fp-box fp-goal '+g.status+'"><div class="between"><b class="fp-t2">'+esc(g.label)+'</b><span class="fp-chip '+(g.status==='open'?'ok':'')+'">'+esc(stt)+'</span></div><div class="small muted">Entry: '+esc(g.entryText)+'</div>';
-      if(ac.open&&g.status==='locked-entry') html+=g.needs.map(function(n){
-        // the same evidence as the Foundation: a confirmed workout set counts here too
-        var cs=n.ok?[]:Program.trainingCandidates(st,{tests:[n.test]}).filter(function(c){ return c.value>=n.need; });
-        return '<div class="fp-li">'+esc(n.label)+'<span>'+(n.have==null?'—':n.have)+' / '+n.need+(n.ok?' ✓':'')+'</span></div>'+
-          cs.map(function(c){ return candHtml(c,shown.push(c)-1,true); }).join('')+
-          (n.ok?'':'<button class="btn ghost sm" data-rectest="'+n.test+'">Record '+esc(n.label.toLowerCase())+'</button>'); }).join('');
-      if(g.status==='open') html+='<p class="small">Entry passed. The training inside this goal is still being finalized, so there is nothing to train here yet.</p>';
-      html+='</div>';
-    });
-    html+='<div class="fp-box muted"><div class="fp-k">Later</div><div class="small">'+ac.later.map(esc).join(' · ')+'</div></div>';
-    var wrap=shell(html,'academy');
-    on('[data-goexit]','click',function(){ setScreen('pexit'); },wrap);
-    on('[data-rectest]','click',function(e){ recordTestSheet(e.currentTarget.dataset.rectest,'ring-muscle-up-entry'); },wrap);
-    on('[data-evset]','click',function(e){ confirmSetSheet(shown[+e.currentTarget.dataset.evset],renderAcademy); },wrap);
+    on('[data-gogoals]','click',function(){ setScreen('goals'); },wrap);
   }
 
   // ---- the athlete's own Google Sheet ------------------------------------------
@@ -5126,17 +4959,24 @@
       '<b>Connected</b><p class="small muted">Every workout you finish is added to your sheet, and deleted from it if you delete it here.'+(q?' '+q+' waiting to send.':'')+'</p><button class="btn ghost sm" data-sheetoff>Disconnect</button>':
       '<p class="small muted">Add every workout you finish to your own sheet. Paste the link of your sheet\'s script. It stays on this device.</p><input class="input" type="url" placeholder="https://script.google.com/…" data-sheeturl><button class="btn ghost sm" data-sheeton>Connect</button>')+'</div>';
   }
-  function wireSheetBox(wrap){
+  function wireSheetBox(wrap,redraw){
     on('[data-sheeton]','click',function(){
       var url=wrap.querySelector('[data-sheeturl]').value.trim();
       if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(url)){ toast('That is not a sheet script link.'); return; }
-      sheetConnect(url).then(function(n){ toast('Connected'+(n?' · sending '+n+' workout'+(n===1?'':'s'):'')+'.'); renderProgramSettings(); },
+      sheetConnect(url).then(function(n){ toast('Connected'+(n?' · sending '+n+' workout'+(n===1?'':'s'):'')+'.'); redraw(); },
         function(){ toast('Could not reach the sheet. Check the link.'); });
     },wrap);
     on('[data-sheetoff]','click',function(){
       if(!confirm('Disconnect the sheet? What is already there stays.')) return;
-      sheetSave({}); renderProgramSettings();
+      sheetSave({}); redraw();
     },wrap);
+  }
+  // Settings → Google Sheet. TEMPORARY IMPLEMENTATION CONSTRAINT: the athlete
+  // deploys the script and pastes its link (APP-BLUEPRINT §4).
+  function renderSheetSettings(){
+    var html=settingsBackHeader('Google Sheet')+sheetBoxHtml()+
+      '<p class="qp-temp"><b>Temporary.</b> The sheet is connected through a script you deploy yourself, until the app can connect to it directly.</p>';
+    var wrap=shell(html,null); wireSettingsBack(wrap); wireSheetBox(wrap,renderSheetSettings);
   }
 
   // ---- Settings → Program ---------------------------------------------------
@@ -5144,14 +4984,16 @@
     var pkg=getPkg(), st=progState(), v=pkg?Program.pathView(pkg,st):null;
     var html=settingsBackHeader('Program')+
       '<div class="fp-box"><div class="fp-k">Installed program</div>'+(pkg?'<b>'+esc(pkg.publisher+' · '+pkg.title)+'</b><div class="small muted">'+Object.keys(pkg.weeks).length+' weeks · '+Object.values(pkg.workouts).filter(function(w){return !w.optional;}).length+' workouts + '+Object.values(pkg.workouts).filter(function(w){return w.optional;}).length+' optional · source '+esc(pkg.source.md5.slice(0,8))+'</div>':'<div class="small muted">Not installed on this device.</div>')+
-      '<input type="file" accept="application/json,.json" data-pkgfile style="display:none"><button class="btn ghost sm" data-pkgimport>Import program file…</button></div>'+
+      '<input type="file" accept="application/json,.json" data-pkgfile style="display:none"><button class="btn ghost sm" data-pkgimport>Import program file…</button>'+
+      '<p class="qp-temp"><b>Temporary.</b> The program file is imported by hand until the program can be delivered to the app.</p></div>'+
       (v?'<div class="fp-box"><div class="fp-k">Your position</div><b>'+esc(v.current?nodeLabel(pkg,v.current):'Foundation complete')+'</b>'+
         '<p class="small muted">Started at '+esc(nodeLabel(pkg,v.nodes[v.startIndex]))+'. Changing your starting point never deletes what you did; content before it is shown as placed past.</p>'+
         '<select class="input" data-repos>'+v.nodes.filter(function(n){return n.type!=='exit';}).map(function(n){ return '<option value="'+n.id+'"'+(n.id===v.start?' selected':'')+'>'+esc(nodeLabel(pkg,n))+'</option>'; }).join('')+'</select>'+
         '<button class="btn ghost sm" data-reposave>Set starting point</button></div>':'')+
       (pkg?'<div class="fp-box"><div class="fp-k">Workouts from your own log</div><p class="small muted">Add workouts and Max Tests you recorded elsewhere, from a history file. It only adds: nothing on this device is changed or deleted, and importing the same file again adds nothing twice.</p>'+
-        '<input type="file" accept="application/json,.json" data-histfile style="display:none"><button class="btn ghost sm" data-histimport>Import workout history…</button></div>'+sheetBoxHtml():'');
-    var wrap=shell(html,null); wireSettingsBack(wrap); wireSheetBox(wrap);
+        '<input type="file" accept="application/json,.json" data-histfile style="display:none"><button class="btn ghost sm" data-histimport>Import workout history…</button>'+
+        '<p class="qp-temp"><b>Temporary.</b> A one-time move of your earlier log into the app.</p></div>':'');
+    var wrap=shell(html,null); wireSettingsBack(wrap);
     var hist=wrap.querySelector('[data-histfile]');
     on('[data-histimport]','click',function(){ hist.click(); },wrap);
     if(hist) hist.addEventListener('change',function(){
@@ -5165,17 +5007,22 @@
         renderProgramSettings();
       }; rd.readAsText(f);
     });
+    wirePkgImport(wrap,renderProgramSettings);
+    on('[data-reposave]','click',function(){
+      var to=wrap.querySelector('[data-repos]').value; if(!to||to===v.start) return;
+      if(!confirm('Start your program at '+nodeLabel(pkg,v.nodes.filter(function(n){return n.id===to;})[0])+'? Nothing you recorded is deleted.')) return;
+      progAdd({type:'repositioned',start:to,basis:'athlete'}); toast('Starting point set.'); renderProgramSettings();
+    },wrap);
+  }
+  // The program file, chosen from the device. TEMPORARY IMPLEMENTATION
+  // CONSTRAINT: the course content cannot be served (APP-BLUEPRINT §6 D, §4).
+  function wirePkgImport(wrap,then){
     var file=wrap.querySelector('[data-pkgfile]');
     on('[data-pkgimport]','click',function(){ file.click(); },wrap);
     if(file) file.addEventListener('change',function(){
       var f=file.files&&file.files[0]; if(!f) return;
-      var rd=new FileReader(); rd.onload=function(){ try{ var p=JSON.parse(rd.result); var vv=Program.validatePackage(p); if(!vv.ok){ toast('Not a program file: '+vv.errors.join(', ')); return; } setPkg(p); toast('Program installed.'); renderProgramSettings(); }catch(e){ toast('Could not read that file.'); } }; rd.readAsText(f);
+      var rd=new FileReader(); rd.onload=function(){ try{ var p=JSON.parse(rd.result); var vv=Program.validatePackage(p); if(!vv.ok){ toast('Not a program file: '+vv.errors.join(', ')); return; } setPkg(p); toast('Program installed.'); then(); }catch(e){ toast('Could not read that file.'); } }; rd.readAsText(f);
     });
-    on('[data-reposave]','click',function(){
-      var to=wrap.querySelector('[data-repos]').value; if(!to||to===v.start) return;
-      if(!confirm('Start your path at '+nodeLabel(pkg,v.nodes.filter(function(n){return n.id===to;})[0])+'? Nothing you recorded is deleted.')) return;
-      progAdd({type:'repositioned',start:to,basis:'athlete'}); toast('Starting point set.'); renderProgramSettings();
-    },wrap);
   }
   function programHistoryHtml(){
     var pkg=getPkg(), st=progState(); if(!pkg||!st) return '';
@@ -5193,14 +5040,634 @@
     var mts=Program.maxTestHistory(st).slice().reverse();
     var rows=items.map(function(e){
       if(e.type==='deload_completed'){ var dn=pkg.sequence.filter(function(n){ return n.id===e.nodeId; })[0]||{};
-        return '<div class="hist-item"><div class="hist-h"><span class="hist-date">'+esc(fmtDate(when(e)))+'</span><span class="hist-nm">'+esc('Phase '+dn.phase+' · Deload week')+'</span></div><div class="small muted">Planned recovery week, completed</div></div>'; }
+        return '<div class="hist-item"><div class="hist-h"><span class="hist-date">'+esc(fmtDate(when(e)))+'</span><span class="hist-nm">'+esc('Phase '+dn.phase+' · Recovery week')+'</span></div><div class="small muted">Planned recovery week, completed</div></div>'; }
       var p=e.prescription||{}; var w=pkg.workouts[e.workoutId]||{};
       var t=p.title||w.title||e.workoutId; var s=e.summary;
       var ev=counted.filter(function(r){ return r.workoutEventId===e.id; }).map(function(r){ return domainOf(r.test).id; });
       return '<div class="hist-item fp-histev" data-histev="'+esc(e.id)+'"><div class="hist-h"><span class="hist-date">'+esc(e.dateUnknown?'Log':fmtDate(when(e)))+'</span><span class="hist-nm">'+esc('Phase '+(p.phase||w.phase)+' · Week '+(p.week||w.week)+' · '+t)+'</span></div>'+
         '<div class="small muted">'+(e.source==='reported'?'Reported before this app (no set data)':(e.source==='imported'?'From your log · ':'')+(s?s.met+' in range · '+s.below+' below · '+(s.done||0)+' logged · '+s.notDone+' no result':''))+(ev.length?' · counts for '+esc(ev.join(', ')):'')+'</div></div>'; }).join('');
     var mrows=mts.map(function(e){ return '<div class="hist-item"><div class="hist-h"><span class="hist-date">'+esc(fmtDate(e.date||e.at))+'</span><span class="hist-nm">Max Test</span></div><div class="small muted">'+(e.results||[]).map(function(r){ return esc(r.family)+': '+(r.notTested?'—':esc(r.variant)+' '+esc(r.value)); }).join(' · ')+'</div></div>'; }).join('');
-    return '<div class="section">Foundation Path</div>'+(rows||'<p class="small muted">No program workouts yet.</p>')+(mrows?'<div class="section">Max Tests</div>'+mrows:'');
+    return '<div class="section">Beginner Program</div>'+(rows||'<p class="small muted">No program workouts yet.</p>')+(mrows?'<div class="section">Max Tests</div>'+mrows:'');
+  }
+
+  // ==========================================================================
+  // THE NEW SHELL — Today | Plan | Goals, with the gear for control
+  // (APP-BLUEPRINT.md, implementation slice 1). Presentation over the engine
+  // that already works: the program position, the runner, Max Tests, the
+  // Foundation and every record stay in program.js and the code above. The
+  // only new data is the athlete's week plan (weekplan.js, kept under
+  // spc_c_weekplan): which program item is on which day.
+  // ==========================================================================
+  var WeekPlan=window.CoachWeekPlan;
+  var PLAN_KEY='spc_c_weekplan';
+  var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var NUMBER_WORDS=['No','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten'];
+  // The build on this device, read from the asset version in index.html, so a
+  // phone can be checked against what was deployed.
+  var BUILD=(function(){ try{ var s=document.querySelector('script[src*="app.js"]'), m=s&&s.getAttribute('src').match(/[?&]v=([^&]+)/); return m?m[1]:'local'; }catch(e){ return 'local'; } })();
+  UI.tab='today';
+
+  function planState(){ return Store.get(PLAN_KEY)||WeekPlan.emptyPlan(); }
+  function planAdd(list){ if(list&&list.length) Store.set(PLAN_KEY,WeekPlan.addEvents(planState(),list)); }
+  function todayKey(){ return WeekPlan.dateKey(new Date()); }
+  function planOpts(){ var p=Store.getProfile()||{}; return { today:todayKey(), trainingDays:(p.days||[]).slice(), includeOptional:!!p.includeOptional }; }
+  function weekNow(){ return WeekPlan.weekView(getPkg(),progState(),planState(),planOpts()); }
+  // A session's name as a title ("Pull", "Legs", "Max Test"), and as a row in a
+  // list, where the optional session says so.
+  function itemName(item){ return WeekPlan.itemLabel(getPkg(),item); }
+  function rowName(item){ var pkg=getPkg(), w=pkg&&pkg.workouts[item]; return w&&w.optional?'Legs · optional':WeekPlan.itemLabel(pkg,item); }
+  function dayName(k){ return WeekPlan.DAY_NAMES[WeekPlan.dow(k)]; }
+  function dayShort(k){ return WeekPlan.DAY_SHORT[WeekPlan.dow(k)]; }
+  function dayNum(k){ return +String(k).slice(8); }
+  function dateLine(){ var d=new Date(); return WeekPlan.DAY_NAMES[d.getDay()]+', '+d.getDate()+' '+MONTHS[d.getMonth()]; }
+  function joinAnd(a){ a=a.filter(Boolean); return a.length<2?(a[0]||''):a.slice(0,-1).join(', ')+' and '+a[a.length-1]; }
+  function dedupe(a){ return a.filter(function(x,i){ return a.indexOf(x)===i; }); }
+  function runInProgress(){ var r=Store.get(RUN_KEY), pkg=getPkg(); return r&&r.workoutId&&pkg&&pkg.workouts[r.workoutId]?r:null; }
+  function keepScroll(fn){ var y=window.scrollY; fn(); window.scrollTo(0,y); }
+
+  // Where the athlete is in the program, in one line. It belongs to Plan, never
+  // to Today.
+  function positionText(pos){
+    if(!pos) return 'Program complete';
+    if(pos.type==='week') return 'Phase '+pos.phase+' · Week '+pos.week;
+    if(pos.type==='maxtest') return (pos.phase?'Phase '+pos.phase+' · ':'')+'Max Test';
+    if(pos.type==='deload') return 'Phase '+pos.phase+' · Recovery week';
+    if(pos.type==='exit') return 'Program complete · Foundation next';
+    return '';
+  }
+  // What comes after today, in words: the next planned day this week, else the
+  // program's next item.
+  function nextText(){
+    var pkg=getPkg(); if(!pkg) return '';
+    var tv=WeekPlan.todayView(pkg,progState(),planState(),planOpts());
+    if(tv.next) return dayName(tv.next.date)+' · '+itemName(tv.next.item);
+    var ahead=WeekPlan.itemsAhead(pkg,progState(),false);
+    if(ahead.length) return itemName(ahead[0]);
+    return tv.week.recovery?'Recovery week':'';
+  }
+
+  // ---- the frame of a primary screen ----------------------------------------
+  // The gear sits top right on Today, Plan and Goals alike. A workout in
+  // progress shows one slim bar above the tab bar, the only thing that follows
+  // the athlete across tabs (APP-BLUEPRINT §3).
+  function tabTop(left,actions){
+    return '<header class="qp-top"><div class="qp-top-l">'+left+'</div><div class="qp-top-r">'+(actions||'')+
+      '<button class="gear" data-settings aria-label="Settings" title="Settings">'+ICON.gear+'</button></div></header>';
+  }
+  function tabShell(tab,top,inner,opts){
+    UI.tab=tab;
+    if(tab!=='plan') UI.planEdit=false;
+    app.innerHTML='';
+    var run=runInProgress(), bar=!!run&&!(opts&&opts.noBar);
+    var wrap=h('<div class="qp-screen"></div>');
+    wrap.appendChild(h('<div class="scr qp" data-tab="'+tab+'">'+top+inner+(bar?'<div class="qp-rbar-space"></div>':'')+'</div>'));
+    if(bar) wrap.appendChild(h('<button class="qp-rbar" data-resumerun><span class="qp-rbar-t"><b>Workout in progress</b> · '+esc(itemName(run.workoutId))+'</span><span class="qp-rbar-go">Resume</span></button>'));
+    var nav=h(navHtml(tab)); wrap.appendChild(nav);
+    app.appendChild(wrap);
+    wireShell(wrap,nav);
+    on('[data-resumerun]','click',function(){ resumeProgramRun(); },wrap);
+    return wrap;
+  }
+
+  // ---- Today ----------------------------------------------------------------
+  // One question: what should I do now? The date, "Today", the session's name,
+  // one action and one link. Program position, the week's progress, goals and
+  // the exercise list live elsewhere (APP-BLUEPRINT §6 D, E).
+  function renderTodayTab(){
+    UI.screen='today';
+    var pkg=getPkg(), top=tabTop('<span class="qp-date">'+esc(dateLine())+'</span>');
+    if(!pkg) return todayEmpty(top);
+    var run=runInProgress(), tv=WeekPlan.todayView(pkg,progState(),planState(),planOpts());
+    var s=todayState(pkg,run,tv);
+    var html='<h1 class="qp-title t-today">Today</h1><div class="t-body" data-today="'+s.kind+'">'+
+      '<div class="t-main"><div class="qp-display t-name">'+s.name+'</div>'+(s.line?'<p class="t-line">'+s.line+'</p>':'')+'</div>'+
+      '<div class="t-cta">'+(s.primary?'<button class="qp-primary" '+s.primary.attr+'>'+esc(s.primary.label)+'</button>':'')+
+      (s.links||[]).map(function(l){ return '<button class="'+(l.tert?'qp-tert':'qp-link')+'" '+l.attr+'>'+esc(l.label)+'</button>'; }).join('')+'</div></div>';
+    var wrap=tabShell('today',top,html,{noBar:!!run});
+    wireToday(wrap);
+  }
+  // The state of Today. `name` and `line` are HTML; labels are text.
+  function todayState(pkg,run,tv){
+    var e=tv.entry;
+    if(run) return { kind:'progress', name:esc(itemName(run.workoutId)), line:'In progress',
+      primary:{label:'Resume',attr:'data-resumerun'}, links:[{label:'View workout',attr:'data-viewpw="'+esc(run.workoutId)+'"'}] };
+    if((tv.kind==='session'||tv.kind==='maxtest')&&!e.ready){
+      // Planned today, but the program has not reached it: what comes first.
+      var b=tv.blockedBy;
+      return { kind:'blocked', name:esc(itemName(e.item)),
+        line:b?esc(itemName(b.item)+(b.date?', planned '+dayName(b.date)+',':'')+' comes first.'):'',
+        primary:b?{label:'Do '+itemName(b.item)+' now',attr:'data-donow="'+esc(b.item)+'" data-from="'+(b.date||'')+'"'}:null,
+        links:[e.maxtest?{label:'What it measures',attr:'data-mtinfo'}:{label:'View workout',attr:'data-viewpw="'+esc(e.item)+'"'}] };
+    }
+    if(tv.kind==='session') return { kind:'session', name:esc(itemName(e.item)), line:'',
+      primary:{label:'Start workout',attr:'data-startpw="'+esc(e.item)+'"'}, links:[{label:'View workout',attr:'data-viewpw="'+esc(e.item)+'"'}] };
+    if(tv.kind==='maxtest'){
+      var n=pkg.maxTest.families.length;
+      return { kind:'maxtest', name:'Max Test', line:esc((NUMBER_WORDS[n]||n)+' short tests.'),
+        primary:{label:'Start test',attr:'data-startmt="'+esc(e.item)+'"'}, links:[{label:'What it measures',attr:'data-mtinfo'}] };
+    }
+    if(tv.kind==='done'){
+      var last=tv.doneToday[tv.doneToday.length-1], nx=nextText();
+      return { kind:'done', name:'<span class="t-ok">✓</span> '+esc(joinAnd(dedupe(tv.doneToday.map(function(x){ return itemName(x.item); }))))+' — done',
+        line:nx?'Next: '+esc(nx):'', links:[{label:'See results',attr:'data-results="'+esc(last.eventId)+'"'+(last.maxtest?' data-mt="1"':'')}] };
+    }
+    if(tv.kind==='recovery') return { kind:'recovery', name:'Recovery week',
+      line:'About half your usual effort: last week’s workouts lighter, or something different.',
+      primary:{label:'View last week’s workouts',attr:'data-recovery'}, links:[{label:'Mark the recovery week done',attr:'data-deloaddone',tert:true}] };
+    // An open day.
+    if(tv.missed) return { kind:'missed', name:'Open day', line:esc(itemName(tv.missed.item)+' wasn’t done on '+dayName(tv.missed.date)+'.'),
+      primary:{label:'Do '+itemName(tv.missed.item)+' now',attr:'data-donow="'+esc(tv.missed.item)+'" data-from="'+tv.missed.date+'"'},
+      links:[{label:'Train something else',attr:'data-train'}] };
+    var line='Nothing planned today.';
+    if(tv.weekDone){
+      var first=WeekPlan.openItems(pkg,progState()).required[0];
+      var nx2=tv.next?itemName(tv.next.item)+', '+dayShort(tv.next.date):first?itemName(first):'';
+      line='This week’s training is done.'+(nx2?' Next: '+nx2+'.':'');
+    }
+    if(!tv.week.position) line='The Beginner Program is complete.';
+    return { kind:'open', name:'Open day', line:esc(line), primary:{label:'Train anyway',attr:'data-train'} };
+  }
+  function wireToday(wrap){
+    on('[data-startpw]','click',function(e){ startProgramRun(e.currentTarget.dataset.startpw); },wrap);
+    on('[data-viewpw]','click',function(e){ viewWorkoutSheet(e.currentTarget.dataset.viewpw); },wrap);
+    on('[data-startmt]','click',function(e){ renderMaxTest(e.currentTarget.dataset.startmt); },wrap);
+    on('[data-mtinfo]','click',function(){ maxTestInfoSheet(); },wrap);
+    on('[data-donow]','click',function(e){ doNow(e.currentTarget.dataset.donow,e.currentTarget.dataset.from||null); },wrap);
+    on('[data-train]','click',function(){ trainAnywaySheet(); },wrap);
+    on('[data-results]','click',function(e){ var d=e.currentTarget.dataset; if(d.mt) maxTestResultSheet(d.results); else historySheet(d.results,renderTodayTab); },wrap);
+    on('[data-recovery]','click',function(){ recoverySheet(); },wrap);
+    on('[data-deloaddone]','click',function(){ markRecoveryDone(renderTodayTab); },wrap);
+  }
+  // No program on the device yet. TEMPORARY IMPLEMENTATION CONSTRAINT: the
+  // course content cannot be served, so the athlete imports it once.
+  function todayEmpty(top){
+    var html='<h1 class="qp-title t-today">Today</h1><div class="t-body" data-today="empty"><div class="t-main"><div class="qp-display t-name">Add your program to start</div>'+
+      '<p class="t-line">It stays on this device and works offline.</p></div>'+
+      '<div class="t-cta"><input type="file" accept="application/json,.json" data-pkgfile hidden>'+
+      '<button class="qp-primary" data-pkgimport>Import program file</button>'+
+      '<p class="qp-temp"><b>Temporary.</b> The program file is imported by hand until the program can be delivered to the app.</p></div></div>';
+    var wrap=tabShell('today',top,html);
+    wirePkgImport(wrap,function(){ setScreen('today'); });
+  }
+  // Train it now. Something planned for another day (or not placed) moves to
+  // today, then starts: the athlete's own choice, so no second question.
+  function doNow(item,from){
+    var run=runInProgress();
+    if(run&&run.workoutId!==item){
+      if(!confirm('Another workout is in progress. Discard it and start this one?')) return;
+      Store.del(RUN_KEY); UI.prun=null;
+    }
+    var today=todayKey();
+    if(from!==today) planAdd(WeekPlan.changeEvents(weekNow(),[{item:item,from:from,to:today,reason:'athlete'}]));
+    startItem(item);
+  }
+  function startItem(item){
+    if(WeekPlan.isMaxTest(getPkg(),item)) return renderMaxTest(item);
+    startProgramRun(item);
+  }
+
+  // ---- sheets from Today and Plan --------------------------------------------
+  // Train anyway (APP-BLUEPRINT §6 E, v1): this week's work, then a repeat.
+  function trainAnywaySheet(){
+    var pkg=getPkg(), st=progState(), view=weekNow(), today=todayKey(), rows=[];
+    view.days.forEach(function(d){
+      if(d.date===today) return;
+      d.entries.forEach(function(e){ if(e.kind==='placed'&&e.state!=='done'&&e.ready) rows.push({item:e.item,from:e.date,note:(e.state==='missed'?'not done ':'planned ')+dayShort(e.date)}); });
+    });
+    view.tray.forEach(function(i){ if(WeekPlan.ready(pkg,st,i)) rows.push({item:i,from:null,note:pkg.workouts[i]&&pkg.workouts[i].optional?'':'not placed'}); });
+    var html='<div class="grip"></div><h2 class="sh-title">Train anyway</h2>'+
+      (rows.length?'<div class="sh-label">From this week</div><p class="sh-cap">Choosing one moves it to today.</p>'+rows.map(function(r,k){
+        return '<button class="sh-row" data-pick="'+k+'" data-item="'+esc(r.item)+'"><span class="sh-main">'+esc(rowName(r.item))+'</span><span class="sh-note">'+esc(r.note)+'</span><span class="sr-arrow">&rsaquo;</span></button>'; }).join(''):'')+
+      '<button class="sh-row sh-row-gap" data-repeat><span class="sh-main">Repeat a recent workout</span><span class="sr-arrow">&rsaquo;</span></button>'+
+      '<button class="qp-link sh-close" data-close>Close</button>';
+    showSheet(html,function(sheet){
+      on('[data-close]','click',closeSheet,sheet);
+      on('[data-pick]','click',function(e){ var r=rows[+e.currentTarget.dataset.pick]; closeSheet(); doNow(r.item,r.from); },sheet);
+      on('[data-repeat]','click',function(){ repeatSheet(); },sheet);
+    });
+  }
+  // A workout done before, done again: it adds a record and moves nothing.
+  function repeatSheet(){
+    var pkg=getPkg(), list=WeekPlan.recentWorkouts(pkg,progState(),6);
+    showSheet('<div class="grip"></div><h2 class="sh-title">Repeat a recent workout</h2>'+
+      (list.length?list.map(function(id){ var w=pkg.workouts[id];
+        return '<button class="sh-row" data-again="'+esc(id)+'"><span class="sh-main">'+esc(rowName(id))+'</span><span class="sh-note">Phase '+w.phase+' · Week '+w.week+'</span><span class="sr-arrow">&rsaquo;</span></button>'; }).join(''):'<p class="sh-cap">No workouts done yet.</p>')+
+      '<button class="qp-link sh-close" data-close>Close</button>',function(sheet){
+      on('[data-close]','click',closeSheet,sheet);
+      on('[data-again]','click',function(e){ var id=e.currentTarget.dataset.again; closeSheet(); startProgramRun(id); },sheet);
+    });
+  }
+  // View workout: the program's prescription for one workout, in its order
+  // (the earlier workout preview, lighter).
+  function viewWorkoutSheet(id){
+    var pkg=getPkg(), w=pkg&&pkg.workouts[id]; if(!w) return;
+    var n=Program.requiredOf(pkg,'P'+w.phase+'W'+w.week).length;
+    var html='<div class="grip"></div><div class="sh-kicker">'+esc(w.optional?'Optional session':'Workout '+w.slot+' of '+n)+'</div>'+
+      '<h2 class="sh-title">'+esc(w.optional?'Legs':shortTitle(w))+'</h2>'+(w.header?'<p class="sh-cap">'+esc(w.header)+'</p>':'')+
+      (w.warmup&&w.warmup.length?'<div class="sh-label">Warm-up</div>'+w.warmup.map(function(x){ return '<div class="vw-li"><span>'+esc(x.name)+'</span><span>'+esc(x.dose)+'</span></div>'; }).join(''):'')+
+      '<div class="sh-label">The workout</div><div class="vw-blocks">'+w.blocks.map(vwBlock).join('')+'</div>'+
+      (w.cooldown?'<div class="sh-label">'+esc(w.cooldown.label)+'</div><div class="vw-li"><span>'+esc(w.cooldown.name)+'</span><span>'+esc(w.cooldown.dose)+'</span></div>':'')+
+      '<p class="sh-src">From the program'+(w.url?' · <a href="'+esc(w.url)+'" target="_blank" rel="noopener">Calixpert lesson ↗</a>':'')+'</p>'+
+      '<button class="qp-link sh-close" data-close>Close</button>';
+    showSheet(html,function(sheet){ on('[data-close]','click',closeSheet,sheet); });
+  }
+  function vwBlock(b){
+    var chosen=b.hard?lastVariant(b.easy):'easy', strip=function(s){ return String(s||'').replace(/^Pyramid EMOM:\s*/,''); }, name;
+    if(b.kind==='exercise'||(b.kind==='emom'&&b.style==='pyramid')) name=b.hard?
+      '<div class="vw-var'+(chosen==='easy'?' on':'')+'">Easy · '+esc(strip(b.easy))+'</div><div class="vw-var'+(chosen==='hard'?' on':'')+'">Hard · '+esc(strip(b.hard))+'</div>':
+      '<div class="vw-ex">'+esc(blockName(b,'easy'))+'</div>';
+    else if(b.kind==='emom') name='<div class="vw-ex">'+esc(b.style==='single'?b.exercise:'EMOM')+'</div>'+emomPlan(b);
+    else name='<div class="vw-ex">'+esc(b.kind==='amrap'?'AMRAP':'Circuit')+'</div>';
+    var items=b.items?b.items.map(function(it){ return '<div class="vw-li"><span>'+esc(it.easy)+(it.hard?' / '+esc(it.hard):'')+'</span><span>'+doseText(it.dose)+'</span></div>'; }).join(''):'';
+    return '<div class="vw-block">'+name+'<div class="vw-pres">'+blockPrescription(b)+'</div>'+items+'</div>';
+  }
+  // What the Max Test measures, from the program.
+  function maxTestInfoSheet(){
+    var mt=getPkg().maxTest;
+    var fams=(mt.order||[]).map(function(id){ return mt.families.filter(function(f){ return f.id===id; })[0]; }).filter(Boolean);
+    if(!fams.length) fams=mt.families;
+    showSheet('<div class="grip"></div><h2 class="sh-title">Max Test</h2><p class="sh-cap">'+esc((NUMBER_WORDS[fams.length]||fams.length)+' short tests that record where you are. Nothing is passed or failed.')+'</p>'+
+      '<div class="sh-label">The tests, in order</div>'+fams.map(function(f){ return '<div class="vw-li"><span>'+esc(f.label)+'</span><span>'+(f.unit==='sec'?'seconds held':'reps')+'</span></div>'; }).join('')+
+      (mt.notes||[]).map(function(x){ return '<p class="sh-cap">'+esc(x.text)+'</p>'; }).join('')+
+      '<p class="sh-src">From the program'+(mt.url?' · <a href="'+esc(mt.url)+'" target="_blank" rel="noopener">Calixpert lesson ↗</a>':'')+'</p>'+
+      '<button class="qp-link sh-close" data-close>Close</button>',function(sheet){ on('[data-close]','click',closeSheet,sheet); });
+  }
+  function maxTestResultSheet(eventId){
+    var pkg=getPkg(), st=progState(), ev=Program.ofType(st,'maxtest_recorded').filter(function(e){ return e.id===eventId; })[0]; if(!ev) return;
+    var n=Program.pathView(pkg,st).nodes.filter(function(x){ return x.id===ev.nodeId; })[0]; if(n) maxTestSheet(pkg,st,n);
+  }
+  // The recovery week (a deload): the program's guidance verbatim, and last
+  // week's workouts to repeat lighter. No workout is generated for it (D5).
+  function recoverySheet(nodeId){
+    var pkg=getPkg(), st=progState(), v=Program.pathView(pkg,st);
+    var n=nodeId?v.nodes.filter(function(x){ return x.id===nodeId; })[0]:(v.current&&v.current.type==='deload'?v.current:null);
+    if(!n) return;
+    var done=Program.ofType(st,'deload_completed').filter(function(e){ return e.nodeId===n.id; }).pop();
+    var last=v.nodes.slice(0,n.index).filter(function(x){ return x.type==='week'; }).pop();
+    var body='', list=[];
+    function flush(){ if(list.length){ body+='<ul class="fp-ul">'+list.map(function(t){ return '<li>'+esc(t)+'</li>'; }).join('')+'</ul>'; list=[]; } }
+    pkg.deload.text.forEach(function(t){ var m=t.match(/^-\s*(.*)$/); if(m) list.push(m[1]); else { flush(); body+='<p>'+esc(t)+'</p>'; } });
+    flush();
+    var rows=last?pkg.weeks[last.id].workouts.map(function(id){ return '<button class="sh-row" data-viewpw="'+esc(id)+'"><span class="sh-main">'+esc(rowName(id))+'</span><span class="sr-arrow">&rsaquo;</span></button>'; }).join(''):'';
+    showSheet('<div class="grip"></div><div class="sh-kicker">Phase '+n.phase+'</div><h2 class="sh-title">Recovery week</h2>'+
+      '<div class="sh-label">From the program</div><div class="fp-deload rc-text">'+body+'</div>'+
+      (rows?'<div class="sh-label">Last week’s workouts · Week '+last.week+'</div>'+rows:'')+
+      (done?'<p class="sh-cap rc-done">✓ Done '+esc(fmtDate(done.date||done.at))+'</p>':n.status==='current'?'<button class="qp-tert" data-deloaddone>Mark the recovery week done</button>':'')+
+      '<button class="qp-link sh-close" data-close>Close</button>',function(sheet){
+      on('[data-close]','click',closeSheet,sheet);
+      on('[data-viewpw]','click',function(e){ viewWorkoutSheet(e.currentTarget.dataset.viewpw); },sheet);
+      on('[data-deloaddone]','click',function(){ markRecoveryDone(function(){ closeSheet(); setScreen(UI.screen==='program'?'program':(UI.tab||'today')); }); },sheet);
+    });
+  }
+  function markRecoveryDone(after){
+    var pkg=getPkg(), v=Program.pathView(pkg,progState()), n=v.current;
+    if(!n||n.type!=='deload') return;
+    var nx=v.nodes[n.index+1];
+    if(!confirm('Mark the recovery week done?'+(nx?' '+nodeLabel(pkg,nx)+' comes next.':''))) return;
+    progAdd({type:'deload_completed',nodeId:n.id,kind:'planned-recovery',date:new Date().toISOString()});
+    toast('Recovery week done.');
+    after();
+  }
+
+  // ---- Plan -----------------------------------------------------------------
+  // The athlete's week: what is on which day, what is done, what was not.
+  // Reading first; Edit is the one control (APP-BLUEPRINT §6 F, G).
+  function renderPlanTab(){
+    UI.screen='plan';
+    var pkg=getPkg();
+    if(!pkg){ tabShell('plan',tabTop('<h1 class="qp-title">This week</h1>'),'<p class="pl-pos">No program on this device yet. Add it from Today.</p>'); return; }
+    var st=progState(), view=weekNow(), editing=!!UI.planEdit&&!view.recovery;
+    var pos=view.position;
+    var top=tabTop('<h1 class="qp-title">This week</h1>',view.recovery?'':'<button class="qp-toplink" data-planedit>'+(editing?'Done':'Edit')+'</button>');
+    var proposed=!view.accepted&&!view.recovery&&view.placements.length>0;
+    var html='<p class="pl-pos">'+esc(positionText(pos)+(pos&&pos.type==='week'?' · '+pos.done+' of '+pos.total+' done':''))+'</p>'+
+      (proposed?'<p class="pl-kicker">Proposed week</p>':'');
+    html+='<div class="pl-week'+(editing?' editing':'')+'">';
+    view.days.forEach(function(d){ if(!view.recovery||d.entries.length) html+=dayRowHtml(d,editing); });
+    html+='</div>';
+    if(view.recovery) html+='<div class="pl-band"><div class="pl-band-t">Recovery week</div><p class="qp-cap">About half your usual effort.</p>'+
+      '<div class="pl-band-links"><button class="qp-tert" data-recovery>What the program says</button><button class="qp-tert" data-deloaddone>Mark done</button></div></div>';
+    if(view.tray.length) html+='<div class="pl-tray"><p class="qp-label">Not placed</p>'+view.tray.map(function(i){
+      return '<div class="pl-trow"><span class="pl-tname">'+esc(rowName(i))+'</span>'+(WeekPlan.ready(pkg,st,i)?'<button class="pl-place" data-place="'+esc(i)+'">Place</button>':'')+'</div>'; }).join('')+'</div>';
+    if(!view.trainingDaysSet&&!view.recovery) html+='<button class="pl-setdays" data-gotdays><span>Choose your training days to plan the week</span><span class="sr-arrow">&rsaquo;</span></button>';
+    var sg=view.suggestion;
+    if(sg&&!editing&&UI.suggestOff!==view.weekStart){
+      var names=joinAnd(dedupe(sg.placements.map(function(p){ return WeekPlan.isMaxTest(pkg,p.item)?'the Max Test':itemName(p.item); })));
+      html+='<div class="pl-suggest"><p class="pl-sgq">'+(sg.finished?esc(sg.finished)+' is done. ':'')+'Plan the rest of this week with '+esc(names)+'?</p>'+
+        '<p class="qp-cap">'+esc(sg.placements.map(function(p){ return dayShort(p.date)+' · '+itemName(p.item); }).join(', '))+'</p>'+
+        '<button class="qp-primary" data-suggestok>Accept</button><button class="qp-link" data-suggestno>Not now</button></div>';
+    }
+    if(proposed&&!editing) html+='<div class="pl-accept"><button class="qp-primary" data-acceptweek>Accept week</button><button class="qp-link" data-planedit>Edit first</button></div>';
+    if(editing) html+='<button class="qp-tert pl-usual" data-gotdays>Usual training days</button>';
+    if(!editing){
+      var v=Program.pathView(pkg,st);
+      if(view.next.length) html+='<div class="pl-next"><p class="qp-label">Next</p>'+view.next.map(function(n){ var t=nextNodeText(pkg,v,n); return '<div class="pl-nrow"><span>'+esc(t[0])+'</span><span>'+esc(t[1])+'</span></div>'; }).join('')+'</div>';
+      html+='<button class="pl-prog" data-program><span>The program</span><span class="sr-arrow">&rsaquo;</span></button>';
+    }
+    var wrap=tabShell('plan',top,html);
+    on('[data-planedit]','click',function(){ UI.planEdit=!UI.planEdit; keepScroll(renderPlanTab); },wrap);
+    on('[data-entry]','click',function(e){ var p=e.currentTarget.dataset.entry.split('|'), d=view.days.filter(function(x){ return x.date===p[0]; })[0]; openEntry(d&&d.entries[+p[1]]); },wrap);
+    on('[data-dayact]','click',function(e){ dayActionsSheet(e.currentTarget.dataset.dayact); },wrap);
+    on('[data-place]','click',function(e){ placeItemSheet(e.currentTarget.dataset.place); },wrap);
+    on('[data-acceptweek]','click',function(){ planAdd(WeekPlan.acceptEvents(weekNow())); toast('Week accepted.'); keepScroll(renderPlanTab); },wrap);
+    on('[data-suggestok]','click',function(){
+      var now=weekNow(); if(!now.suggestion) return;
+      planAdd(WeekPlan.changeEvents(now,now.suggestion.placements.map(function(p){ return {item:p.item,from:null,to:p.date,reason:'suggestion'}; })));
+      toast('Added to this week.'); keepScroll(renderPlanTab);
+    },wrap);
+    on('[data-suggestno]','click',function(){ UI.suggestOff=view.weekStart; keepScroll(renderPlanTab); },wrap);
+    on('[data-program]','click',function(){ setScreen('program'); },wrap);
+    on('[data-gotdays]','click',function(){ settingsView='days'; setScreen('settings'); },wrap);
+    on('[data-recovery]','click',function(){ recoverySheet(); },wrap);
+    on('[data-deloaddone]','click',function(){ markRecoveryDone(function(){ keepScroll(renderPlanTab); }); },wrap);
+  }
+  // One day of the week. In Edit the whole row opens the day's actions.
+  function dayRowHtml(d,editing){
+    var cls='pl-day'+(d.isToday?' is-today':'')+(d.past?' past':'');
+    var body=!d.entries.length?(d.unavailable?'<span class="pl-unav">unavailable</span>':'<span class="pl-empty">—</span>'):
+      d.entries.map(function(e,k){ return entryHtml(d,e,k,editing); }).join('')+(d.unavailable?'<span class="pl-unav">unavailable</span>':'');
+    var date='<span class="pl-dw">'+dayShort(d.date)+'</span><span class="pl-dn">'+dayNum(d.date)+'</span>';
+    if(editing) return '<button class="'+cls+' pl-edit" data-dayact="'+d.date+'"><span class="pl-date">'+date+'</span><span class="pl-body">'+body+'</span><span class="pl-chev" aria-hidden="true">&rsaquo;</span></button>';
+    return '<div class="'+cls+'" data-day="'+d.date+'"><span class="pl-date">'+date+'</span><div class="pl-body">'+body+'</div></div>';
+  }
+  function entryHtml(d,e,k,editing){
+    var mark=e.state==='done'?'✓':e.state==='today'?'●':'';
+    var state=e.state==='today'?'today':e.state==='missed'?'not done':'';
+    var notes=[];
+    if(e.movedFrom) notes.push('moved from '+dayShort(e.movedFrom));
+    if(e.doneOn) notes.push('done '+dayShort(e.doneOn));
+    var inner='<span class="pl-mark" aria-hidden="true">'+mark+'</span><span class="pl-name">'+esc(rowName(e.item))+'</span>'+(state?'<span class="pl-state">'+state+'</span>':'')+
+      (notes.length?'<span class="pl-note">'+esc(notes.join(' · '))+'</span>':'');
+    if(editing) return '<span class="pl-entry s-'+e.state+'">'+inner+'</span>';
+    return '<button class="pl-entry s-'+e.state+'" data-entry="'+d.date+'|'+k+'">'+inner+'</button>';
+  }
+  // A day's session: its results when done, else what it is.
+  function openEntry(e){
+    if(!e) return;
+    if(e.state==='done'&&e.eventId){
+      if(e.maxtest) return maxTestResultSheet(e.eventId);
+      return historySheet(e.eventId,function(){ keepScroll(renderPlanTab); });
+    }
+    if(e.maxtest) return maxTestInfoSheet();
+    viewWorkoutSheet(e.item);
+  }
+  function nextNodeText(pkg,v,n){
+    var cur=v.current;
+    if(n.type==='maxtest'){
+      var before=v.nodes[n.index-1];
+      if(cur&&before&&before.id===cur.id&&cur.type==='week') return ['Max Test','after this week’s '+Program.requiredOf(pkg,cur.id).length+' workouts'];
+      return ['Max Test',before&&before.type==='week'?'after Week '+before.week:'five short tests'];
+    }
+    if(n.type==='deload') return ['Phase '+n.phase,'starts with a recovery week'];
+    if(n.type==='week') return ['Week '+n.week+(cur&&cur.phase&&cur.phase!==n.phase?' · Phase '+n.phase:''),Program.requiredOf(pkg,n.id).length+' workouts'];
+    if(n.type==='exit') return ['Foundation','the six standards, in Goals'];
+    return [n.id,''];
+  }
+
+  // ---- Edit week: the day actions (APP-BLUEPRINT §6 G) -------------------------
+  // Every change applies at once and shows in the row ("moved from Tue"). A
+  // change to a proposed week stores that proposal first, exactly as shown.
+  function applyPlan(changes,msg){
+    planAdd(WeekPlan.changeEvents(weekNow(),changes));
+    closeSheet(); if(msg) toast(msg);
+    keepScroll(renderPlanTab);
+  }
+  function dayActionsSheet(date){
+    var pkg=getPkg(), st=progState(), view=weekNow(), d=view.days.filter(function(x){ return x.date===date; })[0]; if(!d) return;
+    var todo=d.entries.filter(function(e){ return e.kind==='placed'&&e.state!=='done'; }), e=todo[0], name=dayName(date), rows=[];
+    function row(act,label,note){ rows.push('<button class="sh-row" data-act="'+act+'"><span class="sh-main">'+esc(label)+'</span>'+(note?'<span class="sh-note">'+esc(note)+'</span>':'')+'<span class="sr-arrow">&rsaquo;</span></button>'); }
+    if(e){
+      row('move','Move to another day');
+      row('swap','Swap with another day');
+      row('replace','Replace with…','Legs · a recent workout · rest');
+      row('remove','Remove from this week','to Not placed');
+    } else if(!d.past&&!d.unavailable&&view.tray.some(function(i){ return WeekPlan.ready(pkg,st,i); })) row('place','Place a workout here');
+    if(!d.past) row(d.unavailable?'available':'unavailable',d.unavailable?'Mark '+name+' available':'Mark '+name+' unavailable');
+    var done=d.entries.filter(function(x){ return x.state==='done'; });
+    showSheet('<div class="grip"></div><h2 class="sh-title">'+esc(name+' '+dayNum(date)+(e?' · '+itemName(e.item):''))+'</h2>'+
+      (done.length?'<p class="sh-cap">Done: '+esc(joinAnd(done.map(function(x){ return itemName(x.item); })))+'. Its results are in History.</p>':'')+
+      (rows.length?rows.join(''):'<p class="sh-cap">This day has passed.</p>')+
+      (todo.length>1?'<p class="sh-cap">'+esc(itemName(todo[1].item))+' is also on this day.</p>':'')+
+      '<button class="qp-link sh-close" data-close>Close</button>',function(sheet){
+      on('[data-close]','click',closeSheet,sheet);
+      on('[data-act]','click',function(ev){
+        var act=ev.currentTarget.dataset.act;
+        if(act==='move') return pickDaySheet('Move '+itemName(e.item)+' to',date,'any',function(to,occ){
+          if(occ) return swapSheet(e.item,date,occ.item,to);
+          applyPlan([{item:e.item,from:date,to:to}]);
+        });
+        if(act==='swap') return pickDaySheet('Swap '+itemName(e.item)+' with',date,'occupied',function(to,occ){ applyPlan([{item:e.item,from:date,to:to},{item:occ.item,from:to,to:date}]); });
+        if(act==='replace') return replaceSheet(e,date);
+        if(act==='remove') return applyPlan([{item:e.item,from:date,to:null}],itemName(e.item)+' is under Not placed.');
+        if(act==='place') return placeHereSheet(date);
+        if(act==='unavailable') return markUnavailable(date,todo);
+        if(act==='available'){ planAdd([{type:'day_available',date:date}]); closeSheet(); keepScroll(renderPlanTab); }
+      },sheet);
+    });
+  }
+  // Pick a day of this week, today or later. `which`: 'any', 'occupied'
+  // (holding something still to do) or 'empty'.
+  function pickDaySheet(title,exclude,which,onPick){
+    var rows=[];
+    weekNow().days.forEach(function(d){
+      if(d.date===exclude||d.past||d.unavailable) return;
+      var occ=d.entries.filter(function(x){ return x.kind==='placed'&&x.state!=='done'; })[0]||null;
+      if((which==='occupied'&&!occ)||(which==='empty'&&occ)) return;
+      rows.push({date:d.date,occ:occ});
+    });
+    showSheet('<div class="grip"></div><h2 class="sh-title">'+esc(title)+'</h2>'+
+      (rows.length?rows.map(function(r,k){ return '<button class="sh-row" data-pickday="'+k+'"><span class="sh-main">'+esc(dayName(r.date)+' '+dayNum(r.date))+'</span><span class="sh-note">'+esc(r.occ?itemName(r.occ.item):'—')+'</span><span class="sr-arrow">&rsaquo;</span></button>'; }).join(''):'<p class="sh-cap">There is no such day left this week.</p>')+
+      '<button class="qp-link sh-close" data-close>Cancel</button>',function(sheet){
+      on('[data-close]','click',closeSheet,sheet);
+      on('[data-pickday]','click',function(e){ var r=rows[+e.currentTarget.dataset.pickday]; onPick(r.date,r.occ); },sheet);
+    });
+  }
+  // A move onto a day that already holds a session offers a swap instead of
+  // stacking two.
+  function swapSheet(a,aDate,b,bDate){
+    showSheet('<div class="grip"></div><h2 class="sh-title">'+esc(dayName(bDate)+' has '+itemName(b))+'</h2>'+
+      '<p class="sh-cap">'+esc('Swap them? '+itemName(a)+' goes to '+dayName(bDate)+', and '+itemName(b)+' to '+dayName(aDate)+'.')+'</p>'+
+      '<button class="qp-primary" data-swapok>Swap</button><button class="qp-link" data-close>Cancel</button>',function(sheet){
+      on('[data-close]','click',closeSheet,sheet);
+      on('[data-swapok]','click',function(){ applyPlan([{item:a,from:aDate,to:bDate},{item:b,from:bDate,to:aDate}]); },sheet);
+    });
+  }
+  // Replace: the program workout goes to Not placed; the day holds the
+  // replacement. The program position is not affected.
+  function replaceSheet(e,date){
+    var pkg=getPkg(), st=progState(), view=weekNow(), placedAt={};
+    view.entries.forEach(function(x){ if(x.kind==='placed') placedAt[x.item]=x.date; });
+    var opts=WeekPlan.openItems(pkg,st).optional.filter(function(o){ return o!==e.item; });
+    var recent=WeekPlan.recentWorkouts(pkg,st,4).filter(function(i){ return i!==e.item&&!placedAt[i]; });
+    var rows=opts.map(function(o){ return {item:o,label:rowName(o),note:''}; }).concat(recent.map(function(i){ var w=pkg.workouts[i]; return {item:i,label:rowName(i),note:'repeat · Week '+w.week}; }));
+    showSheet('<div class="grip"></div><h2 class="sh-title">'+esc('Replace '+itemName(e.item)+' with')+'</h2><p class="sh-cap">'+esc(itemName(e.item))+' goes to Not placed.</p>'+
+      rows.map(function(r,k){ return '<button class="sh-row" data-rep="'+k+'"><span class="sh-main">'+esc(r.label)+'</span>'+(r.note?'<span class="sh-note">'+esc(r.note)+'</span>':'')+'<span class="sr-arrow">&rsaquo;</span></button>'; }).join('')+
+      '<button class="sh-row" data-rest><span class="sh-main">Rest</span><span class="sh-note">nothing on '+esc(dayName(date))+'</span><span class="sr-arrow">&rsaquo;</span></button>'+
+      '<button class="qp-link sh-close" data-close>Cancel</button>',function(sheet){
+      on('[data-close]','click',closeSheet,sheet);
+      on('[data-rep]','click',function(ev){ var r=rows[+ev.currentTarget.dataset.rep]; applyPlan([{item:e.item,from:date,to:null},{item:r.item,from:placedAt[r.item]||null,to:date}]); },sheet);
+      on('[data-rest]','click',function(){ applyPlan([{item:e.item,from:date,to:null}]); },sheet);
+    });
+  }
+  function placeHereSheet(date){
+    var pkg=getPkg(), st=progState(), items=weekNow().tray.filter(function(i){ return WeekPlan.ready(pkg,st,i); });
+    showSheet('<div class="grip"></div><h2 class="sh-title">'+esc('Place on '+dayName(date)+' '+dayNum(date))+'</h2>'+
+      items.map(function(i){ return '<button class="sh-row" data-placeit="'+esc(i)+'"><span class="sh-main">'+esc(rowName(i))+'</span><span class="sr-arrow">&rsaquo;</span></button>'; }).join('')+
+      '<button class="qp-link sh-close" data-close>Cancel</button>',function(sheet){
+      on('[data-close]','click',closeSheet,sheet);
+      on('[data-placeit]','click',function(ev){ applyPlan([{item:ev.currentTarget.dataset.placeit,from:null,to:date}]); },sheet);
+    });
+  }
+  function placeItemSheet(item){
+    pickDaySheet('Place '+itemName(item)+' on',null,'empty',function(to){ applyPlan([{item:item,from:null,to:to}]); });
+  }
+  // An unavailable day: its session goes to Not placed, and the coach offers
+  // the next free training day — a suggestion, never a silent move.
+  function markUnavailable(date,todo){
+    var view=weekNow();
+    planAdd([{type:'day_unavailable',date:date}].concat(WeekPlan.changeEvents(view,todo.map(function(x){ return {item:x.item,from:date,to:null}; }))));
+    closeSheet();
+    keepScroll(renderPlanTab);
+    if(!todo.length) return;
+    var it=todo[0].item, free=WeekPlan.nextFreeDay(weekNow(),date,planOpts().trainingDays);
+    if(!free) return toast(itemName(it)+' is under Not placed.');
+    showSheet('<div class="grip"></div><h2 class="sh-title">'+esc('Move '+itemName(it)+' to '+dayName(free)+'?')+'</h2>'+
+      '<p class="sh-cap">'+esc(dayName(date)+' is unavailable, so '+itemName(it)+' is under Not placed.')+'</p>'+
+      '<button class="qp-primary" data-mvok>'+esc('Move to '+dayName(free))+'</button><button class="qp-link" data-close>Leave in Not placed</button>',function(sheet){
+      on('[data-close]','click',closeSheet,sheet);
+      on('[data-mvok]','click',function(){ applyPlan([{item:it,from:null,to:free,reason:'suggestion'}]); },sheet);
+    });
+  }
+
+  // ---- Plan › The program ----------------------------------------------------
+  // The whole Beginner Program with "you are here". What came before the
+  // athlete's starting point is "placed past", never "done".
+  function renderProgramOverview(){
+    UI.screen='program';
+    var pkg=getPkg(); if(!pkg) return setScreen('plan');
+    var st=progState(), v=Program.pathView(pkg,st);
+    var startPhase=(v.nodes[v.startIndex]||{}).phase||1;
+    var firstOfStart=v.nodes.findIndex(function(n){ return n.phase===startPhase&&(n.type==='week'||n.type==='deload'); });
+    var placedBefore=v.nodes.filter(function(n,i){ return n.status==='placed'&&i<firstOfStart; });
+    var html='<div class="qp-top"><div class="qp-top-l"><button class="qp-back" data-backplan>&lsaquo; Plan</button></div></div>'+
+      '<h1 class="qp-title">The program</h1><p class="qp-cap po-src">'+esc(pkg.title+' · '+pkg.publisher)+'</p>';
+    if(placedBefore.length){
+      var labels=[]; placedBefore.forEach(function(n){ var l=n.type==='maxtest'?(n.id==='MT0'?'Max Test':null):'Phase '+n.phase; if(l&&labels.indexOf(l)<0) labels.push(l); });
+      html+='<button class="po-row po-placed" data-placedinfo><span class="po-l">Placed past</span><span class="po-r">'+esc(labels.join(' · '))+'</span></button>';
+    }
+    var lastPhase=null;
+    v.nodes.forEach(function(n,i){
+      if(i<firstOfStart&&n.status==='placed') return;
+      var ph=n.type==='exit'?'coach':(n.phase||n.afterPhase||n.before||0);
+      if(ph!==lastPhase){ lastPhase=ph; html+='<p class="qp-label po-ph">'+(ph==='coach'?'Coach':'Phase '+ph)+'</p>'; }
+      html+=poRowHtml(pkg,st,n);
+    });
+    var wrap=shell(html,'plan');
+    on('[data-backplan]','click',function(){ setScreen('plan'); },wrap);
+    on('[data-placedinfo]','click',function(){ placedSheet(pkg,v); },wrap);
+    on('[data-node]','click',function(e){ openProgramNode(e.currentTarget.dataset.node); },wrap);
+    var c=wrap.querySelector('.po-row.s-current'); if(c&&c.scrollIntoView){ try{ c.scrollIntoView({block:'center'}); }catch(e){ c.scrollIntoView(); } }
+  }
+  function poRowHtml(pkg,st,n){
+    var label=n.type==='week'?'Week '+n.week:n.type==='maxtest'?'Max Test':n.type==='deload'?'Recovery week':'Foundation · six standards';
+    var right='';
+    if(n.status==='current'){ var wp=n.type==='week'?Program.weekProgress(pkg,st,n.id):null; right='you are here'+(wp?' · '+wp.done+' of '+wp.total:''); }
+    else if(n.status==='done') right=n.type==='maxtest'?'✓ recorded':n.type==='exit'?'✓ complete':'✓ done';
+    else if(n.status==='placed') right='placed past';
+    return '<button class="po-row s-'+n.status+' t-'+n.type+'" data-node="'+n.id+'"><span class="po-l">'+esc(label)+'</span><span class="po-r">'+esc(right)+'</span></button>';
+  }
+  function placedSheet(pkg,v){
+    var items=v.nodes.filter(function(n){ return n.status==='placed'; }).map(function(n){ return '<div class="vw-li"><span>'+esc(nodeLabel(pkg,n))+'</span><span>placed past</span></div>'; }).join('');
+    showSheet('<div class="grip"></div><h2 class="sh-title">Placed past</h2><p class="sh-cap">Your program starts at '+esc(nodeLabel(pkg,v.nodes[v.startIndex]))+'. Everything before it is placed past: not done here, and not counted as done. You can still open its weeks to look at the workouts.</p>'+items+
+      '<button class="qp-link sh-close" data-close>Close</button>',function(sheet){ on('[data-close]','click',closeSheet,sheet); });
+  }
+  function openProgramNode(id){
+    var pkg=getPkg(), st=progState(), n=Program.pathView(pkg,st).nodes.filter(function(x){ return x.id===id; })[0]; if(!n) return;
+    if(n.type==='week') return programWeekSheet(pkg,st,n);
+    if(n.type==='maxtest') return maxTestSheet(pkg,st,n);
+    if(n.type==='deload') return recoverySheet(n.id);
+    if(n.type==='exit') return setScreen('pexit');
+  }
+  function programWeekSheet(pkg,st,n){
+    var wp=Program.weekProgress(pkg,st,n.id);
+    var why=n.status==='upcoming'?'Opens when the program reaches it: the weeks before it are completed in order.':n.status==='placed'?'Placed past: not done here, and not counted as done. You can look at the workouts.':'';
+    var rows=wp.required.concat(wp.optional).map(function(r){
+      var note=r.status==='completed'?(r.reported?'✓ done · reported':'✓ done'):r.status==='placed'?'placed past':r.status==='missed'?'not done':'';
+      return '<button class="sh-row" data-pw="'+r.id+'"><span class="sh-main">'+esc(rowName(r.id))+'</span><span class="sh-note">'+esc(note)+'</span><span class="sr-arrow">&rsaquo;</span></button>';
+    }).join('');
+    showSheet('<div class="grip"></div><div class="sh-kicker">Phase '+n.phase+'</div><h2 class="sh-title">Week '+n.week+'</h2>'+(why?'<p class="sh-cap">'+esc(why)+'</p>':'')+rows+
+      '<button class="qp-link sh-close" data-close>Close</button>',function(sheet){
+      on('[data-close]','click',closeSheet,sheet);
+      on('[data-pw]','click',function(e){ openWorkoutRecord(e.currentTarget.dataset.pw); },sheet);
+    });
+  }
+  // A workout of the program: its record (results, and Delete) when it has one,
+  // otherwise the prescription.
+  function openWorkoutRecord(id){
+    var comps=Program.completions(progState(),id);
+    var rec=comps.filter(function(e){ return e.source!=='reported'; }).pop()||comps[comps.length-1];
+    if(rec) return historySheet(rec.id,function(){ keepScroll(renderProgramOverview); });
+    viewWorkoutSheet(id);
+  }
+
+  // ---- Goals (TRANSITIONAL) -----------------------------------------------------
+  // A minimal destination until the Goals rebuild: the overview rows of
+  // APP-BLUEPRINT §6 H over today's engine, with the existing Foundation screen
+  // and goal-entry checks behind them. This block is replaced as a whole by
+  // that rebuild; nothing outside it depends on its markup.
+  function entryNeedsText(g){
+    return joinAnd(g.needs.filter(function(n){ return !n.ok; }).map(function(n){ return n.need+' '+n.label.toLowerCase(); }));
+  }
+  function renderGoalsTab(){
+    UI.screen='goals';
+    var st=progState(), ac=Program.academyStatus(st), fs=Program.foundationStatus(st), html='';
+    ac.goals.forEach(function(g){
+      var line=g.status==='open'?'Open':g.status==='locked-entry'?'In the way: '+entryNeedsText(g):'In the way: Foundation';
+      html+='<button class="gl-row" data-goal="'+g.id+'"><span class="gl-main"><span class="gl-name">'+esc(g.label)+'</span><span class="gl-line">'+esc(line)+'</span></span><span class="sr-arrow">&rsaquo;</span></button>';
+    });
+    if(!fs.passed){
+      var n=fs.domains.filter(function(d){ return d.status==='pass'; }).length;
+      html+='<button class="gl-row" data-foundation><span class="gl-main"><span class="gl-name">Foundation</span><span class="gl-line">'+n+' of 6 confirmed</span><span class="gl-sub">View what’s missing</span></span><span class="sr-arrow">&rsaquo;</span></button>';
+    }
+    var foot=fs.passed?'<button class="gl-done" data-foundation>Foundation complete · '+esc(fmtDate(fs.passedAt))+'</button>':'';
+    var wrap=tabShell('goals',tabTop('<h1 class="qp-title">Goals</h1>'),'<div class="gl-list">'+html+'</div>'+foot);
+    on('[data-goal]','click',function(e){ goalSheet(e.currentTarget.dataset.goal); },wrap);
+    on('[data-foundation]','click',function(){ setScreen('pexit'); },wrap);
+  }
+  // TRANSITIONAL goal sheet: what opens the goal, and — once the Foundation is
+  // complete — the entry checks (the same evidence as the Foundation).
+  function goalSheet(id){
+    var st=progState(), g=Program.academyStatus(st).goals.filter(function(x){ return x.id===id; })[0], shown=[]; if(!g) return;
+    var body='<div class="grip"></div><h2 class="sh-title">'+esc(g.label)+'</h2>';
+    if(g.status==='locked-foundation') body+='<p class="sh-cap">Opens when the Foundation is complete.'+(g.needs.length?' Then, to start: '+esc(g.entryText)+'.':'')+'</p>'+
+      '<button class="sh-row" data-foundation><span class="sh-main">See the Foundation</span><span class="sr-arrow">&rsaquo;</span></button>';
+    else if(g.status==='locked-entry') body+='<p class="sh-cap">To start: '+esc(g.entryText)+'.</p>'+g.needs.map(function(n){
+      var cs=n.ok?[]:Program.trainingCandidates(st,{tests:[n.test]}).filter(function(c){ return c.value>=n.need; });
+      return '<div class="fp-li">'+esc(n.label)+'<span>'+(n.have==null?'—':n.have)+' / '+n.need+(n.ok?' ✓':'')+'</span></div>'+
+        cs.map(function(c){ return candHtml(c,shown.push(c)-1,true); }).join('')+
+        (n.ok?'':'<button class="btn ghost sm" data-rectest="'+n.test+'">Record '+esc(n.label.toLowerCase())+'</button>'); }).join('');
+    else body+='<p class="sh-cap">Open. The training inside this goal comes in a later version of the app.</p>';
+    showSheet(body+'<button class="qp-link sh-close" data-close>Close</button>',function(sheet){
+      on('[data-close]','click',closeSheet,sheet);
+      on('[data-foundation]','click',function(){ closeSheet(); setScreen('pexit'); },sheet);
+      on('[data-rectest]','click',function(e){ recordTestSheet(e.currentTarget.dataset.rectest,'ring-muscle-up-entry'); },sheet);
+      on('[data-evset]','click',function(e){ confirmSetSheet(shown[+e.currentTarget.dataset.evset],renderGoalsTab); },sheet);
+    });
+  }
+
+  // ---- Settings → Training days -------------------------------------------------
+  // The usual days, and whether optional sessions are planned (D4). They shape
+  // proposals only: an accepted week never changes because of them.
+  function renderTrainingDays(){
+    var p=Store.getProfile()||{}, days=p.days||[];
+    var html=settingsBackHeader('Training days')+
+      '<p class="qp-cap td-cap">The days your week is planned on. A change applies to weeks you have not accepted yet; an accepted week never changes by itself.</p>'+
+      '<div class="td-days" role="group" aria-label="Training days">'+WeekPlan.DAY_SHORT.map(function(d,i){ var on=days.indexOf(i)>=0; return '<button class="td-day'+(on?' on':'')+'" data-tday="'+i+'" aria-pressed="'+on+'">'+d+'</button>'; }).join('')+'</div>'+
+      '<div class="settings-row static"><div class="sr-main"><div class="sr-title">Include optional sessions</div><div class="muted small">Plan the optional Legs session too. Otherwise it waits under Not placed.</div></div>'+
+      '<button class="toggle '+(p.includeOptional?'on':'')+'" data-topt role="switch" aria-checked="'+(!!p.includeOptional)+'" aria-label="Include optional sessions"><span class="knob"></span></button></div>';
+    var wrap=shell(html,null); wireSettingsBack(wrap);
+    on('[data-tday]','click',function(e){ var i=+e.currentTarget.dataset.tday, a=(p.days||[]).slice(), k=a.indexOf(i); if(k>=0) a.splice(k,1); else a.push(i); a.sort(); p.days=a; Store.setProfile(p); renderTrainingDays(); },wrap);
+    on('[data-topt]','click',function(){ p.includeOptional=!p.includeOptional; Store.setProfile(p); renderTrainingDays(); },wrap);
   }
 
   window.addEventListener('online',sheetFlush);

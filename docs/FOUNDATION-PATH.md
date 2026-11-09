@@ -202,6 +202,11 @@ never copies a value.
     not offered. EMOM, AMRAP and circuits take no load. Old records without one
     render as before.
 
+28. The Path home (Path | Academy, its discs and week panel, the workout preview
+    and the deload screen) is replaced by the new shell, Today | Plan | Goals, with
+    the athlete's week plan (docs/APP-SHELL.md). The rules above are unchanged; only
+    where they are shown moved.
+
 ## 4. Not in this build
 - **Follow-up before full Academy progression:** unify workout evidence with the
   persistent Evidence Ledger (IndexedDB). Today the Foundation evaluator reads

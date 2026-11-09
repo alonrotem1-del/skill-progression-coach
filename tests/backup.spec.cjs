@@ -23,7 +23,8 @@ const Store = require('../store.js');
 const ROOT = path.join(__dirname, '..');
 const SOURCE_FILES = [
   'app.js', 'store.js', 'week.js', 'daily.js', 'settings.js',
-  'duration.js', 'adapt.js', 'data.js', 'engine.js', 'progress.js', 'backup.js'
+  'duration.js', 'adapt.js', 'data.js', 'engine.js', 'progress.js', 'backup.js',
+  'program.js', 'weekplan.js'
 ];
 
 // The same 16-key inventory the implementation plan's audit + this task's
@@ -34,6 +35,8 @@ const EXPECTED_KEYS = [
   'spc_c_workout', 'spc_c_day',
   // the Foundation Path (added additively; older backups stay restorable)
   'spc_c_program', 'spc_c_programrun', 'spc_c_programpkg', 'spc_c_programvariants',
+  // the athlete's week plan (added additively, like the Foundation Path keys)
+  'spc_c_weekplan',
   'puc_log', 'puc_plan', 'puc_settings', 'puc_session', 'puc_progression', 'puc_secondary'
 ];
 
@@ -73,9 +76,9 @@ function validBackup(overrides) {
 // ── Part A — pure module ────────────────────────────────────────────────
 
 test.describe('backup.js — key inventory', () => {
-  test('1 — the protected key list is exactly the 20 keys re-confirmed from source', () => {
+  test('1 — the protected key list is exactly the 21 keys re-confirmed from source', () => {
     expect(Backup.PROTECTED_KEYS.slice().sort()).toEqual(EXPECTED_KEYS.slice().sort());
-    expect(Backup.PROTECTED_KEYS.length).toBe(20);
+    expect(Backup.PROTECTED_KEYS.length).toBe(21);
   });
 
   test('registered inventory covers every Store.KEYS value and every LEGACY_KEYS value', () => {
@@ -501,7 +504,7 @@ test.describe('backup.js — keys added later', () => {
   test('an older backup without the Foundation Path keys still validates', () => {
     var env = validBackup();
     Backup.ADDED_KEYS.forEach(function (k) { delete env.keys[k]; });
-    expect(Backup.ADDED_KEYS).toEqual(['spc_c_program', 'spc_c_programrun', 'spc_c_programpkg', 'spc_c_programvariants']);
+    expect(Backup.ADDED_KEYS).toEqual(['spc_c_program', 'spc_c_programrun', 'spc_c_programpkg', 'spc_c_programvariants', 'spc_c_weekplan']);
     expect(Backup.validateEnvelope(env).ok).toBe(true);
   });
 

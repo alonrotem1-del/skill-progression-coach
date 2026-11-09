@@ -88,6 +88,8 @@
     // the Foundation Path: athlete events, an in-progress run, the installed
     // program package and the remembered Easy/Hard choices
     'spc_c_program', 'spc_c_programrun', 'spc_c_programpkg', 'spc_c_programvariants',
+    // the athlete's week plan (Today | Plan): which program item is on which day
+    'spc_c_weekplan',
     // legacy puc_* — read-only elsewhere in the app; protected here too
     'puc_log', 'puc_plan', 'puc_settings', 'puc_session', 'puc_progression', 'puc_secondary'
   ];
@@ -98,7 +100,7 @@
   // and restoring it must leave these keys as they are — never delete newer
   // data that the older backup could not have known about. Every backup made
   // from now on records them like any other key.
-  var ADDED_KEYS = ['spc_c_program', 'spc_c_programrun', 'spc_c_programpkg', 'spc_c_programvariants'];
+  var ADDED_KEYS = ['spc_c_program', 'spc_c_programrun', 'spc_c_programpkg', 'spc_c_programvariants', 'spc_c_weekplan'];
   var ADDED_SET = {};
   ADDED_KEYS.forEach(function (k) { ADDED_SET[k] = true; });
 
