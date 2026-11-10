@@ -233,6 +233,18 @@ test.describe('week plan — what was done', () => {
     expect(W.todayView(pkg, s, plan, opts(FRI))).toMatchObject({ kind: 'open', weekDone: true, next: expect.objectContaining({ item: 'MT4', date: SAT }) });
   });
 
+  test('17 a week with no workouts in it is never called done: a new athlete before the first Max Test has nothing planned', () => {
+    const s = P.addEvent(P.emptyState(), { type: 'enrolled', programId: 'calixpert-beginner', start: 'MT0', basis: 'new-athlete' });
+    const t = W.todayView(pkg, s, W.emptyPlan(), opts(TUE, { trainingDays: [] }));
+    expect(t.kind).toBe('open');
+    expect(t.weekDone).toBe(false);
+    expect(t.week.tray).toEqual(['MT0']);                    // the first Max Test waits under Not placed
+    expect(t.week.position).toMatchObject({ id: 'MT0', type: 'maxtest' });
+    // with training days, it is proposed on the first one, and Today shows it
+    const t2 = W.todayView(pkg, s, W.emptyPlan(), opts(TUE, { trainingDays: [2] }));
+    expect(t2).toMatchObject({ kind: 'maxtest', entry: expect.objectContaining({ item: 'MT0', ready: true }) });
+  });
+
   test('16 the week plan never touches the training record', () => {
     const s = migrated(), frozen = JSON.stringify(s);
     let plan = W.addEvents(W.emptyPlan(), W.acceptEvents(W.weekView(pkg, s, W.emptyPlan(), opts(SUN))));

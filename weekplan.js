@@ -261,9 +261,13 @@
     if (r.doneToday.length) { r.kind = 'done'; return r; }
     if (wv.recovery) { r.kind = 'recovery'; return r; }
     r.kind = 'open';
-    // Everything of the program week is done, and what comes next is not a
-    // training week: "This week's training is done."
-    r.weekDone = !r.missed && !!wv.position && wv.position.type === 'maxtest' && !all.some(function (e) { return e.kind === 'placed' && e.state !== 'done' && !e.maxtest; });
+    // "This week's training is done": workouts were planned or done this week,
+    // every one of them is done, and the program's next item is the Max Test.
+    // A week with no workouts in it (a new athlete before the first Max Test)
+    // is never called done.
+    var workouts = all.filter(function (e) { return !e.maxtest; });
+    r.weekDone = !r.missed && !!wv.position && wv.position.type === 'maxtest' && workouts.length > 0 &&
+      workouts.every(function (e) { return e.state === 'done'; });
     return r;
   }
 

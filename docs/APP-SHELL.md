@@ -41,7 +41,9 @@ One session, one action. Precedence:
    Mark the recovery week done;
 6. an open day → "Nothing planned today." + TRAIN ANYWAY; when a session of this
    week was missed: "Push wasn't done on Tuesday." + DO PUSH NOW / Train something
-   else; when the program week is done: "This week's training is done. Next: …".
+   else; when this week had workouts, all of them are done and the Max Test is
+   next: "This week's training is done. Next: …" (a week with no workouts in it
+   is never called done).
 
 No program position, week progress, goal line, exercise list or readiness on
 Today. There is no "adjusted" state: no adaptation rule exists, so none is shown.
