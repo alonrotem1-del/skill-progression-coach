@@ -4462,9 +4462,9 @@
     var sub='';
     if(n.type==='week'){
       var wp=Program.weekProgress(pkg,st,n.id);
-      sub=n.status==='placed'?'placed past':n.status==='current'?wp.done+' of '+wp.total+' done':n.status==='done'?'done':'';
+      sub=n.status==='placed'?'placed past':n.status==='current'?wp.done+' of '+wp.total+' done'+(wp.skipped?' · '+wp.skipped+' skipped':''):n.status==='done'?(wp.skipped?wp.done+' done · '+wp.skipped+' skipped':'done'):'';
     } else if(n.type==='maxtest') sub=n.status==='done'?'recorded':n.status==='placed'?'placed past':'benchmark';
-    else if(n.type==='deload') sub=n.status==='done'?'recovery week done':n.status==='placed'?'placed past':'about 50% intensity';
+    else if(n.type==='deload') sub=n.status==='done'?(Program.ofType(st,'deload_completed').some(function(e){ return e.nodeId===n.id; })?'recovery week done':'recovery week skipped'):n.status==='placed'?'placed past':'about 50% intensity';
     else if(n.type==='exit') sub=n.status==='done'?'passed':'all six domains';
     var lbl=n.type==='week'?'Week '+n.week:n.type==='maxtest'?'Max Test':n.type==='deload'?'Deload week':'Foundation Exit';
     return '<button class="fp-node '+n.status+' t-'+kind+' s'+(side%4)+'" data-node="'+n.id+'"><span class="fp-disc"><span class="fp-wc"></span><span class="fp-ic">'+(kind==='exit'&&n.status!=='done'?'🔒':kind==='maxtest'&&n.status!=='done'?'◆':icon)+'</span></span>'+
@@ -4476,6 +4476,7 @@
     function row(r){
       var w=pkg.workouts[r.id];
       var chip=r.status==='completed'?'<span class="fp-chip ok">✓ Done'+(r.reported?' (reported)':'')+'</span>':
+        r.status==='skipped'?'<span class="fp-chip">Skipped</span>':
         r.optional?'<span class="fp-chip opt">Optional</span>':
         next&&r.id===next.id?'<span class="fp-chip next">Next</span>':'<span class="fp-chip av">Available</span>';
       return '<button class="fp-wrow '+r.status+(r.optional?' optional':'')+'" data-pw="'+r.id+'"><span class="fp-wn">'+(r.optional?'+':w.slot)+'</span><span class="fp-wt">'+esc(r.optional?'Legs':shortTitle(w))+'</span>'+chip+'<span class="sr-arrow">&rsaquo;</span></button>';
@@ -4498,7 +4499,7 @@
     var wp=Program.weekProgress(pkg,st,n.id);
     var why=n.status==='upcoming'?'<p class="small muted">Opens when the path reaches it: the weeks before it are completed in order.</p>':n.status==='placed'?'<p class="small muted">Placed past: not done here, and not counted as done. You can look at the workouts.</p>':'';
     var rows=wp.required.concat(wp.optional).map(function(r){ var w=pkg.workouts[r.id];
-      return '<button class="fp-wrow '+r.status+'" data-pw="'+r.id+'"><span class="fp-wn">'+(r.optional?'+':w.slot)+'</span><span class="fp-wt">'+esc(r.optional?'Legs (optional)':shortTitle(w))+'</span><span class="fp-chip '+(r.status==='completed'?'ok':'')+'">'+esc(r.status==='completed'?'✓ Done':r.status==='available'?'Available':r.status==='placed'?'Placed past':r.status==='missed'?'Not done':'Upcoming')+'</span></button>'; }).join('');
+      return '<button class="fp-wrow '+r.status+'" data-pw="'+r.id+'"><span class="fp-wn">'+(r.optional?'+':w.slot)+'</span><span class="fp-wt">'+esc(r.optional?'Legs (optional)':shortTitle(w))+'</span><span class="fp-chip '+(r.status==='completed'?'ok':'')+'">'+esc(r.status==='completed'?'✓ Done':r.status==='skipped'?'Skipped':r.status==='available'?'Available':r.status==='placed'?'Placed past':r.status==='missed'?'Not done':'Upcoming')+'</span></button>'; }).join('');
     showSheet('<div class="grip"></div><h2>'+esc(nodeLabel(pkg,n))+'</h2>'+why+rows+'<button class="btn ghost" data-close>Close</button>',function(sheet){
       on('[data-pw]','click',function(e){ closeSheet(); openProgramWorkout(e.currentTarget.dataset.pw); },sheet);
       on('[data-close]','click',closeSheet,sheet);
@@ -4524,8 +4525,15 @@
       '<div class="fp-wh"><div class="fp-k">Planned recovery week</div><h1>Deload week</h1><div class="small muted">Before Week 1 of Phase '+n.phase+'</div></div>'+
       '<div class="fp-src">From the program</div><div class="fp-box fp-deload">'+body+'</div>'+
       (lastWeek?'<button class="btn ghost sm" data-lastweek>Last week’s workouts · '+esc(nodeLabel(pkg,lastWeek))+'</button>':'');
-    if(done) html+='<div class="fp-done-note">✓ Deload week completed '+esc(fmtDate(done.date||done.at))+' · a planned recovery week</div>';
-    else if(n.status==='current') html+='<div class="fp-cta"><button class="btn primary" data-deloaddone>Deload week completed</button></div>';
+    // A deload week not done can be skipped on purpose: the path moves on, and
+    // it is never recorded as done (program.js).
+    var dskip=done?null:Program.deloadSkipOf(st,n.id);
+    if(done) html+='<div class="fp-done-note">✓ Deload week completed '+esc(fmtDate(done.date||done.at))+' · a planned recovery week</div>'+
+      '<button class="btn ghost sm" data-deloadtoskip>Not done? Mark it skipped instead</button>';
+    else if(dskip) html+='<div class="fp-done-note fp-skipped">Deload week skipped '+esc(fmtDate(dskip.date||dskip.at))+' · not done</div>'+
+      '<button class="btn ghost sm" data-unskip="'+esc(dskip.id)+'">Undo skip</button>';
+    else if(n.status==='current') html+='<div class="fp-cta"><button class="btn primary" data-deloaddone>Deload week completed</button></div>'+
+      '<button class="btn ghost" data-deloadskip>Skip the deload week</button>';
     else html+='<p class="small muted fp-foot">'+(n.status==='placed'?'Placed past.':'Comes before Week 1 of Phase '+n.phase+'.')+'</p>';
     var wrap=shell(html,'path');
     on('[data-backpath]','click',function(){ setScreen('path'); },wrap);
@@ -4533,6 +4541,22 @@
     on('[data-deloaddone]','click',function(){
       progAdd({type:'deload_completed',nodeId:n.id,kind:'planned-recovery',date:new Date().toISOString()});
       toast('Deload week completed.'); setScreen('path');
+    },wrap);
+    on('[data-deloadskip]','click',function(){
+      if(!confirm('Skip the deload week? It is kept as skipped, not as done, and the path moves on.')) return;
+      progAdd({type:'deload_skipped',nodeId:n.id,date:new Date().toISOString()});
+      toast('Deload week skipped.'); setScreen('path');
+    },wrap);
+    on('[data-deloadtoskip]','click',function(){
+      if(!confirm('Mark the deload week as skipped instead of done? Your place on the path stays.')) return;
+      progAdd({type:'deload_deleted',deloadEventId:done.id});
+      progAdd({type:'deload_skipped',nodeId:n.id,date:done.date||done.at,correctedFrom:done.id});
+      toast('Marked as skipped.'); renderDeload();
+    },wrap);
+    on('[data-unskip]','click',function(e){
+      if(!confirm('Undo the skip? The deload week goes back to not done.')) return;
+      progAdd({type:'skip_undone',skipEventId:e.currentTarget.dataset.unskip});
+      renderDeload();
     },wrap);
   }
 
@@ -4546,10 +4570,11 @@
     var html='<div class="wk-top"><div class="between"><button class="link" data-backpath>&lsaquo; Path</button><b>Phase '+w.phase+' · Week '+w.week+'</b><span style="width:50px"></span></div></div>'+
       '<div class="fp-wh"><div class="fp-k">'+esc(w.optional?'Optional session':'Workout '+w.slot+' of 4')+'</div><h1>'+esc(w.optional?'Legs':shortTitle(w))+'</h1>'+
       '<div class="small muted">'+esc(w.header||'')+' · <a href="'+esc(w.url)+'" target="_blank" rel="noopener">Calixpert lesson ↗</a></div></div>';
+    var skip=comps.length?null:Program.skipOf(st,id);
     if(comps.length){
       var last=comps[comps.length-1];
       html+='<div class="fp-done-note">✓ Done'+(last.source==='reported'?' (reported before this app — no set data)':last.source==='imported'?' (from your log)':' on '+fmtDate(last.finishedAt||last.at))+'</div>';
-    }
+    } else if(skip) html+='<div class="fp-done-note fp-skipped">Skipped '+esc(fmtDate(skip.date||skip.at))+' · not done, no results</div>';
     if(w.warmup&&w.warmup.length) html+='<div class="fp-box"><div class="fp-k">Warm-up</div>'+w.warmup.map(function(x){ return '<div class="fp-li">'+esc(x.name)+'<span>'+esc(x.dose)+'</span></div>'; }).join('')+'</div>';
     // A finished workout shows what was done; the prescription stays for a block
     // with no result. A 'reported' mark has no results to show.
@@ -4578,13 +4603,39 @@
     if(wqa.length) html+='<div class="fp-box">'+qaHtml(pkg,wqa)+'</div>';
     var easyHard=(pkg.globalNotes||[]).filter(function(n){return n.id==='easy-hard';})[0];
     if(w.blocks.some(function(b){return b.hard;})&&easyHard) html+='<p class="tiny muted fp-foot">Easy / Hard: '+esc(easyHard.text)+'</p>';
-    if(comps.length) html+='<div class="fp-cta"><button class="btn danger" data-delpw>Delete this workout</button></div>';
-    if(ws.status==='available') html+='<div class="fp-cta"><button class="btn primary" data-startpw>'+(comps.length?'Start again':'Start workout')+'</button></div>';
-    else html+='<p class="small muted fp-foot">'+esc(ws.status==='completed'?'':ws.status==='placed'?'Placed past — for viewing.':ws.status==='upcoming'?'Opens when the path reaches this week.':'')+'</p>';
+    // A required workout not done can be skipped on purpose, and a record entered
+    // only to move on can become a skip: the path keeps its place, and nothing
+    // is recorded as done (program.js).
+    var real=comps.filter(function(e){ return e.source!=='reported'; });
+    if(comps.length) html+='<div class="fp-cta"><button class="btn danger" data-delpw>Delete this workout</button>'+
+      (!w.optional&&real.length<=1?'<button class="btn ghost" data-pwtoskip>Not done? Mark it skipped instead</button>':'')+'</div>';
+    if(skip) html+='<button class="btn ghost" data-unskip="'+esc(skip.id)+'">Undo skip</button>';
+    if(ws.status==='available') html+='<div class="fp-cta"><button class="btn primary" data-startpw>'+(comps.length?'Start again':'Start workout')+'</button>'+
+      (!w.optional&&!comps.length?'<button class="btn ghost" data-skippw>Skip this workout</button>':'')+'</div>';
+    else html+='<p class="small muted fp-foot">'+esc(ws.status==='completed'||ws.status==='skipped'?'':ws.status==='placed'?'Placed past — for viewing.':ws.status==='upcoming'?'Opens when the path reaches this week.':'')+'</p>';
     var wrap=shell(html,'path');
     on('[data-backpath]','click',function(){ setScreen('path'); },wrap);
     on('[data-startpw]','click',function(){ startProgramRun(id); },wrap);
     on('[data-delpw]','click',function(){ deleteProgramWorkout(rec||comps[comps.length-1],renderProgramWorkout); },wrap);
+    on('[data-skippw]','click',function(){
+      if(!confirm('Skip '+(w.optional?'Legs':shortTitle(w))+'? It is kept as skipped, not as done: no results are saved, and the week can move on without it.')) return;
+      progAdd({type:'workout_skipped',workoutId:id,date:new Date().toISOString()});
+      toast('Workout skipped.'); renderProgramWorkout();
+    },wrap);
+    on('[data-pwtoskip]','click',function(){
+      var counted=real.length?Program.trainingEvidence(st).filter(function(r){ return r.valid&&r.workoutEventId===real[0].id; }).map(function(r){ return domainOf(r.test).id; }):[];
+      if(!confirm('Mark this workout as skipped instead? Its recorded results are removed, it is kept as skipped (not done), and your place on the path stays.'+
+        (counted.length?'\nThe set it gave for '+counted.join(', ')+' stops counting.':''))) return;
+      comps.forEach(function(e){ progAdd({type:'workout_deleted',workoutEventId:e.id}); });
+      progAdd({type:'workout_skipped',workoutId:id,date:(real[0]&&(real[0].finishedAt||real[0].at))||new Date().toISOString(),correctedFrom:real[0]?real[0].id:null});
+      if(real[0]) sheetQueue([{del:real[0].id}]);
+      toast('Marked as skipped.'); renderProgramWorkout();
+    },wrap);
+    on('[data-unskip]','click',function(e){
+      if(!confirm('Undo the skip? The workout goes back to not done.')) return;
+      progAdd({type:'skip_undone',skipEventId:e.currentTarget.dataset.unskip});
+      renderProgramWorkout();
+    },wrap);
   }
 
   // ---- runner ---------------------------------------------------------------
@@ -5213,11 +5264,20 @@
     var all=Program.ofType(st,'workout_completed');
     var withData={}; all.forEach(function(e){ if(e.source!=='reported') withData[e.workoutId]=true; });
     var order={}; st.events.forEach(function(e,k){ order[e.id]=k; });
-    var items=all.filter(function(e){ return e.source!=='reported'||!withData[e.workoutId]; }).concat(Program.ofType(st,'deload_completed'))
+    // Skips are listed as skipped, never as done; a skip made moot by doing the
+    // workout (or the deload week) after all is not listed.
+    var deloadsDone={}; Program.ofType(st,'deload_completed').forEach(function(e){ deloadsDone[e.nodeId]=true; });
+    var skips=Program.ofType(st,'workout_skipped').filter(function(e){ return !Program.completions(st,e.workoutId).length; })
+      .concat(Program.ofType(st,'deload_skipped').filter(function(e){ return !deloadsDone[e.nodeId]; }));
+    var items=all.filter(function(e){ return e.source!=='reported'||!withData[e.workoutId]; }).concat(Program.ofType(st,'deload_completed')).concat(skips)
       .sort(function(a,b){ return when(a)<when(b)?1:when(a)>when(b)?-1:order[b.id]-order[a.id]; });
     var counted=Program.trainingEvidence(st).filter(function(r){ return r.valid; });
     var mts=Program.maxTestHistory(st).slice().reverse();
     var rows=items.map(function(e){
+      if(e.type==='workout_skipped'||e.type==='deload_skipped'){
+        var sw=pkg.workouts[e.workoutId]||{}, sn=e.nodeId?(pkg.sequence.filter(function(n){ return n.id===e.nodeId; })[0]||{}):null;
+        return '<div class="hist-item fp-skiprow"><div class="hist-h"><span class="hist-date">'+esc(fmtDate(when(e)))+'</span><span class="hist-nm">'+
+          esc(sn?'Phase '+sn.phase+' · Deload week':'Phase '+sw.phase+' · Week '+sw.week+' · '+(sw.optional?'Legs':shortTitle(sw)))+'</span></div><div class="small muted">Skipped · not done, no results</div></div>'; }
       if(e.type==='deload_completed'){ var dn=pkg.sequence.filter(function(n){ return n.id===e.nodeId; })[0]||{};
         return '<div class="hist-item"><div class="hist-h"><span class="hist-date">'+esc(fmtDate(when(e)))+'</span><span class="hist-nm">'+esc('Phase '+dn.phase+' · Deload week')+'</span></div><div class="small muted">Planned recovery week, completed</div></div>'; }
       var p=e.prescription||{}; var w=pkg.workouts[e.workoutId]||{};

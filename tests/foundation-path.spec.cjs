@@ -768,3 +768,65 @@ test.describe('Foundation Path — time-based sets', () => {
     expect(ev.prescription.blocks[1].unit).toBe('sec');
   });
 });
+
+test.describe('Foundation Path — skipping, never faking', () => {
+  test.beforeEach(async ({ page }) => { page.on('dialog', (d) => d.accept()); });
+
+  test('32 a workout not done is skipped from its screen: no results, not done, and the week moves on without it', async ({ page }) => {
+    await existingAthlete(page);
+    await addEvents(page, required('P4W4', 'P4W4-4'));
+    await page.locator('.fp-week [data-pw="P4W4-4"]').click();
+    await expect(page.locator('[data-skippw]')).toBeVisible();
+    await page.locator('[data-skippw]').click();
+    await expect(page.locator('.fp-done-note.fp-skipped')).toContainText('Skipped');
+    await expect(page.locator('[data-startpw]')).toHaveCount(0);
+    await page.locator('[data-backpath]').click();
+    await expect(page.locator('.fp-node.current')).toContainText('Max Test');     // the path moved on
+    await expect(page.locator('[data-node="P4W4"]')).toContainText('3 done · 1 skipped');
+    const evs = await page.evaluate(() => JSON.parse(localStorage.getItem('spc_c_program')).events);
+    expect(evs.filter((e) => e.workoutId === 'P4W4-4').map((e) => e.type)).toEqual(['workout_skipped']);
+    expect(evs.find((e) => e.type === 'workout_skipped')).not.toHaveProperty('result');
+    await page.evaluate(() => window.CoachApp._goto('history'));
+    await expect(page.locator('.fp-skiprow')).toContainText('Skipped · not done, no results');
+    await expect(page.locator('.fp-skiprow')).toContainText('Core & Stability');
+  });
+
+  test('33 the deload week can be skipped on purpose: it is not marked done, and the path moves on', async ({ page }) => {
+    await existingAthlete(page);
+    await addEvents(page, required('P4W4').concat([{ type: 'maxtest_recorded', nodeId: 'MT4', results: [] }]));
+    await page.locator('.fp-node.current').click();
+    await page.locator('[data-deloadskip]').click();
+    await expect(page.locator('.fp-node.current')).toContainText('Week 1');
+    await expect(page.locator('[data-node="P5D"]')).toContainText('recovery week skipped');
+    const evs = await page.evaluate(() => JSON.parse(localStorage.getItem('spc_c_program')).events);
+    expect(evs.some((e) => e.type === 'deload_completed')).toBe(false);
+    expect(evs.find((e) => e.type === 'deload_skipped')).toMatchObject({ nodeId: 'P5D' });
+    await page.evaluate(() => window.CoachApp._goto('history'));
+    await expect(page.locator('.fp-skiprow')).toContainText('Deload week');
+  });
+
+  test('34 a workout and a deload week entered only to move on become skips, and the place on the path stays', async ({ page }) => {
+    await existingAthlete(page);
+    await addEvents(page, required('P4W4', 'P4W4-4').concat([
+      { id: 'fake-core', type: 'workout_completed', workoutId: 'P4W4-4', source: 'app', finishedAt: '2026-11-10T10:00:00.000Z', result: [{ rounds: 9 }] },
+      { type: 'maxtest_recorded', nodeId: 'MT4', results: [] },
+      { id: 'fake-deload', type: 'deload_completed', nodeId: 'P5D', kind: 'planned-recovery', date: '2026-11-12T10:00:00.000Z' }]));
+    await expect(page.locator('.fp-node.current')).toContainText('Week 1');
+    await page.locator('[data-node="P4W4"]').click();
+    await page.locator('.sheet [data-pw="P4W4-4"]').click();
+    await page.locator('[data-pwtoskip]').click();
+    await expect(page.locator('.fp-done-note.fp-skipped')).toContainText('Skipped');
+    await page.locator('[data-backpath]').click();
+    await expect(page.locator('.fp-node.current')).toContainText('Week 1');      // not moved back to Week 4
+    await page.locator('[data-node="P5D"]').click();
+    await page.locator('[data-deloadtoskip]').click();
+    await expect(page.locator('.fp-done-note.fp-skipped')).toContainText('skipped');
+    await page.locator('[data-backpath]').click();
+    await expect(page.locator('.fp-node.current')).toContainText('Week 1');
+    const s = await page.evaluate(() => JSON.parse(localStorage.getItem('spc_c_program')));
+    expect(s.events.some((e) => e.id === 'fake-core')).toBe(true);              // the log keeps everything …
+    const left = await page.evaluate(() => { const st = JSON.parse(localStorage.getItem('spc_c_program'));
+      return { core: window.CoachProgram.completions(st, 'P4W4-4').length, deload: window.CoachProgram.ofType(st, 'deload_completed').length }; });
+    expect(left).toEqual({ core: 0, deload: 0 });                                 // … but nothing is left counted as done
+  });
+});

@@ -231,6 +231,14 @@ never copies a value.
     the time is "above". Displays read a record's outcomes again from its own results
     (`Program.summaryOf`), so a record stored before the correction shows it too and is
     never rewritten. The sheet script maps "above" to its own word (tools/sheet-sync.gs).
+32. Skipping, never faking: a required workout or a deload week the athlete did not
+    do can be skipped on purpose (workout_skipped { workoutId }, deload_skipped { nodeId }).
+    The Beginner Program has no performance gate between weeks, so a skip lets the path
+    move on; it is never a completion, carries no results, is never evidence, and History
+    lists it as skipped. Undo: skip_undone { skipEventId }. A record entered only to move
+    on becomes a skip (workout_deleted / deload_deleted, then the skip) and the place on
+    the path stays. All in spc_c_program, already in every backup; older backups restore
+    as before (they hold no skips).
 ## 4. Not in this build
 - **Follow-up before full Academy progression:** unify workout evidence with the
   persistent Evidence Ledger (IndexedDB). Today the Foundation evaluator reads

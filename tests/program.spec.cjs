@@ -668,3 +668,65 @@ test.describe('time-based range outcomes', () => {
     expect(JSON.stringify(old)).toBe(frozen);
   });
 });
+
+// A workout or a deload week the athlete did not do can be skipped on purpose:
+// the path moves on (the Beginner Program has no performance gate between
+// weeks), but a skip is never a completion, never results, never evidence.
+test.describe('skipping a workout or a deload week', () => {
+  test.skip(!HAVE, 'program package not built on this machine');
+  const done = (s, id, extra) => P.addEvent(s, Object.assign({ type: 'workout_completed', workoutId: id, source: 'app', result: [] }, extra || {}));
+
+  test('48 a skipped workout has no results, is not completed, gives no evidence, and lets the week move on', () => {
+    let s = migrated();
+    ['P4W4-1', 'P4W4-2', 'P4W4-3'].forEach((id) => { s = done(s, id); });
+    expect(P.pathView(pkg, s).current.id).toBe('P4W4');                      // Core still open: the week waits
+    s = P.addEvent(s, { type: 'workout_skipped', workoutId: 'P4W4-4', date: daysAgo(1) });
+    expect(P.completions(s, 'P4W4-4')).toEqual([]);                           // no completion, no results
+    expect(P.workoutStatus(pkg, s, 'P4W4-4').status).toBe('skipped');
+    const wp = P.weekProgress(pkg, s, 'P4W4');
+    expect([wp.done, wp.skipped, wp.total]).toEqual([3, 1, 4]);              // skipped is not counted as done
+    expect(P.pathView(pkg, s).current.id).toBe('MT4');                        // but the path moves on
+    expect(P.trainingCandidates(s, {}).some((c) => c.workoutId === 'P4W4-4')).toBe(false);
+    expect(P.evidence(s).some((r) => r.workoutId === 'P4W4-4')).toBe(false);
+    // undone, the week waits again; done after all, the completion counts
+    const skip = P.ofType(s, 'workout_skipped')[0];
+    const back = P.addEvent(s, { type: 'skip_undone', skipEventId: skip.id });
+    expect(P.pathView(pkg, back).current.id).toBe('P4W4');
+    const later = done(s, 'P4W4-4');
+    expect(P.workoutStatus(pkg, later, 'P4W4-4').status).toBe('completed');
+  });
+
+  test('49 a deload week can be skipped on purpose in the same way', () => {
+    let s = migrated();
+    ['P4W4-1', 'P4W4-2', 'P4W4-3', 'P4W4-4'].forEach((id) => { s = done(s, id); });
+    s = P.addEvent(s, { type: 'maxtest_recorded', nodeId: 'MT4', results: [] });
+    expect(P.pathView(pkg, s).current.id).toBe('P5D');
+    s = P.addEvent(s, { type: 'deload_skipped', nodeId: 'P5D' });
+    expect(P.ofType(s, 'deload_completed')).toEqual([]);                       // never recorded as done
+    expect(P.pathView(pkg, s).current.id).toBe('P5W1');
+    expect(P.deloadSkipOf(s, 'P5D')).toBeTruthy();
+    const back = P.addEvent(s, { type: 'skip_undone', skipEventId: P.deloadSkipOf(s, 'P5D').id });
+    expect(P.pathView(pkg, back).current.id).toBe('P5D');
+  });
+
+  test('50 a record entered only to move on becomes a skip, and the place on the path stays; deleting it alone would move back', () => {
+    let s = migrated();
+    ['P4W4-1', 'P4W4-2', 'P4W4-3'].forEach((id) => { s = done(s, id); });
+    s = done(s, 'P4W4-4', { id: 'fake-core', result: [{ rounds: 9 }] });         // entered only to move on
+    s = P.addEvent(s, { type: 'maxtest_recorded', nodeId: 'MT4', results: [] });
+    s = P.addEvent(s, { id: 'fake-deload', type: 'deload_completed', nodeId: 'P5D', kind: 'planned-recovery' });
+    expect(P.pathView(pkg, s).current.id).toBe('P5W1');
+    // deleting the fake workout alone would put the athlete back in Week 4
+    expect(P.pathView(pkg, P.addEvent(s, { type: 'workout_deleted', workoutEventId: 'fake-core' })).current.id).toBe('P4W4');
+    // turned into skips instead, the place stays and nothing is left recorded as done
+    let fixed = P.addEvent(s, { type: 'workout_deleted', workoutEventId: 'fake-core' });
+    fixed = P.addEvent(fixed, { type: 'workout_skipped', workoutId: 'P4W4-4', correctedFrom: 'fake-core' });
+    fixed = P.addEvent(fixed, { type: 'deload_deleted', deloadEventId: 'fake-deload' });
+    fixed = P.addEvent(fixed, { type: 'deload_skipped', nodeId: 'P5D', correctedFrom: 'fake-deload' });
+    expect(P.pathView(pkg, fixed).current.id).toBe('P5W1');
+    expect(P.completions(fixed, 'P4W4-4')).toEqual([]);
+    expect(P.ofType(fixed, 'deload_completed')).toEqual([]);
+    expect(P.weekProgress(pkg, fixed, 'P4W4')).toMatchObject({ done: 3, skipped: 1 });
+    expect(fixed.events.length).toBeGreaterThan(s.events.length);              // nothing removed from the log
+  });
+});

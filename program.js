@@ -88,12 +88,30 @@
   // stays append-only, but the workout and any set confirmed from it are gone for
   // everything derived from it. Its id stays known, so importing the same history
   // file again does not bring it back.
+  //
+  // A workout or a recovery week the athlete did not do can be SKIPPED, on
+  // purpose ('workout_skipped' { workoutId }, 'deload_skipped' { nodeId }). A
+  // skip lets the path move on — the Beginner Program has no performance gate
+  // between weeks — but it is never a completion: it carries no results, it is
+  // never evidence, and History shows it as skipped. 'skip_undone' { skipEventId }
+  // takes a skip back. A recovery week marked done by mistake is removed by
+  // 'deload_deleted' { deloadEventId }, like a workout.
   function ofType(state, type) {
     var all = events(state).filter(function (e) { return e.type === type; });
-    if (type !== 'workout_completed' && type !== 'evidence_confirmed') return all;
     var gone = {};
-    events(state).forEach(function (e) { if (e.type === 'workout_deleted') gone[e.workoutEventId] = true; });
-    return all.filter(function (e) { return !gone[type === 'workout_completed' ? e.id : e.workoutEventId]; });
+    if (type === 'workout_completed' || type === 'evidence_confirmed') {
+      events(state).forEach(function (e) { if (e.type === 'workout_deleted') gone[e.workoutEventId] = true; });
+      return all.filter(function (e) { return !gone[type === 'workout_completed' ? e.id : e.workoutEventId]; });
+    }
+    if (type === 'deload_completed') {
+      events(state).forEach(function (e) { if (e.type === 'deload_deleted') gone[e.deloadEventId] = true; });
+      return all.filter(function (e) { return !gone[e.id]; });
+    }
+    if (type === 'workout_skipped' || type === 'deload_skipped') {
+      events(state).forEach(function (e) { if (e.type === 'skip_undone') gone[e.skipEventId] = true; });
+      return all.filter(function (e) { return !gone[e.id]; });
+    }
+    return all;
   }
 
   // ---- package -------------------------------------------------------------------
@@ -122,9 +140,19 @@
   function completions(state, workoutId) {
     return ofType(state, 'workout_completed').filter(function (e) { return e.workoutId === workoutId; });
   }
+  // The skip that stands for a workout, or null. A workout done after all is
+  // done: its completion counts and the skip no longer matters.
+  function skipOf(state, workoutId) {
+    return ofType(state, 'workout_skipped').filter(function (e) { return e.workoutId === workoutId; }).pop() || null;
+  }
+  function deloadSkipOf(state, nodeId) {
+    return ofType(state, 'deload_skipped').filter(function (e) { return e.nodeId === nodeId; }).pop() || null;
+  }
+  // A week is passed when each required workout was done or skipped; a recovery
+  // week when it was done or skipped. Passed is not the same as done.
   function nodeComplete(pkg, state, node) {
-    if (node.type === 'week') return requiredOf(pkg, node.id).every(function (id) { return completions(state, id).length > 0; });
-    if (node.type === 'deload') return ofType(state, 'deload_completed').some(function (e) { return e.nodeId === node.id; });
+    if (node.type === 'week') return requiredOf(pkg, node.id).every(function (id) { return completions(state, id).length > 0 || !!skipOf(state, id); });
+    if (node.type === 'deload') return ofType(state, 'deload_completed').some(function (e) { return e.nodeId === node.id; }) || !!deloadSkipOf(state, node.id);
     if (node.type === 'maxtest') return ofType(state, 'maxtest_recorded').some(function (e) { return e.nodeId === node.id; });
     if (node.type === 'exit') return ofType(state, 'foundation_exit_passed').length > 0;
     return false;
@@ -155,12 +183,13 @@
     var node = view.nodes.find(function (n) { return n.id === 'P' + w.phase + 'W' + w.week; });
     var done = completions(state, workoutId).length > 0;
     var reported = done && completions(state, workoutId).every(function (e) { return e.source === 'reported'; });
-    var status = done ? 'completed' : node.status === 'current' ? 'available' : node.status === 'placed' ? 'placed' : node.status === 'done' ? 'missed' : 'upcoming';
+    var status = done ? 'completed' : skipOf(state, workoutId) ? 'skipped' : node.status === 'current' ? 'available' : node.status === 'placed' ? 'placed' : node.status === 'done' ? 'missed' : 'upcoming';
     return { id: workoutId, status: status, optional: !!w.optional, reported: reported, runs: completions(state, workoutId).length, weekStatus: node.status };
   }
   function weekProgress(pkg, state, weekId) {
     var req = requiredOf(pkg, weekId).map(function (id) { return workoutStatus(pkg, state, id); });
     return { required: req, done: req.filter(function (r) { return r.status === 'completed'; }).length, total: req.length,
+      skipped: req.filter(function (r) { return r.status === 'skipped'; }).length,
       optional: optionalOf(pkg, weekId).map(function (id) { return workoutStatus(pkg, state, id); }) };
   }
 
@@ -605,7 +634,7 @@
     validatePackage: validatePackage, pathNodes: pathNodes, requiredOf: requiredOf, optionalOf: optionalOf,
     startNode: startNode, nodeComplete: nodeComplete, pathView: pathView, workoutStatus: workoutStatus, weekProgress: weekProgress,
     valueOutcome: valueOutcome, setOutcome: setOutcome, blockOutcome: blockOutcome, runSummary: runSummary, bilateral: bilateral,
-    completionEvent: completionEvent, completions: completions, summaryOf: summaryOf,
+    completionEvent: completionEvent, completions: completions, summaryOf: summaryOf, skipOf: skipOf, deloadSkipOf: deloadSkipOf,
     blockName: blockName, resultVals: resultVals, sheetRows: sheetRows,
     CLARIFICATIONS: CLARIFICATIONS, applyClarifications: applyClarifications,
     LOAD_UNIT: LOAD_UNIT, loadRelevant: loadRelevant, loadText: loadText,
