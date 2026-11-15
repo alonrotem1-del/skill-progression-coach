@@ -4554,12 +4554,13 @@
     // A finished workout shows what was done; the prescription stays for a block
     // with no result. A 'reported' mark has no results to show.
     var rec=comps.filter(function(e){ return e.source!=='reported'&&e.result&&e.result.length; }).pop();
+    var recSum=rec?Program.summaryOf(pkg,rec):null;
     html+='<div class="fp-blocks">';
     w.blocks.forEach(function(b,i){
       var chosen=b.hard?lastVariant(b.easy):'easy', rr=rec&&rec.result[i];
       html+='<div class="fp-block"><div class="fp-bn">'+(i+1)+'</div><div class="fp-bb">';
       if(rr){
-        var oc=rec.summary&&rec.summary.blocks[i]?rec.summary.blocks[i].outcome:'';
+        var oc=recSum&&recSum.blocks[i]?recSum.blocks[i].outcome:'';
         html+='<div class="fp-ex">'+esc(blockName(b,rr.variant))+'</div>'+(b.kind==='emom'&&b.style!=='pyramid'?emomPlan(b):'')+
           '<div class="fp-pres">'+(rr.skipped?'Skipped':'You did: '+esc(resultVals(b,rr)||'—'))+' '+outcomeChip(oc)+'</div>'+(rr.note?'<div class="small muted">'+esc(rr.note)+'</div>':'');
       } else if(b.kind==='exercise'||(b.kind==='emom'&&b.style==='pyramid')){
@@ -4613,7 +4614,7 @@
   var clock=null;
   function stopClock(){ if(clock){ clearInterval(clock.t); clock=null; } }
   function stepper(attr,val,step){ return '<div class="stepper"><button data-dec="'+attr+'">−</button><span class="num" data-typed="'+attr+'">'+(val==null||val===''?'—':val)+'</span><button data-inc="'+attr+'">+</button></div>'; }
-  function outcomeChip(o){ return o==='met'?'<span class="fp-chip ok">in range</span>':o==='below'?'<span class="fp-chip below">below</span>':o==='done'?'<span class="fp-chip ok">logged</span>':''; }
+  function outcomeChip(o){ return o==='met'?'<span class="fp-chip ok">in range</span>':o==='above'?'<span class="fp-chip above">above</span>':o==='below'?'<span class="fp-chip below">below</span>':o==='done'?'<span class="fp-chip ok">logged</span>':''; }
 
   function renderProgramRun(){
     var pkg=getPkg(), run=UI.prun; if(!pkg||!run){ return setScreen('path'); }
@@ -4853,8 +4854,9 @@
   // What a workout record holds, block by block: the exercise done, every set
   // or minute as logged, and the athlete's own note.
   function resultLines(w,ev){
+    var sum=Program.summaryOf(getPkg(),ev);   // outcomes read from the record's own results
     return w.blocks.map(function(b,i){
-      var r=(ev.result||[])[i]||{}, o=ev.summary?ev.summary.blocks[i].outcome:'';
+      var r=(ev.result||[])[i]||{}, o=sum&&sum.blocks[i]?sum.blocks[i].outcome:'';
       return '<div class="fp-sumrow '+o+'"><span>'+esc(blockName(b,r.variant))+'</span><span>'+esc(r.skipped?'skipped':resultVals(b,r)||'—')+' '+outcomeChip(o)+'</span></div>'+
         (r.note?'<div class="fp-note small muted">'+esc(r.note)+'</div>':'');
     }).join('');
@@ -4897,7 +4899,7 @@
     var answers=Program.ofType(st,'evidence_confirmed').filter(function(c){ return c.workoutEventId===ev.id; });
     var html='<div class="fp-wh" style="text-align:center;padding-top:18px"><div class="fp-k">Workout saved</div><h1>'+esc(w.optional?'Legs':shortTitle(w))+'</h1><div class="small muted">Phase '+w.phase+' · Week '+w.week+'</div></div>'+
       '<div class="fp-box">'+lines+'</div>'+
-      (ev.summary.below?'<p class="small muted">Results below the prescription are kept exactly as logged. Nothing is reset, and the program carries on as written.</p>':'')+
+      (Program.summaryOf(pkg,ev).below?'<p class="small muted">Results below the prescription are kept exactly as logged. Nothing is reset, and the program carries on as written.</p>':'')+
       (cands.length||answers.length?'<div class="fp-box fp-evbox"><div class="fp-k">Foundation Exit</div>'+answers.map(function(c){ return answerHtml(st,c); }).join('')+cands.map(function(c,k){ return candHtml(c,k,false); }).join('')+'</div>':'')+
       '<p class="small"><b>Next on your path:</b> '+esc(v.current?nodeLabel(pkg,v.current):'—')+'</p>'+
       '<button class="btn primary" data-backpath>Back to the Path</button>';
@@ -5219,10 +5221,10 @@
       if(e.type==='deload_completed'){ var dn=pkg.sequence.filter(function(n){ return n.id===e.nodeId; })[0]||{};
         return '<div class="hist-item"><div class="hist-h"><span class="hist-date">'+esc(fmtDate(when(e)))+'</span><span class="hist-nm">'+esc('Phase '+dn.phase+' · Deload week')+'</span></div><div class="small muted">Planned recovery week, completed</div></div>'; }
       var p=e.prescription||{}; var w=pkg.workouts[e.workoutId]||{};
-      var t=p.title||w.title||e.workoutId; var s=e.summary;
+      var t=p.title||w.title||e.workoutId; var s=Program.summaryOf(pkg,e);
       var ev=counted.filter(function(r){ return r.workoutEventId===e.id; }).map(function(r){ return domainOf(r.test).id; });
       return '<div class="hist-item fp-histev" data-histev="'+esc(e.id)+'"><div class="hist-h"><span class="hist-date">'+esc(e.dateUnknown?'Log':fmtDate(when(e)))+'</span><span class="hist-nm">'+esc('Phase '+(p.phase||w.phase)+' · Week '+(p.week||w.week)+' · '+t)+'</span></div>'+
-        '<div class="small muted">'+(e.source==='reported'?'Reported before this app (no set data)':(e.source==='imported'?'From your log · ':'')+(s?s.met+' in range · '+s.below+' below · '+(s.done||0)+' logged · '+s.notDone+' no result':''))+(ev.length?' · counts for '+esc(ev.join(', ')):'')+'</div></div>'; }).join('');
+        '<div class="small muted">'+(e.source==='reported'?'Reported before this app (no set data)':(e.source==='imported'?'From your log · ':'')+(s?s.met+' in range · '+(s.above?s.above+' above · ':'')+s.below+' below · '+(s.done||0)+' logged · '+s.notDone+' no result':''))+(ev.length?' · counts for '+esc(ev.join(', ')):'')+'</div></div>'; }).join('');
     var mrows=mts.map(function(e){ return '<div class="hist-item"><div class="hist-h"><span class="hist-date">'+esc(fmtDate(e.date||e.at))+'</span><span class="hist-nm">Max Test</span></div><div class="small muted">'+(e.results||[]).map(function(r){ return esc(r.family)+': '+(r.notTested?'—':esc(r.variant)+' '+esc(r.value)); }).join(' · ')+'</div></div>'; }).join('');
     return '<div class="section">Foundation Path</div>'+(rows||'<p class="small muted">No program workouts yet.</p>')+(mrows?'<div class="section">Max Tests</div>'+mrows:'');
   }

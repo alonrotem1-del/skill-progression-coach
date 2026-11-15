@@ -609,3 +609,62 @@ test.describe('approved clarifications over the program package', () => {
     expect(P.applyClarifications(other).workouts['P3W1-1'].blocks[0]).toMatchObject({ easy: 'Assisted Dips', hard: 'Ring Dips' });
   });
 });
+
+// Time-based sets (seconds): over the upper bound is 'above', never "in range"
+// (the athlete's correction, 15 Nov 2026). Reps keep the SPC-v1 rule.
+test.describe('time-based range outcomes', () => {
+  const sec = (min, max, per) => ({ raw: min + '-' + max + ' sec', min, max, unit: 'sec', per: per || null });
+  const reps = (min, max) => ({ raw: min + '-' + max, min, max, unit: 'reps', per: null });
+
+  test('45 seconds: below the range is below, inside it is in range, over it is above — 20 sec on 5–10 is not in range', () => {
+    const d = sec(5, 10);
+    expect([4, 5, 10, 11, 20].map((v) => P.valueOutcome(d, v))).toEqual(['below', 'met', 'met', 'above', 'above']);
+    const block = { kind: 'exercise', sets: 3, dose: d };
+    const out = (vals) => P.blockOutcome(block, { sets: vals.map((v) => ({ value: v, done: true })) });
+    expect(out([20, 20, 29])).toBe('above');
+    expect(out([8, 12, 9])).toBe('above');                     // none short, one over the time
+    expect(out([4, 8, 9])).toBe('below');                      // a short set is still below
+    expect(out([6, 8, 10])).toBe('met');
+    // per side: each side is read on its own
+    const arm = sec(5, 10, 'arm');
+    expect(P.setOutcome(arm, { left: 8, right: 14 })).toBe('above');
+    expect(P.setOutcome(arm, { left: 3, right: 14 })).toBe('below');
+    expect(P.setOutcome(arm, { left: 6, right: 9 })).toBe('met');
+    // reps are unchanged: anything from the bottom of the range counts
+    expect(P.valueOutcome(reps(6, 8), 20)).toBe('met');
+    // a hold over its time inside a circuit does not make the circuit "below"
+    const circuit = { kind: 'circuit', rounds: 2, items: [{ easy: 'Plank', dose: sec(10, 20) }] };
+    expect(P.blockOutcome(circuit, { rounds: 2, items: [45] })).toBe('met');
+  });
+
+  test('46 Phase 5 Workout 2, exercise 2 (45 Degree / Wall Handstand Hold) is a time-based set in Weeks 1–4: seconds in, seconds saved', () => {
+    test.skip(!HAVE, 'program package not built on this machine');
+    const want = [[5, 10], [5, 10], [10, 15], [10, 15]];
+    for (const w of [1, 2, 3, 4]) {
+      const b = pkg.workouts['P5W' + w + '-2'].blocks[1];
+      expect([b.easy, b.hard]).toEqual(['45 Degree Handstand Hold', 'Wall Handstand Hold']);
+      expect(b.dose).toMatchObject({ unit: 'sec', min: want[w - 1][0], max: want[w - 1][1] });
+      expect([b.sets, b.restSec]).toEqual([3, 120]);
+    }
+    // a run with 20, 20, 29 seconds on the Hard option (Week 1, 5–10 sec)
+    const w = pkg.workouts['P5W1-2'];
+    const run = { blocks: w.blocks.map((b, i) => (i === 1 ? { variant: 'hard', sets: [20, 20, 29].map((v) => ({ value: v, done: true })) } : { variant: 'easy', skipped: true })) };
+    const ev = Object.assign({ id: 'h1', type: 'workout_completed' }, P.completionEvent(pkg, 'P5W1-2', run));
+    expect(ev.prescription.blocks[1].unit).toBe('sec');
+    expect(P.resultVals(w.blocks[1], ev.result[1])).toBe('20, 20, 29 sec');
+    expect(ev.summary.blocks[1].outcome).toBe('above');
+    expect(ev.summary.above).toBe(1);
+    expect(P.sheetRows(pkg, ev)[1]).toMatchObject({ exercise: 'Wall Handstand Hold', unit: 'sec', total: 69, status: 'above' });
+  });
+
+  test('47 a record saved before the correction is read again with it, without being rewritten', () => {
+    test.skip(!HAVE, 'program package not built on this machine');
+    const w = pkg.workouts['P5W1-2'];
+    const result = w.blocks.map((b, i) => (i === 1 ? { variant: 'hard', sets: [20, 20, 29].map((v) => ({ value: v, done: true })) } : { variant: 'easy', skipped: true }));
+    const old = { id: 'old', type: 'workout_completed', workoutId: 'P5W1-2', source: 'app', result,
+      summary: { met: 1, below: 0, done: 0, notDone: 5, blocks: w.blocks.map((b, i) => ({ order: b.order, outcome: i === 1 ? 'met' : 'not-done', skipped: i !== 1 })) } };
+    const frozen = JSON.stringify(old);
+    expect(P.summaryOf(pkg, old).blocks[1].outcome).toBe('above');
+    expect(JSON.stringify(old)).toBe(frozen);
+  });
+});

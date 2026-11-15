@@ -224,6 +224,13 @@ never copies a value.
     begins at the EMOM's own 0:00 and the minutes then run on as before, with no
     countdown between them. Resuming after a pause does not repeat it. The AMRAP clock
     is unchanged.
+31. Time-based sets (seconds) have three outcomes: below (under the bottom of the
+    range), in range, and above (over the top) — 20 sec on 5–10 sec is "above", never
+    "in range" (athlete's correction, 15 Nov 2026). Reps keep the SPC-v1 rule: from the
+    bottom of the range up counts. A block with no short set and at least one set over
+    the time is "above". Displays read a record's outcomes again from its own results
+    (`Program.summaryOf`), so a record stored before the correction shows it too and is
+    never rewritten. The sheet script maps "above" to its own word (tools/sheet-sync.gs).
 ## 4. Not in this build
 - **Follow-up before full Academy progression:** unify workout evidence with the
   persistent Evidence Ledger (IndexedDB). Today the Foundation evaluator reads

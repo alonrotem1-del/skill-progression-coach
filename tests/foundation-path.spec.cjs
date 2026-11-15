@@ -736,3 +736,35 @@ test.describe('Foundation Path — approved clarifications', () => {
     await expect(labels.nth(2)).toHaveText('Pull Ups');
   });
 });
+
+test.describe('Foundation Path — time-based sets', () => {
+  test('31 a hold logged over its time is "above", not "in range": Wall Handstand Hold, 20 sec on 5–10 sec', async ({ page }) => {
+    await existingAthlete(page);
+    page.on('dialog', (d) => d.accept());
+    await addEvents(page, [{ type: 'repositioned', start: 'P5W1', basis: 'athlete' }]);
+    await page.locator('.fp-week [data-pw="P5W1-2"]').click();
+    await page.locator('[data-startpw]').click();
+    await page.locator('[data-next]').click();
+    await page.locator('[data-var="hard"]').click();
+    await expect(page.locator('.fp-runcard h2')).toHaveText('Wall Handstand Hold');
+    await expect(page.locator('.fp-runcard .fp-pres')).toContainText('3 sets × 5–10 sec');
+    const type = async (attr, v) => { await page.locator('[data-typed="' + attr + '"]').click(); await page.locator('.fp-set input').fill(v); await page.locator('.fp-set input').press('Enter'); };
+    await type('s0', '20');
+    await page.locator('[data-setdone="0"]').click();
+    await expect(page.locator('.fp-set').first()).toContainText('above');
+    await expect(page.locator('.fp-set').first()).not.toContainText('in range');
+    await type('s1', '8');
+    await page.locator('[data-setdone="1"]').click();
+    await expect(page.locator('.fp-set').nth(1)).toContainText('in range');
+    await type('s2', '29');
+    await page.locator('[data-setdone="2"]').click();
+    for (let i = 2; i < pkg.workouts['P5W1-2'].blocks.length; i++) await page.locator('[data-next]').click();
+    await page.locator('[data-finishrun]').click();
+    const row = page.locator('.fp-sumrow').nth(1);
+    await expect(row).toContainText('20, 8, 29 sec');
+    await expect(row).toContainText('above');
+    const ev = await page.evaluate(() => JSON.parse(localStorage.getItem('spc_c_program')).events.find((e) => e.workoutId === 'P5W1-2'));
+    expect(ev.result[1].sets.map((s) => s.value)).toEqual([20, 8, 29]);
+    expect(ev.prescription.blocks[1].unit).toBe('sec');
+  });
+});

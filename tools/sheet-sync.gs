@@ -7,7 +7,7 @@ var HEAD = ['תאריך', 'שבוע', 'אימון', 'תרגיל', 'רמה', 'ב�
 var ID_COL = HEAD.length;
 var LEVEL = { easy: 'קל', hard: 'קשה' };
 var UNIT = { reps: 'חזרות', sec: 'שניות', rounds: 'סיבובים' };
-var STATUS = { met: 'בטווח', below: 'מתחת לטווח', done: 'נרשם', 'not-done': 'ללא תוצאה', skipped: 'דולג' };
+var STATUS = { met: 'בטווח', above: 'מעל הטווח', below: 'מתחת לטווח', done: 'נרשם', 'not-done': 'ללא תוצאה', skipped: 'דולג' };
 
 function reply(o) {
   return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);

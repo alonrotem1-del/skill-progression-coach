@@ -165,13 +165,17 @@
   }
 
   // ---- execution outcomes (SPC-v1: a valid value anywhere in the range counts) ----
-  // 'met' = at or above the lower bound; the upper bound is never required.
+  // 'met' = at or above the lower bound; for reps the upper bound is never required.
+  // 'above' = a time-based value (seconds) over the upper bound: a hold far past
+  // its target is not called "in range" (the athlete's correction, 15 Nov 2026).
   // 'below' = logged but under the lower bound; 'not-done' = nothing logged;
   // 'done' = logged where the source gives no numeric target (AMRAP, pyramid).
+  function timeBased(dose) { return !!(dose && dose.unit === 'sec'); }
   function valueOutcome(dose, value) {
     if (value == null || value === '') return 'not-done';
     if (!dose || dose.min == null) return 'done';
-    return +value >= dose.min ? 'met' : 'below';
+    if (+value < dose.min) return 'below';
+    return timeBased(dose) && dose.max != null && +value > dose.max ? 'above' : 'met';
   }
   function bilateral(dose) { return !!(dose && (dose.per === 'leg' || dose.per === 'arm')); }
   function setOutcome(dose, set) {
@@ -179,7 +183,8 @@
     if (bilateral(dose)) {
       if ((set.left == null || set.left === '') && (set.right == null || set.right === '')) return 'not-done';
       var l = valueOutcome(dose, set.left), r = valueOutcome(dose, set.right);
-      return (l === 'met' && r === 'met') ? 'met' : 'below';
+      if (l === 'below' || r === 'below' || l === 'not-done' || r === 'not-done') return 'below';
+      return l === 'above' || r === 'above' ? 'above' : 'met';
     }
     return valueOutcome(dose, set.value);
   }
@@ -190,8 +195,9 @@
       var outs = [];
       for (var i = 0; i < (block.sets || sets.length || 1); i++) outs.push(setOutcome(block.dose, sets[i]));
       if (outs.every(function (o) { return o === 'not-done'; })) return 'not-done';
-      if (outs.every(function (o) { return o === 'met' || o === 'done'; })) return block.dose.min == null ? 'done' : 'met';
-      return 'below';
+      if (outs.some(function (o) { return o === 'below' || o === 'not-done'; })) return 'below';
+      if (outs.some(function (o) { return o === 'above'; })) return 'above';   // none short, at least one over the time
+      return block.dose.min == null ? 'done' : 'met';
     }
     if (block.kind === 'emom') {
       var mins = (result.minutes || []).filter(function (v) { return v != null && v !== ''; });
@@ -207,20 +213,26 @@
       var logged = (rounds != null && rounds !== '') || items.some(function (v) { return v != null && v !== ''; });
       if (!logged) return 'not-done';
       var roundsOk = block.rounds == null || (+rounds >= block.rounds);
-      var itemsOk = block.items.every(function (it, k) { return valueOutcome(it.dose, items[k]) === 'met' || valueOutcome(it.dose, items[k]) === 'done'; });
+      var itemsOk = block.items.every(function (it, k) { var o = valueOutcome(it.dose, items[k]); return o === 'met' || o === 'done' || o === 'above'; });
       return roundsOk && itemsOk ? 'met' : 'below';
     }
     return 'not-done';
   }
   function runSummary(workout, run) {
-    var s = { met: 0, below: 0, done: 0, notDone: 0, blocks: [] };
+    var s = { met: 0, above: 0, below: 0, done: 0, notDone: 0, blocks: [] };
     workout.blocks.forEach(function (b, i) {
       var r = (run.blocks || [])[i] || {};
       var o = r.skipped ? 'not-done' : blockOutcome(b, r);
       s.blocks.push({ order: b.order, outcome: o, skipped: !!r.skipped });
-      if (o === 'met') s.met++; else if (o === 'below') s.below++; else if (o === 'done') s.done++; else s.notDone++;
+      if (o === 'met') s.met++; else if (o === 'above') s.above++; else if (o === 'below') s.below++; else if (o === 'done') s.done++; else s.notDone++;
     });
     return s;
+  }
+  // The outcomes of a stored record, read with today's rules from its own
+  // results: the record is never rewritten, and what it shows stays current.
+  function summaryOf(pkg, ev) {
+    var w = pkg && ev && pkg.workouts[ev.workoutId];
+    return w && ev.result ? runSummary(w, { blocks: ev.result }) : (ev && ev.summary) || null;
   }
   // A finished run becomes an immutable completion record. The prescription is
   // referenced (package fingerprint + workout id), and copied by value — its raw
@@ -562,7 +574,7 @@
     var w = pkg.workouts[ev.workoutId];
     return w.blocks.map(function (b, i) {
       var r = (ev.result || [])[i] || {}, total = blockTotal(b, r);
-      var o = ev.summary && ev.summary.blocks[i] ? ev.summary.blocks[i].outcome : '';
+      var sum = summaryOf(pkg, ev), o = sum && sum.blocks[i] ? sum.blocks[i].outcome : '';
       return { id: ev.id, date: ev.finishedAt || ev.at, phase: w.phase, week: w.week,
         workout: w.optional ? 'Legs' : w.title.replace(/^Workout \d - /, ''), exercise: blockName(b, r.variant),
         level: r.skipped || !(b.hard || b.hardExercise) ? '' : r.variant === 'hard' || r.variant === 'hard2' ? 'hard' : 'easy',
@@ -593,7 +605,7 @@
     validatePackage: validatePackage, pathNodes: pathNodes, requiredOf: requiredOf, optionalOf: optionalOf,
     startNode: startNode, nodeComplete: nodeComplete, pathView: pathView, workoutStatus: workoutStatus, weekProgress: weekProgress,
     valueOutcome: valueOutcome, setOutcome: setOutcome, blockOutcome: blockOutcome, runSummary: runSummary, bilateral: bilateral,
-    completionEvent: completionEvent, completions: completions,
+    completionEvent: completionEvent, completions: completions, summaryOf: summaryOf,
     blockName: blockName, resultVals: resultVals, sheetRows: sheetRows,
     CLARIFICATIONS: CLARIFICATIONS, applyClarifications: applyClarifications,
     LOAD_UNIT: LOAD_UNIT, loadRelevant: loadRelevant, loadText: loadText,
