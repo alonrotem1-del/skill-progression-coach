@@ -798,6 +798,8 @@ test.describe('Foundation Path — skipping, never faking', () => {
     await page.locator('[data-deloadskip]').click();
     await expect(page.locator('.fp-node.current')).toContainText('Week 1');
     await expect(page.locator('[data-node="P5D"]')).toContainText('recovery week skipped');
+    await expect(page.locator('[data-node="P5D"]')).toHaveClass(/skipped/);           // a skip mark, never a check
+    await expect(page.locator('[data-node="P5D"] .fp-ic')).toHaveText('↷');
     const evs = await page.evaluate(() => JSON.parse(localStorage.getItem('spc_c_program')).events);
     expect(evs.some((e) => e.type === 'deload_completed')).toBe(false);
     expect(evs.find((e) => e.type === 'deload_skipped')).toMatchObject({ nodeId: 'P5D' });

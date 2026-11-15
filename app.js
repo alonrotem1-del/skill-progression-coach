@@ -4467,7 +4467,9 @@
     else if(n.type==='deload') sub=n.status==='done'?(Program.ofType(st,'deload_completed').some(function(e){ return e.nodeId===n.id; })?'recovery week done':'recovery week skipped'):n.status==='placed'?'placed past':'about 50% intensity';
     else if(n.type==='exit') sub=n.status==='done'?'passed':'all six domains';
     var lbl=n.type==='week'?'Week '+n.week:n.type==='maxtest'?'Max Test':n.type==='deload'?'Deload week':'Foundation Exit';
-    return '<button class="fp-node '+n.status+' t-'+kind+' s'+(side%4)+'" data-node="'+n.id+'"><span class="fp-disc"><span class="fp-wc"></span><span class="fp-ic">'+(kind==='exit'&&n.status!=='done'?'🔒':kind==='maxtest'&&n.status!=='done'?'◆':icon)+'</span></span>'+
+    // Passed only by skipping (nothing in it was done): a skip mark, never a check.
+    var skippedOnly=n.status==='done'&&(n.type==='deload'?sub==='recovery week skipped':n.type==='week'&&wp.done===0&&wp.skipped>0);
+    return '<button class="fp-node '+n.status+(skippedOnly?' skipped':'')+' t-'+kind+' s'+(side%4)+'" data-node="'+n.id+'"><span class="fp-disc"><span class="fp-wc"></span><span class="fp-ic">'+(kind==='exit'&&n.status!=='done'?'🔒':kind==='maxtest'&&n.status!=='done'?'◆':skippedOnly?'↷':icon)+'</span></span>'+
       '<span class="fp-lab">'+esc(lbl)+(n.status==='current'?' · <b>you are here</b>':'')+'<span class="fp-sl">'+esc(sub)+'</span></span></button>';
   }
   function weekPanelHtml(pkg,st,n){
