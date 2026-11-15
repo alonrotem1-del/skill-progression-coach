@@ -202,10 +202,12 @@ never copies a value.
     not offered. EMOM, AMRAP and circuits take no load. Old records without one
     render as before.
 
-28. The Path home (Path | Academy, its discs and week panel, the workout preview
-    and the deload screen) is replaced by the new shell, Today | Plan | Goals, with
-    the athlete's week plan (docs/APP-SHELL.md). The rules above are unchanged; only
-    where they are shown moved.
+28. A Today | Plan | Goals shell with a dated week plan replaced the Path home on
+    10 Nov 2026 and was rolled back on 15 Nov at the athlete's request: Path | Academy
+    are the app again, with every workout improvement above. The rollback was made
+    with new commits (no reset). Kept from that shell: only the backup key
+    `spc_c_weekplan`, because backups made in those days carry it and a backup with
+    an unknown key is rejected. Its data, if any, stays on the device unused.
 
 ## 4. Not in this build
 - **Follow-up before full Academy progression:** unify workout evidence with the

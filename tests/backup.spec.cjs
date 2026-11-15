@@ -24,7 +24,7 @@ const ROOT = path.join(__dirname, '..');
 const SOURCE_FILES = [
   'app.js', 'store.js', 'week.js', 'daily.js', 'settings.js',
   'duration.js', 'adapt.js', 'data.js', 'engine.js', 'progress.js', 'backup.js',
-  'program.js', 'weekplan.js'
+  'program.js'
 ];
 
 // The same 16-key inventory the implementation plan's audit + this task's
