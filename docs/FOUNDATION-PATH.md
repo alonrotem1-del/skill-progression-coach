@@ -219,6 +219,11 @@ never copies a value.
     (`hard2`) the athlete picks, recorded as done. Both show an "Approved
     clarification" note. U-1, U-4 and U-6 already match the package (seconds for
     Assisted 90 Degree Chin Ups, Reversed Plank, Jumping Muscle Up).
+30. EMOM start countdown: starting an EMOM's clock shows a 5-second countdown, once,
+    before minute 1 (a tick on 5, 4, 3, 2, 1, then the usual new-minute beep); minute 1
+    begins at the EMOM's own 0:00 and the minutes then run on as before, with no
+    countdown between them. Resuming after a pause does not repeat it. The AMRAP clock
+    is unchanged.
 ## 4. Not in this build
 - **Follow-up before full Academy progression:** unify workout evidence with the
   persistent Evidence Ledger (IndexedDB). Today the Foundation evaluator reads

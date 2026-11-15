@@ -377,10 +377,87 @@ test.describe('Foundation Path — EMOM in the runner', () => {
     await page.locator('[data-useplan]').click();
     await page.evaluate(() => { window.__tones = []; });
     await page.locator('[data-clock]').click();
+    await page.clock.runFor(5000);                                               // the start countdown (test 29); minute 1 begins
+    await page.evaluate(() => { window.__tones = []; });
     await page.clock.runFor(56000);
     expect(await page.evaluate(() => window.__tones)).toEqual([]);
     await page.clock.runFor(4000);                                               // seconds 57, 58, 59, then the new minute
     expect(await page.evaluate(() => window.__tones)).toEqual([440, 440, 440, 660, 770, 880]);
+  });
+
+  // A stand-in for the speaker: records every tone the app plays.
+  async function speaker(page) {
+    await page.addInitScript(() => {
+      window.__tones = [];
+      const param = () => ({ setValueAtTime() {}, exponentialRampToValueAtTime() {} });
+      class Ctx {
+        constructor() { this.state = 'running'; this.currentTime = 0; this.destination = {}; }
+        resume() {}
+        createGain() { return { gain: param(), connect() {} }; }
+        createOscillator() {
+          const f = {}; Object.defineProperty(f, 'value', { set: (v) => window.__tones.push(v), get: () => 0 });
+          return { frequency: f, type: '', connect() {}, start() {}, stop() {} };
+        }
+      }
+      window.AudioContext = Ctx; window.webkitAudioContext = Ctx;
+    });
+  }
+  const tones = (page) => page.evaluate(() => window.__tones);
+
+  test('29 an EMOM starts with a 5-second countdown, once, before minute 1; minute 1 starts at 0:00 and the next minutes follow without one', async ({ page }) => {
+    await speaker(page);
+    await page.clock.install();
+    await existingAthlete(page);
+    await toEmom(page);
+    await page.locator('[data-useplan]').click();
+    await page.evaluate(() => { window.__tones = []; });
+    const box = page.locator('#fpclock');
+    // 1. a 5-second countdown before minute 1, a tick on each second
+    await page.locator('[data-clock]').click();
+    await expect(box.locator('[data-countdown]')).toHaveText('5');
+    await expect(box).toContainText('Minute 1 starts in');
+    for (const n of ['4', '3', '2', '1']) { await page.clock.runFor(1000); await expect(box.locator('[data-countdown]')).toHaveText(n); }
+    expect(await tones(page)).toEqual([440, 440, 440, 440, 440]);
+    // 2. then minute 1 starts by itself, at the EMOM's own 0:00, with the usual new-minute beep
+    await page.clock.runFor(1000);
+    await expect(box.locator('[data-countdown]')).toHaveCount(0);
+    await expect(box).toContainText('Minute 1');
+    await expect(box.locator('.t')).toHaveText('1:00');
+    expect(await tones(page)).toEqual([440, 440, 440, 440, 440, 660, 770, 880]);
+    // 3. minute 1 runs its full 60 seconds; minute 2 follows straight on, with no countdown
+    await page.evaluate(() => { window.__tones = []; });
+    await page.clock.runFor(59000);
+    await expect(box.locator('.t')).toHaveText('0:01');
+    await page.clock.runFor(1000);
+    await expect(box).toContainText('Minute 2');
+    await expect(box.locator('.t')).toHaveText('1:00');
+    await expect(box.locator('[data-countdown]')).toHaveCount(0);
+    expect(await tones(page)).toEqual([440, 440, 440, 660, 770, 880]);         // only the usual end-of-minute ticks and beep
+    await page.clock.runFor(60000);
+    await expect(box).toContainText('Minute 3');
+    await expect(box.locator('[data-countdown]')).toHaveCount(0);
+    // pausing and resuming never brings the countdown back
+    await page.locator('[data-clock]').click();
+    await page.clock.runFor(3000);
+    await page.locator('[data-clock]').click();
+    await expect(box.locator('[data-countdown]')).toHaveCount(0);
+    await expect(box).toContainText('Minute 3');
+    // 4. the minutes logged from the plan are untouched by the clock
+    const run = await page.evaluate(() => JSON.parse(localStorage.getItem('spc_c_programrun')).blocks[4]);
+    expect(run.minutes).toEqual(Array(12).fill(3));
+  });
+
+  test('30 the AMRAP clock still starts at once, with no countdown', async ({ page }) => {
+    await page.clock.install();
+    await existingAthlete(page);
+    await page.locator('.fp-week [data-pw="P4W4-4"]').click();
+    await page.locator('[data-startpw]').click();
+    await page.locator('[data-clock]').click();
+    await expect(page.locator('#fpclock [data-countdown]')).toHaveCount(0);
+    const amrap = pkg.workouts['P4W4-4'].blocks[0];
+    await page.clock.runFor(1000);
+    const left = amrap.minutes * 60 - 1;
+    await expect(page.locator('#fpclock .t')).toHaveText(Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0'));
   });
 });
 

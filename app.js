@@ -4686,6 +4686,8 @@
     var c=clock&&clock.block===UI.prun.cursor?clock:null;
     var el=c?c.elapsed:0;
     if(b.kind==='amrap') return '<div class="t">'+fmt(Math.max(0,total-el))+'</div><div class="muted small">AMRAP '+b.minutes+' min</div><button class="link" data-clock>'+(c&&c.running?'Pause':el?'Resume':'Start timer')+'</button>';
+    // The 5-second countdown before minute 1 (once, when the clock starts).
+    if(c&&c.countdown>0) return '<div class="t" data-countdown>'+c.countdown+'</div><div class="muted small">Minute 1 starts in</div><button class="link" data-clock>'+(c.running?'Pause':'Resume')+'</button>';
     var minute=Math.floor(el/60)+1, left=60-(el%60);
     return '<div class="t">'+fmt(left)+'</div><div class="muted small">'+(c?'Minute '+minute:'Every minute on the minute')+'</div><button class="link" data-clock>'+(c&&c.running?'Pause':el?'Resume':'Start timer')+'</button>';
   }
@@ -4802,10 +4804,22 @@
       if(clock&&clock.block===UI.prun.cursor) clock.running=!clock.running;
       else {
         stopClock();
-        clock={block:UI.prun.cursor,elapsed:0,running:true,t:null};
+        // An EMOM starts with a 5-second countdown, once, before minute 1: a tick
+        // on 5, 4, 3, 2 and 1, then the usual new-minute beep, and minute 1
+        // begins at the EMOM's own 0:00. From then on the minutes run on as
+        // before, with no countdown between them. (The AMRAP clock starts at once.)
+        clock={block:UI.prun.cursor,elapsed:0,running:true,t:null,countdown:b.kind==='emom'?5:0};
+        if(clock.countdown&&settings().timer.countdown) playCountdownTick();
         var total=b.kind==='amrap'?b.minutes*60:((b.minutes&&b.minutes.max)||0)*60;
         clock.t=setInterval(function(){
           if(!clock||!clock.running) return;
+          if(clock.countdown>0){
+            clock.countdown--;
+            if(clock.countdown>0){ if(settings().timer.countdown) playCountdownTick(); }
+            else { if(settings().timer.sound) playBeep(); if(settings().timer.vibrate) vibrate([150]); }
+            paintClock();
+            return;
+          }
           clock.elapsed++;
           // A tick on each of the last 3 seconds of every EMOM minute (and of
           // the AMRAP), like the rest timer, then the usual beep.
