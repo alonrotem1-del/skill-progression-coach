@@ -548,3 +548,64 @@ test.describe('external load (weight), per set', () => {
     expect(P.resultVals(block('P4W4-L', 2), { sets: [{ left: 8, right: 8, done: true }] })).toBe('L8/R8 reps');
   });
 });
+
+// The athlete's approved clarifications (course master 8C.1): laid over the
+// package when the app loads it, never written into it.
+test.describe('approved clarifications over the program package', () => {
+  test.skip(!HAVE, 'program package not built on this machine');
+  const C = () => P.applyClarifications(pkg);
+  const blockOf = (p, id, i) => p.workouts[id].blocks[i];
+
+  test('42 U-2: the Phase 5 Workout 3 EMOM runs Pull Ups on minute 1 and Australian Pull Ups on minute 2, and the record says so', () => {
+    const c = C();
+    for (const w of [1, 2, 3, 4]) {
+      const b = blockOf(c, 'P5W' + w + '-3', 4);
+      expect(b.parts).toEqual([{ minutes: 'odd', exercise: 'Pull Ups' }, { minutes: 'even', exercise: 'Australian Pull Ups' }]);
+      expect(b.easy).toBe('EMOM: Even minute = Pull Ups, Odd minute = Australian Pull Ups');   // the table text is kept as written
+      expect(b.qa).toContain('U-2');
+    }
+    expect(c.qa.find((q) => q.id === 'U-2')).toMatchObject({ kind: 'clarification', topic: 'Order of the minutes' });
+    // a finished run: minute 1 is a Pull Ups set, minute 2 an Australian Pull Ups set
+    const run = { blocks: c.workouts['P5W1-3'].blocks.map((b, i) => (i === 4 ? { variant: 'easy', minutes: [5, 8, 5, 8] } : { variant: 'easy', skipped: true })) };
+    const ev = Object.assign({ id: 'w1', type: 'workout_completed' }, P.completionEvent(c, 'P5W1-3', run));
+    expect(P.performedSets(ev).map((s) => s.minute + ':' + s.exercise)).toEqual(['1:Pull Ups', '2:Australian Pull Ups', '3:Pull Ups', '4:Australian Pull Ups']);
+    expect(P.trainingCandidates(P.addEvent(P.emptyState(), ev), {}).map((s) => s.test + '@' + s.minute)).toEqual(['pullup@1']);
+  });
+
+  test('43 U-5: Phase 3 Workouts 1 and 3, exercise 1 — Easy Negative Dips; Hard Assisted Dips or Dips — and no other dip changes', () => {
+    const c = C();
+    for (const w of [1, 2, 3, 4]) for (const s of [1, 3]) {
+      const b = blockOf(c, 'P3W' + w + '-' + s, 0);
+      expect([b.easy, b.hard, b.hard2]).toEqual(['Negative Dips', 'Assisted Dips', 'Dips']);
+      expect(b.table).toMatchObject({ easy: 'Assisted Dips', hard: 'Dips' });
+      expect(b.dose).toEqual(blockOf(pkg, 'P3W' + w + '-' + s, 0).dose);                     // the prescription itself is unchanged
+    }
+    // other dip prescriptions stay exactly as the table writes them
+    expect([blockOf(c, 'P1W1-1', 0).easy, blockOf(c, 'P1W1-1', 0).hard]).toEqual(['Leg Assisted Dips', 'Assisted Dips']);
+    expect([blockOf(c, 'P2W1-1', 0).easy, blockOf(c, 'P2W1-1', 0).hard]).toEqual(['Assisted Dips', 'Negative Dips']);
+    expect([blockOf(c, 'P4W4-2', 0).easy, blockOf(c, 'P4W4-2', 0).hard, blockOf(c, 'P4W4-2', 0).hard2]).toEqual(['Assisted Dips', 'Dips', undefined]);
+    // the record keeps which Hard option was done; only real dips can be Foundation evidence
+    const b = blockOf(c, 'P3W1-1', 0);
+    expect([P.blockName(b, 'easy'), P.blockName(b, 'hard'), P.blockName(b, 'hard2')]).toEqual(['Negative Dips', 'Assisted Dips', 'Dips']);
+    const runWith = (variant) => ({ blocks: c.workouts['P3W1-1'].blocks.map((x, i) => (i === 0 ? { variant, sets: [{ value: 6, done: true }] } : { variant: 'easy', skipped: true })) });
+    const evOf = (variant, id) => Object.assign({ id, type: 'workout_completed' }, P.completionEvent(c, 'P3W1-1', runWith(variant)));
+    expect(P.performedSets(evOf('hard2', 'a'))[0].exercise).toBe('Dips');
+    expect(P.performedSets(evOf('hard', 'b'))[0].exercise).toBe('Assisted Dips');
+    expect(P.performedSets(evOf('easy', 'c'))[0].exercise).toBe('Negative Dips');
+    expect(P.trainingCandidates(P.addEvent(P.emptyState(), evOf('hard2', 'a')), {}).map((s) => s.test)).toEqual(['pbdip']);
+    expect(P.trainingCandidates(P.addEvent(P.emptyState(), evOf('hard', 'b')), {})).toEqual([]);
+    expect(P.sheetRows(c, evOf('hard2', 'a'))[0]).toMatchObject({ exercise: 'Dips', level: 'hard' });
+  });
+
+  test('44 the package itself is never changed, applying twice changes nothing, and a package that differs is left alone', () => {
+    const before = JSON.stringify(pkg);
+    const once = C(), twice = P.applyClarifications(once);
+    expect(JSON.stringify(pkg)).toBe(before);
+    expect(JSON.stringify(twice.workouts)).toBe(JSON.stringify(once.workouts));
+    expect(Object.values(once.workouts).flatMap((w) => w.blocks.filter((b) => b.table).map((b) => w.id + '#' + b.order)))
+      .toEqual(['P3W1-1#1', 'P3W1-3#1', 'P3W2-1#1', 'P3W2-3#1', 'P3W3-1#1', 'P3W3-3#1', 'P3W4-1#1', 'P3W4-3#1', 'P5W1-3#5', 'P5W2-3#5', 'P5W3-3#5', 'P5W4-3#5']);
+    const other = JSON.parse(before);
+    other.workouts['P3W1-1'].blocks[0].hard = 'Ring Dips';                                   // not what U-5 was written for
+    expect(P.applyClarifications(other).workouts['P3W1-1'].blocks[0]).toMatchObject({ easy: 'Assisted Dips', hard: 'Ring Dips' });
+  });
+});

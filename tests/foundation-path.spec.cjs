@@ -608,3 +608,54 @@ test.describe('Foundation Path — weight', () => {
     await expect(page.locator('[data-addload]')).toHaveCount(0);
   });
 });
+
+// The athlete's approved clarifications (course master 8C.1), seen where they
+// are trained: they are labelled as the athlete's decision, the record keeps
+// what was done, and the stored program file stays as the course writes it.
+test.describe('Foundation Path — approved clarifications', () => {
+  test('27 Phase 3 dips: Easy Negative Dips, Hard Assisted Dips or Dips; the one done is the one recorded', async ({ page }) => {
+    await existingAthlete(page);
+    page.on('dialog', (d) => d.accept());
+    await addEvents(page, [{ type: 'repositioned', start: 'P3W1', basis: 'athlete' }]);
+    await page.locator('.fp-week [data-pw="P3W1-1"]').click();
+    const first = page.locator('.fp-block').first();
+    await expect(first).toContainText('Easy · Negative Dips');
+    await expect(first).toContainText('Hard · Assisted Dips or Dips');
+    await expect(first).toContainText('Approved clarification · Easy and Hard');
+    await page.locator('[data-startpw]').click();
+    await expect(page.locator('.fp-vtog button')).toHaveText(['Easy', 'Hard · Assisted Dips', 'Hard · Dips']);
+    await page.locator('[data-var="hard2"]').click();
+    await expect(page.locator('.fp-runcard h2')).toHaveText('Dips');
+    await page.locator('[data-typed="s0"]').click();
+    await page.locator('.fp-set input').fill('6');
+    await page.locator('.fp-set input').press('Enter');
+    await page.locator('[data-setdone="0"]').click();
+    for (let i = 1; i < pkg.workouts['P3W1-1'].blocks.length; i++) await page.locator('[data-next]').click();
+    await page.locator('[data-finishrun]').click();
+    await expect(page.locator('.scr')).toContainText('Workout saved');
+    await expect(page.locator('.fp-sumrow').first()).toContainText('Dips');
+    await expect(page.locator('.fp-evbox')).toContainText('Dips · 6 reps');            // real dips can count for F3
+    const ev = await page.evaluate(() => JSON.parse(localStorage.getItem('spc_c_program')).events.find((e) => e.workoutId === 'P3W1-1' && e.source === 'app'));
+    expect(ev.result[0].variant).toBe('hard2');
+    expect(ev.prescription.blocks[0]).toMatchObject({ easy: 'Negative Dips', hard: 'Assisted Dips', hard2: 'Dips' });
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('spc_c_programpkg')).workouts['P3W1-1'].blocks[0]);
+    expect([stored.easy, stored.hard]).toEqual(['Assisted Dips', 'Dips']);              // the program file is unchanged
+  });
+
+  test('28 Phase 5 Workout 3 EMOM: minute 1 Pull Ups, minute 2 Australian Pull Ups, then alternating', async ({ page }) => {
+    await existingAthlete(page);
+    await addEvents(page, [{ type: 'repositioned', start: 'P5W1', basis: 'athlete' }]);
+    await page.locator('.fp-week [data-pw="P5W1-3"]').click();
+    const emom = page.locator('.fp-block').nth(4);
+    await expect(emom).toContainText('Odd minutes: Pull Ups');
+    await expect(emom).toContainText('Even minutes: Australian Pull Ups');
+    await expect(emom).toContainText('Approved clarification · Order of the minutes');
+    await page.locator('[data-startpw]').click();
+    for (let i = 0; i < 4; i++) await page.locator('[data-next]').click();
+    await page.locator('[data-useplan]').click();
+    const labels = page.locator('.fp-set.done .fp-ml');
+    await expect(labels.nth(0)).toHaveText('Pull Ups');
+    await expect(labels.nth(1)).toHaveText('Australian Pull Ups');
+    await expect(labels.nth(2)).toHaveText('Pull Ups');
+  });
+});

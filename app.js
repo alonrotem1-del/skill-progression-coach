@@ -4309,10 +4309,12 @@
   var _pkg=null;
   function getPkg(){
     if(_pkg) return _pkg;
-    try{ var s=localStorage.getItem(PKG_KEY); if(s){ var p=JSON.parse(s); if(Program.validatePackage(p).ok) _pkg=p; } }catch(e){}
+    // The package stays exactly as built; the athlete's approved clarifications
+    // are laid over it here, in memory (program.js).
+    try{ var s=localStorage.getItem(PKG_KEY); if(s){ var p=JSON.parse(s); if(Program.validatePackage(p).ok) _pkg=Program.applyClarifications(p); } }catch(e){}
     return _pkg;
   }
-  function setPkg(p){ _pkg=p; try{ localStorage.setItem(PKG_KEY,JSON.stringify(p)); }catch(e){} }
+  function setPkg(p){ _pkg=Program.applyClarifications(p); try{ localStorage.setItem(PKG_KEY,JSON.stringify(p)); }catch(e){} }
   // Local builds serve the package from private/; on a device without it the
   // athlete imports the file once (Settings -> Program). Either way it is kept
   // on the device, so the path works offline.
@@ -4390,6 +4392,9 @@
     if(!ids||!ids.length) return '';
     return ids.map(function(id){
       var q=(pkg.qa||[]).filter(function(x){return x.id===id;})[0]; if(!q) return '';
+      // An approved clarification is the athlete's decision, not the course's: it
+      // says so, and its text says what the table writes.
+      if(q.kind==='clarification') return '<details class="fp-qa"><summary>Approved clarification · '+esc(q.topic)+'</summary><div>'+esc(q.text)+'</div><div class="muted">Your decision, not a Calixpert instruction. The course text is unchanged.</div></details>';
       var body=q.kind==='contradiction'
         ?'<div><b>Source A:</b> '+esc(q.sourceA)+'</div><div><b>Source B:</b> '+esc(q.sourceB)+'</div><div class="muted">'+esc(q['class']||'')+' · master line '+q.line+'</div>'
         :'<div>'+esc(q.text)+'</div><div class="muted">master line '+q.line+'</div>';
@@ -4558,7 +4563,7 @@
         html+='<div class="fp-ex">'+esc(blockName(b,rr.variant))+'</div>'+(b.kind==='emom'&&b.style!=='pyramid'?emomPlan(b):'')+
           '<div class="fp-pres">'+(rr.skipped?'Skipped':'You did: '+esc(resultVals(b,rr)||'—'))+' '+outcomeChip(oc)+'</div>'+(rr.note?'<div class="small muted">'+esc(rr.note)+'</div>':'');
       } else if(b.kind==='exercise'||(b.kind==='emom'&&b.style==='pyramid')){
-        html+=b.hard?'<div class="fp-vars"><span class="'+(chosen==='easy'?'on':'')+'">Easy · '+esc(b.easy.replace(/^Pyramid EMOM:\s*/,''))+'</span><span class="'+(chosen==='hard'?'on':'')+'">Hard · '+esc(b.hard.replace(/^Pyramid EMOM:\s*/,''))+'</span></div>':'<div class="fp-ex">'+esc(blockName(b,'easy'))+'</div>';
+        html+=b.hard?'<div class="fp-vars"><span class="'+(chosen==='easy'?'on':'')+'">Easy · '+esc(b.easy.replace(/^Pyramid EMOM:\s*/,''))+'</span><span class="'+(chosen==='hard'||chosen==='hard2'?'on':'')+'">Hard · '+esc(b.hard.replace(/^Pyramid EMOM:\s*/,''))+(b.hard2?' or '+esc(b.hard2):'')+'</span></div>':'<div class="fp-ex">'+esc(blockName(b,'easy'))+'</div>';
       } else if(b.kind==='emom') html+='<div class="fp-ex">'+esc(b.style==='single'?b.exercise:'EMOM')+'</div>'+emomPlan(b);
       else html+='<div class="fp-ex">'+esc(b.kind==='amrap'?'AMRAP':'Circuit')+'</div>';
       if(!rr) html+='<div class="fp-pres">'+blockPrescription(b)+'</div>';
@@ -4587,6 +4592,7 @@
     return { workoutId:id, startedAt:new Date().toISOString(), cursor:0,
       blocks:w.blocks.map(function(b){
         var r={ variant:b.hard?lastVariant(b.easy):(b.kind==='emom'&&b.hardExercise?lastVariant(b.easy):'easy'), skipped:false, note:'' };
+        if(r.variant==='hard2'&&!b.hard2) r.variant='hard';
         if(b.kind==='exercise'){ r.sets=[]; for(var i=0;i<(b.sets||1);i++) r.sets.push(Program.bilateral(b.dose)?{left:null,right:null,done:false}:{value:null,done:false}); }
         if(b.kind==='emom'){ r.minutes=[]; }
         if(b.kind==='amrap'){ r.rounds=null; r.partial=null; }
@@ -4618,7 +4624,11 @@
       '<div class="prog"><i style="width:'+Math.round(i/w.blocks.length*100)+'%"></i></div></div>';
     html+='<div class="fp-runcard">';
     if(b.hard||(b.kind==='emom'&&b.hardExercise)){
-      html+='<div class="fp-vtog"><button class="'+(r.variant==='easy'?'on':'')+'" data-var="easy">Easy</button><button class="'+(r.variant==='hard'?'on':'')+'" data-var="hard">Hard</button></div>';
+      // Two Hard options where an approved clarification gives them (U-5): the
+      // athlete picks the one that fits, and the record keeps which.
+      html+='<div class="fp-vtog"><button class="'+(r.variant==='easy'?'on':'')+'" data-var="easy">Easy</button>'+(b.hard2?
+        '<button class="'+(r.variant==='hard'?'on':'')+'" data-var="hard">Hard · '+esc(b.hard)+'</button><button class="'+(r.variant==='hard2'?'on':'')+'" data-var="hard2">Hard · '+esc(b.hard2)+'</button>':
+        '<button class="'+(r.variant==='hard'?'on':'')+'" data-var="hard">Hard</button>')+'</div>';
     }
     html+='<h2>'+esc(blockName(b,r.variant))+'</h2><div class="fp-pres">'+blockPrescription(b)+'</div>'+(b.kind==='emom'?emomPlan(b):'');
     if(b.kind==='exercise'){

@@ -251,7 +251,7 @@
       type: 'workout_completed', workoutId: workoutId, source: 'app',
       startedAt: run.startedAt || null, finishedAt: finishedAt || new Date().toISOString(),
       prescription: JSON.parse(JSON.stringify({ packageMd5: pkg.source.md5, title: w.title, phase: w.phase, week: w.week,
-        blocks: w.blocks.map(function (b) { return { order: b.order, kind: b.kind, easy: b.easy || null, hard: b.hard || null, raw: b.raw || null,
+        blocks: w.blocks.map(function (b) { return { order: b.order, kind: b.kind, easy: b.easy || null, hard: b.hard || null, hard2: b.hard2 || null, raw: b.raw || null,
           unit: snapshotUnit(b), per: (b.dose && b.dose.per) || null, load: b.load || null,
           style: b.style || null, exercise: b.exercise || null, hardExercise: b.hardExercise || null, options: b.options || null, parts: b.parts || null,
           items: b.items ? b.items.map(function (it) { return { easy: it.easy, dose: it.dose.raw }; }) : null }; }) })),
@@ -310,7 +310,7 @@
       var r = (ev.result || [])[bi] || {};
       if (r.skipped) return;
       if (pb.kind === 'exercise' && !pb.per) {
-        var name = r.variant === 'hard' && pb.hard ? pb.hard : pb.easy;
+        var name = r.variant === 'hard2' ? (pb.hard2 || pb.hard || pb.easy) : r.variant === 'hard' && pb.hard ? pb.hard : pb.easy;
         (r.sets || []).forEach(function (s, k) {
           if (s && s.done && s.value != null && s.value !== '') out.push({ block: bi, index: k, exercise: name, unit: pb.unit, value: +s.value, load: s.load || null });
         });
@@ -469,12 +469,58 @@
     return out;
   }
 
+  // ---- USER-APPROVED clarifications (course master, section 8C.1) -----------------
+  // The athlete's own decisions where the course disagrees with itself (the table
+  // says one thing, the lesson video another). They are NOT Calixpert
+  // instructions, and the package — the course as written — is never changed:
+  // they are laid over it when the app loads it. Each one names the blocks it
+  // covers and what it expects to find there, so a package that differs is left
+  // exactly as it is, and applying them twice changes nothing.
+  function partsAre(b, odd, even) {
+    var parts = b.parts || [];
+    var o = parts.filter(function (p) { return p.minutes === 'odd'; })[0], e = parts.filter(function (p) { return p.minutes === 'even'; })[0];
+    return parts.length === 2 && !!o && !!e && o.exercise === odd && e.exercise === even;
+  }
+  var CLARIFICATIONS = [
+    { id: 'U-2', topic: 'Order of the minutes',
+      text: 'Minute 1: Pull Ups. Minute 2: Australian Pull Ups. Alternate in that order. This is the order narrated in the lesson video; the table writes the reverse ("Even minute = Pull Ups, Odd minute = Australian Pull Ups").',
+      applies: function (w, b) { return w.phase === 5 && w.slot === 3 && b.kind === 'emom' && b.style === 'alternating' && partsAre(b, 'Australian Pull Ups', 'Pull Ups'); },
+      apply: function (b) { b.parts = [{ minutes: 'odd', exercise: 'Pull Ups' }, { minutes: 'even', exercise: 'Australian Pull Ups' }]; } },
+    { id: 'U-5', topic: 'Easy and Hard',
+      text: 'Easy: Negative Dips. Hard: Assisted Dips or Dips, depending on ability. The lesson video narrates negative dips; the table writes Easy "Assisted Dips", Hard "Dips".',
+      applies: function (w, b) { return w.phase === 3 && (w.slot === 1 || w.slot === 3) && b.order === 1 && b.kind === 'exercise' && b.easy === 'Assisted Dips' && b.hard === 'Dips' && !b.hard2; },
+      // a second Hard option: the athlete picks the one that fits, and the record keeps which
+      apply: function (b) { b.easy = 'Negative Dips'; b.hard = 'Assisted Dips'; b.hard2 = 'Dips'; } }
+  ];
+  function applyClarifications(pkg) {
+    if (!pkg || !pkg.workouts) return pkg;
+    var out = JSON.parse(JSON.stringify(pkg)), applied = [];
+    Object.keys(out.workouts).forEach(function (id) {
+      var w = out.workouts[id];
+      (w.blocks || []).forEach(function (b) {
+        CLARIFICATIONS.forEach(function (c) {
+          if (!c.applies(w, b)) return;
+          b.table = { easy: b.easy || null, hard: b.hard || null, parts: b.parts || null };   // what the table writes
+          c.apply(b);
+          b.qa = (b.qa || []).concat([c.id]);
+          if (applied.indexOf(c.id) < 0) applied.push(c.id);
+        });
+      });
+    });
+    var have = {}; (out.qa || []).forEach(function (q) { have[q.id] = true; });
+    out.qa = (out.qa || []).concat(CLARIFICATIONS.filter(function (c) { return applied.indexOf(c.id) >= 0 && !have[c.id]; })
+      .map(function (c) { return { id: c.id, kind: 'clarification', topic: c.topic, text: c.text }; }));
+    out.clarifications = (pkg.clarifications || []).concat(applied);
+    return out;
+  }
+
   // ---- one block as logged ---------------------------------------------------------
   function blockName(b, variant) {
     if (b.kind === 'emom' && b.style !== 'pyramid') return b.style === 'single' ? b.exercise : 'EMOM';
     if (b.kind === 'emom') return variant === 'hard' && b.hardExercise ? b.hardExercise : b.exercise;
     if (b.kind === 'amrap') return 'AMRAP';
     if (b.kind === 'circuit') return 'Circuit';
+    if (variant === 'hard2') return b.hard2 || b.hard || b.easy;   // the second Hard option (U-5)
     return variant === 'hard' && b.hard ? b.hard : b.easy;
   }
   // Every set or minute, or the rounds; 'plain' leaves out the units. A load shown
@@ -519,7 +565,7 @@
       var o = ev.summary && ev.summary.blocks[i] ? ev.summary.blocks[i].outcome : '';
       return { id: ev.id, date: ev.finishedAt || ev.at, phase: w.phase, week: w.week,
         workout: w.optional ? 'Legs' : w.title.replace(/^Workout \d - /, ''), exercise: blockName(b, r.variant),
-        level: r.skipped || !(b.hard || b.hardExercise) ? '' : r.variant === 'hard' ? 'hard' : 'easy',
+        level: r.skipped || !(b.hard || b.hardExercise) ? '' : r.variant === 'hard' || r.variant === 'hard2' ? 'hard' : 'easy',
         actual: r.skipped ? '' : resultVals(b, r, true), total: total.n, unit: total.unit,
         status: r.skipped ? 'skipped' : o, note: r.note || '' };
     });
@@ -549,6 +595,7 @@
     valueOutcome: valueOutcome, setOutcome: setOutcome, blockOutcome: blockOutcome, runSummary: runSummary, bilateral: bilateral,
     completionEvent: completionEvent, completions: completions,
     blockName: blockName, resultVals: resultVals, sheetRows: sheetRows,
+    CLARIFICATIONS: CLARIFICATIONS, applyClarifications: applyClarifications,
     LOAD_UNIT: LOAD_UNIT, loadRelevant: loadRelevant, loadText: loadText,
     maxTestToTest: maxTestToTest, maxTestHistory: maxTestHistory, evidence: evidence,
     CONFIRM_NEEDS: CONFIRM_NEEDS, trainingTest: trainingTest, performedSets: performedSets, trainingEvidence: trainingEvidence,

@@ -209,6 +209,16 @@ never copies a value.
     `spc_c_weekplan`, because backups made in those days carry it and a backup with
     an unknown key is rejected. Its data, if any, stays on the device unused.
 
+29. The athlete's approved clarifications (course master, section 8C.1) are laid
+    over the package when the app loads it (`Program.applyClarifications`); the
+    package file stays as the course writes it. Each names the blocks it covers and
+    what it expects there, so a different package is left alone. Applied:
+    U-2, Phase 5 Workout 3 EMOM: minute 1 Pull Ups, minute 2 Australian Pull Ups
+    (the video's order; the table writes the reverse). U-5, Phase 3 Workouts 1 and 3,
+    exercise 1: Easy Negative Dips; Hard Assisted Dips or Dips, a second Hard option
+    (`hard2`) the athlete picks, recorded as done. Both show an "Approved
+    clarification" note. U-1, U-4 and U-6 already match the package (seconds for
+    Assisted 90 Degree Chin Ups, Reversed Plank, Jumping Muscle Up).
 ## 4. Not in this build
 - **Follow-up before full Academy progression:** unify workout evidence with the
   persistent Evidence Ledger (IndexedDB). Today the Foundation evaluator reads
